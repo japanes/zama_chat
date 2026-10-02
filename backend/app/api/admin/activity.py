@@ -44,6 +44,7 @@ from app.db.models import (
     Message,
     MessageRole,
     OperatorTask,
+    PolicyMode,
     Receipt,
     Scenario,
     ScenarioRun,
@@ -632,7 +633,7 @@ async def _sandbox_channel(session, tenant_id: uuid.UUID, channel_id: uuid.UUID 
 async def _check_overrides(services: Services, body: "SandboxTurnIn") -> Overrides | None:
     """The chosen model serves every LLM role of this turn (rewrite, extract, decide,
     reply), so it must be a language model with JSON output."""
-    if not body.model and body.reasoning_effort is None:
+    if not body.model and body.reasoning_effort is None and body.decision_mode is None:
         return None
     if body.model:
         async with services.sm() as session:
@@ -650,7 +651,11 @@ async def _check_overrides(services: Services, body: "SandboxTurnIn") -> Overrid
                     "models.reasoning_effort_invalid",
                     {"model": model.name, "effort": effort, "allowed": model.reasoning_efforts},
                 )
-    return Overrides(model=body.model or None, reasoning_effort=body.reasoning_effort)
+    return Overrides(
+        model=body.model or None,
+        reasoning_effort=body.reasoning_effort,
+        decision_mode=body.decision_mode,
+    )
 
 
 class SandboxTurnIn(BaseModel):
@@ -663,6 +668,8 @@ class SandboxTurnIn(BaseModel):
     # only for this turn; the role settings in the DB stay as they are
     model: str | None = Field(default=None, max_length=200)
     reasoning_effort: str | None = Field(default=None, max_length=16)  # "" = off
+    # who answers the decision questions this turn: jev / llm / shadow (rules stay)
+    decision_mode: PolicyMode | None = None
 
 
 @router.post("/sandbox/turn")

@@ -6,11 +6,12 @@ criteria keys are "true" / "false", for choice — the option keys, for score �
 
 import uuid
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Protocol
 
 from app.db.base import new_id
-from app.db.models import Decision, DecisionProvider, DecisionReason, DecisionType
+from app.db.models import BelowAction, Decision, DecisionProvider, DecisionReason, DecisionType
+from app.decisions.policy import DecisionPolicy, load_policy
 from app.errors import AppError
 from app.llm.service import Overrides
 from app.logging import get_logger
@@ -74,6 +75,10 @@ class Answer:
     reason: DecisionReason = DecisionReason.PRIMARY
     probabilities: dict[str, float] = field(default_factory=dict)
     decision_id: uuid.UUID | None = None
+    # below the threshold and the rule says «no answer» (ask_client / operator): the
+    # callers get their default — the bot asks the client again
+    unsure: bool = False
+    below: str | None = None
 
 
 @dataclass
@@ -83,8 +88,20 @@ class DecisionSet:
     rows: list[Decision] = field(default_factory=list)
 
     def value(self, key: str, default: Any = None) -> Any:
+        """The answer; `default` when there is none or it is unsure."""
         answer = self.answers.get(key)
-        return answer.value if answer is not None else default
+        if answer is None or answer.unsure:
+            return default
+        return answer.value
+
+    def is_unsure(self, key: str) -> bool:
+        answer = self.answers.get(key)
+        return answer is not None and answer.unsure
+
+    @property
+    def operator_keys(self) -> list[str]:
+        """Unsure answers whose rule wants an operator to pick the reply."""
+        return [k for k, a in self.answers.items() if a.unsure and a.below == BelowAction.OPERATOR]
 
     def merge(self, other: "DecisionSet") -> "DecisionSet":
         self.answers.update(other.answers)
@@ -103,11 +120,15 @@ class DecisionsUnavailable(AppError):
         self.rows = rows
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, eq=False)
 class DecideContext:
     tenant_id: uuid.UUID | None
     turn_id: uuid.UUID | None = None
     overrides: Overrides | None = None
+    # the turn's rules (read once per turn); None → run_decisions() reads them
+    policy: "DecisionPolicy | None" = None
+    # keys of unsure answers that want an operator: the turn's reply goes to a person
+    unsure: list[str] | None = None
 
 
 class Decider(Protocol):
@@ -181,6 +202,11 @@ async def run_decisions(
         return DecisionSet()
     question_keys_unique(questions)
     decider: Decider = services.extra["decider"]
+    if ctx.policy is None:
+        async with services.sm() as session:
+            ctx = replace(ctx, policy=await load_policy(session, ctx.tenant_id))
+    if ctx.overrides is not None and ctx.overrides.decision_mode and ctx.policy is not None:
+        ctx = replace(ctx, policy=ctx.policy.with_mode(ctx.overrides.decision_mode))
     try:
         result = await decider.decide(state, questions, ctx)
     except DecisionsUnavailable as exc:
@@ -190,6 +216,8 @@ async def run_decisions(
     missing = [q.key for q in questions if q.key not in result.answers]
     if missing:
         log.error("decisions.missing_answers", keys=missing)
+    if ctx.unsure is not None:
+        ctx.unsure.extend(k for k in result.operator_keys if k not in ctx.unsure)
     if trace_step is not None:
         trace_step.setdefault("decision_ids", []).extend(
             str(row.id) for row in result.rows if row.used
@@ -198,8 +226,18 @@ async def run_decisions(
 
 
 def trace_answers(answers: Mapping[str, Answer]) -> dict[str, Any]:
-    """Compact view for the turn trace: key → value, confidence, provider."""
-    return {
-        key: {"value": a.value, "confidence": round(a.confidence, 4), "provider": str(a.provider)}
-        for key, a in answers.items()
-    }
+    """Compact view for the turn trace: key → value, confidence, provider (+ why another
+    decider answered, + unsure)."""
+    out: dict[str, Any] = {}
+    for key, a in answers.items():
+        item: dict[str, Any] = {
+            "value": a.value,
+            "confidence": round(a.confidence, 4),
+            "provider": str(a.provider),
+        }
+        if a.reason != DecisionReason.PRIMARY:
+            item["reason"] = str(a.reason)
+        if a.unsure:
+            item["unsure"] = a.below or True
+        out[key] = item
+    return out

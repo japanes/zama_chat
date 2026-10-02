@@ -104,6 +104,7 @@ const groups = computed(() => {
     if (can('admin')) {
       bot.push({ key: 'notifiers', to: `${b}/notifiers`, icon: 'bell' })
       bot.push({ key: 'prompts', to: `${b}/prompts`, icon: 'prompts' })
+      bot.push({ key: 'decisions', to: `${b}/decisions`, icon: 'decisions' })
       bot.push({ key: 'settings', to: `${b}/settings`, icon: 'settings' })
     }
     out.push({ key: 'bot', items: bot })

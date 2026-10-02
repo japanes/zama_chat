@@ -4,9 +4,19 @@
 - confidence: boolean → max(p, 1−p), choice / score → probability of the pick;
 - 400-like errors are our bug: no retry, a loud log;
 - 5xx / 429 / 408 / network / timeout: one retry, then the fallback LLM (reason=jev_error);
-- below the policy threshold only the unsure questions go to the fallback, in one call
-  (reason=below_threshold); if that call fails, the Jev answer is kept;
 - cost, tokens and generationId go to the log (cost on the first row of a request).
+
+Per question the policy (decisions/policy.py, rules from the admin) says:
+- mode jev: Jev answers; below the rule threshold — `below`:
+  llm → the unsure questions go to the fallback LLM in one call (reason=below_threshold;
+  if that call fails, the Jev answer is kept), keep → Jev's answer is used anyway,
+  ask_client / operator → the answer is marked unsure: callers get their default and the
+  bot asks the client again (operator: and a person picks this turn's reply);
+- mode llm: the LLM answers alone (if it fails — Jev, reason=llm_error);
+- mode shadow: as jev, and the LLM answers the same questions at the same time; its
+  rows are logged with reason=shadow, used=false — for the agreement stats. A shadow
+  answer is reused when Jev is unsure or fails (no second LLM call).
+LLM confidence is not calibrated: the thresholds apply to Jev answers only.
 
 The Gateway key is sent in the header only; it never reaches logs or rows.
 """
@@ -20,7 +30,7 @@ from typing import Any
 
 import httpx
 
-from app.db.models import DecisionProvider, DecisionReason
+from app.db.models import BelowAction, DecisionProvider, DecisionReason, PolicyMode
 from app.decisions.engine import (
     Answer,
     DecideContext,
@@ -31,7 +41,7 @@ from app.decisions.engine import (
 )
 from app.decisions.limits import Limits, split_batches
 from app.decisions.llm_decider import LLMDecider
-from app.decisions.policy import DecisionPolicy
+from app.decisions.policy import DecisionPolicy, Rule
 from app.errors import AppError
 from app.logging import get_logger
 from app.settings import Settings
@@ -266,26 +276,118 @@ class JevDecider:
     ) -> DecisionSet:
         if not questions:
             return DecisionSet()
-        batches = split_batches(state, questions, self.limits)
-        asked = await asyncio.gather(*(self._ask(state, b, ctx) for b in batches))
+        policy = ctx.policy or self.policy
+        rules = {q.key: policy.rule(q.key) for q in questions}
+        to_jev = [q for q in questions if rules[q.key].mode != PolicyMode.LLM]
+        to_llm = [q for q in questions if rules[q.key].mode != PolicyMode.JEV]
+
+        batches = split_batches(state, to_jev, self.limits) if to_jev else []
+        asked, llm = await asyncio.gather(
+            asyncio.gather(*(self._ask(state, b, ctx) for b in batches)),
+            self._ask_llm(state, to_llm, rules, ctx),
+        )
 
         result = DecisionSet()
         again: dict[str, DecisionReason] = {}
         for batch in asked:
             result.rows.extend(batch.rows)
+        if llm is not None:
+            result.rows.extend(llm.rows)
+        shadow = llm.answers if llm is not None else {}
+
+        # mode llm: the LLM answer; the LLM failed → Jev
+        lost = [q for q in to_llm if rules[q.key].mode == PolicyMode.LLM and q.key not in shadow]
+        for question in to_llm:
+            if rules[question.key].mode == PolicyMode.LLM and question.key in shadow:
+                result.answers[question.key] = shadow[question.key]
+        if lost:
+            await self._ask_jev_instead(state, lost, ctx, result)
+
+        for batch in asked:
             for question in batch.questions:
-                answer = batch.answers.get(question.key)
+                key = question.key
+                rule = rules[key]
+                answer = batch.answers.get(key)
                 if answer is None:
-                    again[question.key] = DecisionReason.JEV_ERROR
+                    if key in shadow:
+                        self._use_llm(result, shadow[key], DecisionReason.JEV_ERROR)
+                    else:
+                        again[key] = DecisionReason.JEV_ERROR
                     continue
-                result.answers[question.key] = answer
-                if not self.policy.is_sure(question.key, answer.confidence):
-                    again[question.key] = DecisionReason.BELOW_THRESHOLD
+                result.answers[key] = answer
+                if answer.confidence >= rule.threshold or rule.below == BelowAction.KEEP:
+                    continue
+                if rule.below in (BelowAction.ASK_CLIENT, BelowAction.OPERATOR):
+                    answer.unsure = True
+                    answer.below = str(rule.below)
+                    answer.reason = DecisionReason.UNSURE
+                    row = _row(result.rows, key, DecisionProvider.JEV)
+                    if row is not None:
+                        row.reason = str(DecisionReason.UNSURE)
+                        row.used = False
+                elif key in shadow:
+                    self._use_llm(result, shadow[key], DecisionReason.BELOW_THRESHOLD)
+                else:
+                    again[key] = DecisionReason.BELOW_THRESHOLD
         if again:
             await self._ask_fallback(
                 state, [q for q in questions if q.key in again], again, ctx, result
             )
         return result
+
+    async def _ask_llm(
+        self,
+        state: str,
+        questions: list[Question],
+        rules: dict[str, Rule],
+        ctx: DecideContext,
+    ) -> DecisionSet | None:
+        """The LLM part of modes llm and shadow: one call; None when it fails."""
+        if not questions or self.fallback is None:
+            return None
+        try:
+            answered = await self.fallback.decide(state, questions, ctx)
+        except AppError as exc:
+            log.warning("decisions.llm_failed", code=exc.code, keys=[q.key for q in questions])
+            return None
+        for row in answered.rows:
+            if rules[row.key].mode == PolicyMode.SHADOW:
+                row.reason = str(DecisionReason.SHADOW)
+                row.used = False
+        for key, answer in answered.answers.items():
+            if rules[key].mode == PolicyMode.SHADOW:
+                answer.reason = DecisionReason.SHADOW
+        return answered
+
+    async def _ask_jev_instead(
+        self, state: str, questions: list[Question], ctx: DecideContext, result: DecisionSet
+    ) -> None:
+        """Mode llm and the LLM failed: Jev answers, whatever its confidence."""
+        batches = split_batches(state, questions, self.limits)
+        for batch in await asyncio.gather(*(self._ask(state, b, ctx) for b in batches)):
+            for row in batch.rows:
+                row.reason = str(DecisionReason.LLM_ERROR)
+            for answer in batch.answers.values():
+                answer.reason = DecisionReason.LLM_ERROR
+            result.rows.extend(batch.rows)
+            result.answers.update(batch.answers)
+        missing = [q.key for q in questions if q.key not in result.answers]
+        if missing:
+            raise DecisionsUnavailable(missing, result.rows)
+
+    @staticmethod
+    def _use_llm(result: DecisionSet, answer: Answer, reason: DecisionReason) -> None:
+        """A shadow LLM answer replaces Jev's: Jev is unsure or failed."""
+        answer.reason = reason
+        result.answers[answer.key] = answer
+        for row in result.rows:
+            if row.key != answer.key:
+                continue
+            if row.provider == DecisionProvider.LLM:
+                row.used = True
+                row.reason = str(reason)
+            elif row.provider == DecisionProvider.JEV:
+                row.used = False
 
     async def _ask_fallback(
         self,
@@ -316,3 +418,7 @@ class JevDecider:
         if missing:
             # below-threshold questions keep the Jev answer; only failed ones are missing
             raise DecisionsUnavailable(missing, result.rows)
+
+
+def _row(rows: list[Any], key: str, provider: DecisionProvider) -> Any:
+    return next((r for r in rows if r.key == key and r.provider == provider), None)

@@ -1,0 +1,93 @@
+{
+  "decisions": {
+    "sub": "How Jev and the LLM answer the bot's questions, and the rules that choose who decides.",
+    "period": "Period",
+    "days": "{n} d",
+    "rules": "Rules",
+    "total": {
+      "asked": "Questions asked",
+      "jev_alone": "Jev decided alone",
+      "to_llm": "Sent to the LLM",
+      "unsure": "Asked the client again",
+      "agree": "Jev and the LLM agree"
+    },
+    "of": "{n} of {total}",
+    "to_llm_split": "Jev unsure: {below}, Jev failed: {errors}",
+    "compared": "{n} answers compared",
+    "col": {
+      "question": "Question",
+      "asked": "Asked",
+      "jev_alone": "Jev alone",
+      "confidence": "Avg. confidence",
+      "to_llm": "To the LLM",
+      "errors": "Jev failed",
+      "unsure": "Unsure",
+      "agree": "Agreement",
+      "rule": "Rule"
+    },
+    "empty": "No decisions in this period yet.",
+    "source": {
+      "own": "own",
+      "shared": "shared",
+      "default": "default"
+    },
+    "mode_title": "Who decides",
+    "mode": {
+      "jev": "Jev",
+      "llm": "LLM only",
+      "shadow": "Jev + LLM comparison"
+    },
+    "mode_hint": {
+      "jev": "Jev answers; below the threshold — the action on the right.",
+      "llm": "only the LLM of the “decide” role answers (if it fails — Jev). Slower and more expensive.",
+      "shadow": "Jev's answer is used, and the LLM answers the same question in parallel. Both go to the log, so you can see how often they agree. Costs an LLM call per message."
+    },
+    "threshold": "Threshold",
+    "below_title": "Below the threshold",
+    "below": {
+      "llm": "ask the LLM",
+      "keep": "keep Jev's answer",
+      "ask_client": "ask the client again",
+      "operator": "ask again, operator replies"
+    },
+    "below_hint": {
+      "llm": "the question is asked again to the LLM, its answer is used.",
+      "keep": "Jev's answer is used anyway (cheap and fast, but may be wrong).",
+      "ask_client": "the answer counts as not given: the bot asks the client to clarify.",
+      "operator": "as “ask again”, and the reply of this message goes to an operator to choose."
+    },
+    "spread": "Jev confidence",
+    "spread_hint": "Each bar is a 0.05 step of Jev's confidence (how sure it was). The green part is the share of answers the LLM agreed with.",
+    "bar": "{from}–{to}: {n} answers, the LLM agrees in {agree} of {pairs}",
+    "simulate": "Try a threshold",
+    "sim_alone": "Jev decides alone: {pct} of answers",
+    "sim_llm": "Below the threshold: {pct}",
+    "sim_agree_above": "Above the threshold Jev and the LLM agree in {pct} ({n} compared)",
+    "sim_agree_below": "Below the threshold they agree in {pct} ({n} compared)",
+    "sim_no_pairs": "Nothing to compare yet: switch this question to “Jev + LLM comparison” for a few days.",
+    "use_threshold": "Use this threshold",
+    "show_disagreements": "Show disagreements",
+    "disagreements": "Where Jev and the LLM disagree",
+    "no_disagreements": "No disagreements in this period.",
+    "client_text": "Client's message (rewritten)",
+    "jev": "Jev",
+    "llm": "LLM",
+    "used": "used",
+    "open": "Open the conversation",
+    "last": "last asked {at}",
+    "jev_latency": "Jev time {ms}",
+    "cost_split": "cost: Jev {jev}, LLM {llm}",
+    "keys_hint": "Numbered questions (cand:1, cand:2…) are shown as one row (cand:*). LLM confidence is not calibrated, so thresholds apply to Jev only.",
+    "rules_title": "Decision rules",
+    "rules_sub": "A rule applies to the questions whose key matches the pattern: an exact key or * as a wildcard (start:*, filter:booking.*). The exact key wins, then the longest pattern. Without a rule: Jev, threshold {threshold}, ask the LLM below it. Changes work from the next message.",
+    "own_rules": "Rules of this tenant",
+    "shared_rules": "Shared rules (all tenants)",
+    "shared_hint": "A tenant rule with the same pattern replaces the shared one.",
+    "edit_shared": "Edit shared rules",
+    "pattern": "Pattern",
+    "note": "Note",
+    "add_rule": "Add a rule",
+    "no_rules": "No rules: the defaults work.",
+    "saved": "Rules saved. They work from the next message."
+  }
+}

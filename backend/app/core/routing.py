@@ -16,7 +16,6 @@ from app.core.context import TurnContext
 from app.core.state_render import render_route_state
 from app.db.models import DecisionType
 from app.decisions.engine import (
-    DecideContext,
     DecisionSet,
     Question,
     run_decisions,
@@ -145,7 +144,7 @@ async def route(
             services,
             state,
             questions,
-            DecideContext(ctx.tenant_id, ctx.turn_id, ctx.overrides),
+            ctx.decide_context(),
             trace_step=step,
         )
         result = route_from(decisions)

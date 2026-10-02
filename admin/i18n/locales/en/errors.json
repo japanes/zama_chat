@@ -46,6 +46,10 @@
       "sandbox": "This is a sandbox conversation: nothing is sent to anyone",
       "window_closed": "The client wrote too long ago: the channel does not allow writing now"
     },
+    "decision_policy": {
+      "pattern_invalid": "Wrong pattern “{pattern}”: only letters, digits, _ : . - and * ? [ ] ! are allowed",
+      "pattern_duplicate": "The pattern “{pattern}” is listed twice"
+    },
     "decisions": {
       "bad_output": "The model gave an unexpected answer to the question {key}",
       "state_too_long": "Too much text for the question {key}: {tokens} tokens, at most {max}",

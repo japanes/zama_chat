@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 from app.core.context import TurnContext
 from app.core.state_render import trim_to_tokens
 from app.db.models import DecisionType
-from app.decisions.engine import DecideContext, Question, run_decisions
+from app.decisions.engine import Question, run_decisions
 from app.logging import get_logger
 from app.scenarios.fields import FieldState
 from app.scenarios.questions import filter_key, preview, templates, title_of
@@ -93,7 +93,8 @@ async def check_filters(
 ) -> dict[tuple[str, str], list[str]]:
     """(scenario, field) → keys of the failed filters (empty list = passed). A filter the
     decider did not answer counts as passed and is logged: the client is not asked again
-    because of our failure."""
+    because of our failure. An unsure answer (rule below = ask_client / operator) counts as
+    failed: the client is asked again."""
     questions: list[Question] = []
     for item in items:
         questions.extend(filter_questions(item, language))
@@ -104,13 +105,17 @@ async def check_filters(
         services,
         check_state(items, language),
         questions,
-        DecideContext(ctx.tenant_id, ctx.turn_id, ctx.overrides),
+        ctx.decide_context(),
         trace_step=trace_step,
     )
     for item in items:
         defn, f = item.definition, item.field
         for flt in f.filters:
             key = filter_key(defn.key, f.key, flt.key)
+            if decisions.is_unsure(key):
+                # the rule says «no answer when unsure»: ask the client again
+                failed[(defn.key, f.key)].append(flt.key)
+                continue
             value = decisions.value(key)
             if value is None:
                 log.warning("scenario.filter_unanswered", key=key)

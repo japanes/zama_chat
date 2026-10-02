@@ -56,7 +56,19 @@ class Overrides:
     """Per-call overrides (sandbox, `make eval`) — DB settings stay untouched."""
 
     model: str | None = None
-    reasoning_effort: str | None = None
+    reasoning_effort: str | None = None  # "" = off
+    # per role (`make eval MODEL_REPLY=…`): wins over `model` / `reasoning_effort`
+    models: dict[str, str] = field(default_factory=dict)
+    efforts: dict[str, str] = field(default_factory=dict)
+    # one decider mode for every question: jev / llm / shadow (decisions/policy.py)
+    decision_mode: str | None = None
+
+    def model_for(self, role: str) -> str | None:
+        return self.models.get(str(role)) or self.model
+
+    def effort_for(self, role: str) -> str | None:
+        effort = self.efforts.get(str(role))
+        return effort if effort is not None else self.reasoning_effort
 
 
 _DATA_URL_RE = re.compile(r"^data:([\w/+.-]+);base64,(.*)$", re.S)
@@ -97,8 +109,9 @@ class LLMService:
     ) -> RoleConfig:
         async with self.sm() as session:
             config = await resolve_role(session, role, tenant_id)
-            if overrides and overrides.model:
-                model = await get_model(session, overrides.model)
+            name = overrides.model_for(role) if overrides else None
+            if name:
+                model = await get_model(session, name)
                 config = RoleConfig(
                     role=config.role,
                     model=ModelSpec.from_row(model),
@@ -107,11 +120,12 @@ class LLMService:
                     fallback=None,
                     tenant_override=config.tenant_override,
                 )
-        if overrides and overrides.reasoning_effort is not None:
+        effort = overrides.effort_for(role) if overrides else None
+        if effort is not None:
             config = RoleConfig(
                 role=config.role,
                 model=config.model,
-                reasoning_effort=overrides.reasoning_effort or None,
+                reasoning_effort=effort or None,
                 timeout_s=config.timeout_s,
                 fallback=config.fallback,
                 tenant_override=config.tenant_override,

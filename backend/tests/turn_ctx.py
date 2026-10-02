@@ -7,6 +7,7 @@ from typing import Any
 from app.core.context import TurnContext
 from app.core.tenant_settings import TenantSettings
 from app.db.models import ChannelKind
+from app.decisions.policy import DecisionPolicy
 
 T0 = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
 
@@ -32,6 +33,8 @@ def make_ctx(**kw: Any) -> TurnContext:
         "handover": False,
         "operator_mode": False,
         "now": T0,
+        # no DB in unit tests: the default rules, not the decision_rules table
+        "policy": DecisionPolicy(),
     }
     data.update(kw)
     return TurnContext(**data)

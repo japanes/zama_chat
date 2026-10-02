@@ -104,7 +104,9 @@
       "primary": "main",
       "below_threshold": "recheck: low confidence",
       "jev_error": "Jev failed, backup",
-      "shadow": "shadow (for comparison)"
+      "shadow": "shadow (for comparison)",
+      "llm_error": "LLM failed, Jev answered",
+      "unsure": "unsure: client asked again"
     },
     "request": "Request",
     "response": "Response",
@@ -140,6 +142,9 @@
     "attach": "Attach a file by its address",
     "attachment_type": "File kind",
     "attachment_url": "File address",
-    "attachment_hint": "A public https address of a photo or a receipt: the bot gets it as if the client sent it."
+    "attachment_hint": "A public https address of a photo or a receipt: the bot gets it as if the client sent it.",
+    "decision_mode": "Who decides",
+    "decision_mode_rules": "By the rules",
+    "decision_mode_hint": "Only for this test turn: who answers the bot's questions (Jev / LLM)."
   }
 }

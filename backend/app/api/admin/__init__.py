@@ -4,6 +4,7 @@ from app.api.admin import (
     activity,
     auth,
     content,
+    decisions,
     instagram,
     models,
     notifiers,
@@ -22,4 +23,5 @@ routers = [
     operator.router,
     notifiers.router,
     search.router,
+    decisions.router,
 ]

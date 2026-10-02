@@ -1,0 +1,23 @@
+# TODO(review): drafts — check the texts and the expected answers before trusting the ✓/✗
+name: Service messages and a human
+settings:
+  languages: [uk, en]
+  reply_language: {uk: uk, ru: uk, "*": en}
+  business_description: Студія манікюру в Києві. Манікюр, педикюр, покриття гель-лаком.
+scenarios: []
+messages:
+  - text: Привіт!
+    expect:
+      decisions: {service_type: greeting_only, wants_human: false}
+      reply_language: uk
+  - text: а ти бот чи людина?
+    expect:
+      decisions: {service_type: not_a_bot}
+  - text: Hi, how much is a gel manicure?
+    expect:
+      decisions: {service_type: none}
+      reply_language: en
+  - text: покличте менеджера будь ласка
+    expect:
+      decisions: {wants_human: true}
+      handover: true

@@ -9,10 +9,10 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import Float, ForeignKey, Index, Integer, Numeric, String, Text
+from sqlalchemy import Float, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.db.base import Base, CreatedMixin, IdMixin
+from app.db.base import Base, CreatedMixin, IdMixin, TimestampsMixin
 
 
 class DecisionType(StrEnum):
@@ -31,7 +31,28 @@ class DecisionReason(StrEnum):
     PRIMARY = "primary"  # the main decider answered with enough confidence
     BELOW_THRESHOLD = "below_threshold"  # Jev was unsure → asked the LLM again
     JEV_ERROR = "jev_error"  # Jev failed (5xx / network / timeout) → LLM
+    LLM_ERROR = "llm_error"  # the LLM was the main decider and failed → Jev
     SHADOW = "shadow"  # stage 7: both answered, this one was not used
+    # Jev was unsure and the rule says «no answer»: the bot asks the client again (or an
+    # operator picks the reply); the value is logged, not used
+    UNSURE = "unsure"
+
+
+class PolicyMode(StrEnum):
+    """Who answers a question (rules in `decision_rules`)."""
+
+    JEV = "jev"  # Jev; below the threshold — see BelowAction
+    LLM = "llm"  # the `decide` role model only (Jev if it fails)
+    SHADOW = "shadow"  # Jev's answer is used, the LLM answers too — for comparison only
+
+
+class BelowAction(StrEnum):
+    """What to do with a Jev answer below the rule's threshold."""
+
+    LLM = "llm"  # ask the LLM, use its answer
+    KEEP = "keep"  # use Jev's answer anyway
+    ASK_CLIENT = "ask_client"  # count as «no answer»: the bot asks the client again
+    OPERATOR = "operator"  # as ask_client, and an operator picks this turn's reply
 
 
 class Decision(IdMixin, CreatedMixin, Base):
@@ -67,3 +88,21 @@ class Decision(IdMixin, CreatedMixin, Base):
         ForeignKey("llm_calls.id", ondelete="SET NULL")
     )
     error: Mapped[str | None] = mapped_column(Text)
+
+
+class DecisionRule(IdMixin, TimestampsMixin, Base):
+    """Policy of the questions matching `pattern` (exact key or fnmatch: «start:*»).
+    tenant_id NULL = the shared rule; a tenant's rule with the same pattern replaces it.
+    Among the matching rules the exact key wins, then the longest pattern."""
+
+    __tablename__ = "decision_rules"
+    __table_args__ = (UniqueConstraint("tenant_id", "pattern", postgresql_nulls_not_distinct=True),)
+
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE")
+    )
+    pattern: Mapped[str] = mapped_column(String(200))
+    mode: Mapped[str] = mapped_column(String(16), default=PolicyMode.JEV)
+    threshold: Mapped[float] = mapped_column(Float)
+    below: Mapped[str] = mapped_column(String(16), default=BelowAction.LLM)
+    note: Mapped[str | None] = mapped_column(Text)

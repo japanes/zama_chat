@@ -50,7 +50,7 @@ seed-scenarios: ## load scenarios/ for TENANT (default demo)
 jev-probe:     ## Jev probe on uk/ru/en -> tmp/jev-probe/report.md
 	$(BACKEND) $(UV) python -m scripts.jev_probe
 
-eval:          ## replay recorded dialogs on real models -> tmp/eval/
+eval:          ## replay eval/dialogs on real models -> tmp/eval/ (MODEL_REPLY=… EFFORT=… SHADOW=1 ONLY=…)
 	$(BACKEND) $(UV) python -m scripts.eval
 
 i18n-check:    ## same keys in every admin locale + every backend error code translated

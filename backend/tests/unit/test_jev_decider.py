@@ -8,7 +8,7 @@ from typing import Any
 import httpx
 import pytest
 
-from app.db.models import DecisionProvider, DecisionReason
+from app.db.models import BelowAction, DecisionProvider, DecisionReason, PolicyMode
 from app.decisions import jev_decider
 from app.decisions.engine import (
     Answer,
@@ -19,7 +19,7 @@ from app.decisions.engine import (
 )
 from app.decisions.jev_decider import JevDecider, parse_answer
 from app.decisions.limits import Limits
-from app.decisions.policy import DecisionPolicy
+from app.decisions.policy import DecisionPolicy, Rule
 from app.errors import AppError
 from app.settings import Settings
 from tests.decision_helpers import choice, score, yes_no
@@ -431,3 +431,163 @@ async def test_gateway_key_is_not_in_logs_or_rows(jlog):
     for row in rows:
         stored = [row.error, row.answer, row.question, row.model, row.generation_id]
         assert KEY not in json.dumps(stored, default=str)
+
+
+# --- modes and below-threshold actions (stage 7) -----------------------------------------
+
+
+def ctx_with(**rules: Rule) -> DecideContext:
+    """A context whose policy has these rules (by their patterns)."""
+    return DecideContext(
+        tenant_id=uuid.uuid4(),
+        turn_id=uuid.uuid4(),
+        policy=DecisionPolicy(rules={r.pattern: r for r in rules.values()}),
+    )
+
+
+def rule_for(pattern: str, mode=PolicyMode.JEV, threshold=0.7, below=BelowAction.LLM) -> Rule:
+    return Rule(pattern, mode, threshold, below)
+
+
+async def test_shadow_sure_jev_is_used_llm_is_logged_only(jlog):
+    gateway = Gateway(ok({"a": {"probability": 0.95}}))
+    fallback = FakeFallback({"a": False})
+    ctx = ctx_with(a=rule_for("a", PolicyMode.SHADOW))
+    result = await make_decider(gateway, fallback=fallback).decide("s", [yes_no("a")], ctx)
+
+    assert fallback.calls == [["a"]]  # asked together with Jev, not after
+    answer = result.answers["a"]
+    assert (answer.value, answer.provider, answer.reason) == (
+        True,
+        DecisionProvider.JEV,
+        DecisionReason.PRIMARY,
+    )
+    rows = by_key(result.rows)
+    assert rows[("a", "jev")].used is True
+    assert (rows[("a", "llm")].used, rows[("a", "llm")].reason) == (False, "shadow")
+
+
+async def test_shadow_answer_is_reused_when_jev_is_unsure(jlog):
+    gateway = Gateway(ok({"a": {"probability": 0.6}}))
+    fallback = FakeFallback({"a": False})
+    ctx = ctx_with(a=rule_for("a", PolicyMode.SHADOW))
+    result = await make_decider(gateway, fallback=fallback).decide("s", [yes_no("a")], ctx)
+
+    assert fallback.calls == [["a"]]  # no second LLM call
+    answer = result.answers["a"]
+    assert (answer.value, answer.provider, answer.reason) == (
+        False,
+        DecisionProvider.LLM,
+        DecisionReason.BELOW_THRESHOLD,
+    )
+    rows = by_key(result.rows)
+    assert rows[("a", "jev")].used is False
+    assert (rows[("a", "llm")].used, rows[("a", "llm")].reason) == (True, "below_threshold")
+
+
+async def test_shadow_answer_is_reused_when_jev_fails(jlog):
+    gateway = Gateway((400, {"error": {"message": "bad"}}))
+    fallback = FakeFallback({"a": True})
+    ctx = ctx_with(a=rule_for("a", PolicyMode.SHADOW))
+    result = await make_decider(gateway, fallback=fallback).decide("s", [yes_no("a")], ctx)
+
+    assert fallback.calls == [["a"]]
+    assert result.answers["a"].reason == DecisionReason.JEV_ERROR
+    assert by_key(result.rows)[("a", "llm")].used is True
+
+
+async def test_mode_llm_does_not_ask_jev(jlog):
+    gateway = Gateway(answer_everything)
+    fallback = FakeFallback({"a": True})
+    ctx = ctx_with(a=rule_for("a", PolicyMode.LLM), b=rule_for("b"))
+    result = await make_decider(gateway, fallback=fallback).decide(
+        "s", [yes_no("a"), yes_no("b")], ctx
+    )
+
+    assert [list(b["questions"]) for b in gateway.bodies()] == [["b"]]
+    assert fallback.calls == [["a"]]
+    assert result.answers["a"].provider == DecisionProvider.LLM
+    assert result.answers["a"].reason == DecisionReason.PRIMARY
+    assert result.answers["b"].provider == DecisionProvider.JEV
+    assert by_key(result.rows)[("a", "llm")].used is True
+
+
+async def test_mode_llm_failed_goes_to_jev_with_llm_error(jlog):
+    gateway = Gateway(ok({"a": {"probability": 0.55}}))
+    ctx = ctx_with(a=rule_for("a", PolicyMode.LLM))
+    decider = make_decider(gateway, fallback=FakeFallback(fail=True))
+    result = await decider.decide("s", [yes_no("a")], ctx)
+
+    assert "decisions.llm_failed" in jlog.names()
+    answer = result.answers["a"]
+    # Jev answers whatever its confidence: there is nobody else to ask
+    assert (answer.value, answer.provider, answer.reason) == (
+        True,
+        DecisionProvider.JEV,
+        DecisionReason.LLM_ERROR,
+    )
+    assert by_key(result.rows)[("a", "jev")].reason == "llm_error"
+
+
+async def test_mode_llm_without_any_answer_is_unavailable(jlog):
+    gateway = Gateway((400, {"error": {"message": "bad"}}))
+    ctx = ctx_with(a=rule_for("a", PolicyMode.LLM))
+    decider = make_decider(gateway, fallback=FakeFallback(fail=True))
+    with pytest.raises(DecisionsUnavailable) as err:
+        await decider.decide("s", [yes_no("a")], ctx)
+    assert err.value.params == {"keys": ["a"]}
+
+
+async def test_below_keep_uses_the_unsure_jev_answer(jlog):
+    gateway = Gateway(ok({"a": {"probability": 0.6}}))
+    fallback = FakeFallback({"a": False})
+    ctx = ctx_with(a=rule_for("a", below=BelowAction.KEEP))
+    result = await make_decider(gateway, fallback=fallback).decide("s", [yes_no("a")], ctx)
+
+    assert fallback.calls == []
+    assert result.value("a") is True
+    assert result.answers["a"].reason == DecisionReason.PRIMARY
+    assert by_key(result.rows)[("a", "jev")].used is True
+
+
+@pytest.mark.parametrize("below", [BelowAction.ASK_CLIENT, BelowAction.OPERATOR])
+async def test_below_ask_client_or_operator_marks_the_answer_unsure(jlog, below):
+    gateway = Gateway(
+        ok({"a": {"probability": 0.6}, "b": {"probability": 0.99}})  # a unsure, b sure
+    )
+    fallback = FakeFallback({"a": False})
+    ctx = ctx_with(a=rule_for("a", below=below), b=rule_for("b", below=below))
+    result = await make_decider(gateway, fallback=fallback).decide(
+        "s", [yes_no("a"), yes_no("b")], ctx
+    )
+
+    assert fallback.calls == []
+    a = result.answers["a"]
+    assert (a.unsure, a.below, a.reason) == (True, str(below), DecisionReason.UNSURE)
+    assert result.value("a", "default") == "default"  # unsure = no answer for the turn
+    assert result.is_unsure("a") and not result.is_unsure("b")
+    assert result.value("b") is True
+    row = by_key(result.rows)[("a", "jev")]
+    assert (row.used, row.reason) == (False, "unsure")
+    expected = ["a"] if below == BelowAction.OPERATOR else []
+    assert result.operator_keys == expected
+
+
+async def test_threshold_of_the_rule_is_used(jlog):
+    gateway = Gateway(ok({"a": {"probability": 0.85}}))
+    fallback = FakeFallback({"a": False})
+    ctx = ctx_with(a=rule_for("a", threshold=0.9))
+    result = await make_decider(gateway, fallback=fallback).decide("s", [yes_no("a")], ctx)
+    assert fallback.calls == [["a"]]
+    assert result.answers["a"].reason == DecisionReason.BELOW_THRESHOLD
+
+
+async def test_ctx_policy_wins_over_the_decider_policy(jlog):
+    gateway = Gateway(ok({"a": {"probability": 0.85}}))
+    fallback = FakeFallback({"a": False})
+    decider = make_decider(
+        gateway, fallback=fallback, policy=DecisionPolicy(default_threshold=0.99)
+    )
+    result = await decider.decide("s", [yes_no("a")], ctx_with(a=rule_for("a", threshold=0.8)))
+    assert fallback.calls == []
+    assert result.value("a") is True

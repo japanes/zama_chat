@@ -1,0 +1,22 @@
+# TODO(review): drafts — check the texts and the expected answers before trusting the ✓/✗
+# The client goes off-script: the bot answers and returns to the next question.
+name: Interview, side question and stop
+settings:
+  languages: [uk, en]
+  reply_language: {uk: uk, ru: uk, "*": en}
+  business_description: Консультації з маркетингу для малого бізнесу. Перша консультація безкоштовна.
+scenarios: [offer_interview]
+messages:
+  - text: Хочу допомогу з офером
+    expect:
+      scenario: {key: offer_interview, asking: niche}
+  - text: а скільки коштують ваші консультації?
+    expect:
+      decisions: {service_type: none}
+      scenario: {key: offer_interview, status: focus, asking: niche}
+  - text: я веду йогу онлайн для вагітних
+    expect:
+      scenario: {key: offer_interview, asking: audience, fields: {niche: filled}}
+  - text: ой, знаєте, давайте не зараз, не хочу відповідати
+    expect:
+      scenario: {key: offer_interview, status: cancelled}

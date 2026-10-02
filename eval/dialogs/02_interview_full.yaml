@@ -1,0 +1,27 @@
+# TODO(review): drafts — check the texts and the expected answers before trusting the ✓/✗
+name: Offer interview, straight through
+settings:
+  languages: [uk, en]
+  reply_language: {uk: uk, ru: uk, "*": en}
+  business_description: Консультації з маркетингу для малого бізнесу.
+scenarios: [offer_interview]
+messages:
+  - text: Добрий день! Хочу розібратися зі своєю пропозицією, бо клієнти не розуміють, чим я краща
+    expect:
+      decisions: {start:offer_interview.wants_offer_help: true}
+      scenario: {key: offer_interview, status: focus, asking: niche}
+  - text: Я роблю манікюр у власному кабінеті на Подолі
+    expect:
+      scenario: {key: offer_interview, asking: audience, fields: {niche: filled}}
+  - text: Жінки 25-40 років, які працюють в офісі і не мають часу ходити в салон
+    expect:
+      scenario: {key: offer_interview, asking: main_offer, fields: {audience: filled}}
+  - text: Манікюр з покриттям гель-лаком
+    expect:
+      scenario: {key: offer_interview, asking: price, fields: {main_offer: filled}}
+  - text: 650 гривень
+    expect:
+      scenario: {key: offer_interview, asking: positioning, fields: {price: filled}}
+  - text: Покриття тримається 4 тижні без сколів, і я даю гарантію — якщо відколеться, переробляю безкоштовно
+    expect:
+      scenario: {key: offer_interview, status: completed, fields: {positioning: filled}}

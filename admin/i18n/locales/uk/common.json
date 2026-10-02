@@ -70,7 +70,8 @@
     "operator": "Оператор",
     "notifiers": "Сповіщення",
     "catalog": "Каталог",
-    "knowledge": "База знань"
+    "knowledge": "База знань",
+    "decisions": "Рішення"
   },
   "auth": {
     "another_email": "Інша пошта",

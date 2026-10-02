@@ -41,6 +41,14 @@
           <option v-for="e in selectedModel.reasoning_efforts || []" :key="e" :value="e">{{ e }}</option>
         </select>
       </div>
+      <div>
+        <label class="label">{{ t('sandbox.decision_mode') }}</label>
+        <select v-model="decisionMode" class="select">
+          <option value="">{{ t('sandbox.decision_mode_rules') }}</option>
+          <option v-for="m in ['jev', 'llm', 'shadow']" :key="m" :value="m">{{ t(`decisions.mode.${m}`) }}</option>
+        </select>
+        <p class="hint">{{ t('sandbox.decision_mode_hint') }}</p>
+      </div>
     </div>
 
     <div class="grid gap-5 lg:grid-cols-3">
@@ -118,6 +126,7 @@ const sessions = ref<any[]>([])
 const models = ref<any[]>([])
 const model = ref('')
 const effort = ref<string | null>(null)
+const decisionMode = ref('')
 const text = ref('')
 // a file by its address: receipts and photos without a real channel
 const attachOpen = ref(false)
@@ -172,6 +181,7 @@ async function send() {
         attachments: files,
         model: model.value || null,
         reasoning_effort: selectedModel.value?.supports_reasoning ? effort.value : null,
+        decision_mode: decisionMode.value || null,
       },
     })
     text.value = ''

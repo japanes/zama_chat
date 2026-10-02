@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any
 
 from app.core.context import TurnContext
 from app.db.models import DecisionType
-from app.decisions.engine import DecideContext, DecisionSet, Question
+from app.decisions.engine import DecisionSet, Question
 from app.search.index import CATALOG, KNOWLEDGE
 from app.search.service import (
     CONTEXT_ITEMS,
@@ -127,7 +127,7 @@ async def search_step(
         step["candidates"] = {"catalog": len(catalog), "knowledge": len(knowledge)}
         kept = await refine(
             services,
-            DecideContext(ctx.tenant_id, ctx.turn_id, ctx.overrides),
+            ctx.decide_context(),
             rewritten,
             {"cand": (catalog, CONTEXT_ITEMS), "kb": (knowledge, CONTEXT_KNOWLEDGE)},
             trace_step=step,

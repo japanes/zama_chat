@@ -9,7 +9,7 @@ from collections.abc import Callable, Mapping
 from fnmatch import fnmatchcase
 from typing import Any
 
-from app.db.models import DecisionProvider
+from app.db.models import DecisionProvider, DecisionReason
 from app.decisions.engine import Answer, DecideContext, DecisionSet, Question, decision_row
 
 # a rule: a fixed value, or (question, state) → value
@@ -19,10 +19,19 @@ Rule = Any | Callable[[Question, str], Any]
 class FakeDecider:
     model = "fake/decider"
 
-    def __init__(self, rules: Mapping[str, Rule] | None = None, *, confidence: float = 0.99):
+    def __init__(
+        self,
+        rules: Mapping[str, Rule] | None = None,
+        *,
+        confidence: float = 0.99,
+        unsure: Mapping[str, str] | None = None,
+    ):
         # exact key or fnmatch pattern ("field:*") → rule
         self.rules: dict[str, Rule] = dict(rules or {})
         self.confidence = confidence
+        # pattern → below-threshold action (ask_client / operator): these answers come
+        # back unsure, as JevDecider marks them by the policy
+        self.unsure: dict[str, str] = dict(unsure or {})
         self.calls: list[tuple[str, list[Question]]] = []
 
     def asked(self) -> list[str]:
@@ -56,6 +65,11 @@ class FakeDecider:
                 provider=DecisionProvider.FAKE,
                 model=self.model,
             )
+            below = self._unsure(question.key)
+            if below is not None:
+                answer.unsure = True
+                answer.below = below
+                answer.reason = DecisionReason.UNSURE
             result.answers[question.key] = answer
             result.rows.append(
                 decision_row(
@@ -65,6 +79,14 @@ class FakeDecider:
                     provider=DecisionProvider.FAKE,
                     model=self.model,
                     answer=answer,
+                    reason=answer.reason,
+                    used=not answer.unsure,
                 )
             )
         return result
+
+    def _unsure(self, key: str) -> str | None:
+        for pattern, below in self.unsure.items():
+            if key == pattern or fnmatchcase(key, pattern):
+                return below
+        return None

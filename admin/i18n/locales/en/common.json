@@ -70,7 +70,8 @@
     "operator": "Operator",
     "notifiers": "Notifications",
     "catalog": "Catalog",
-    "knowledge": "Knowledge base"
+    "knowledge": "Knowledge base",
+    "decisions": "Decisions"
   },
   "auth": {
     "another_email": "Use another email",

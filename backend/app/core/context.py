@@ -17,6 +17,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.tenant_settings import TenantSettings
 from app.core.trace import Trace
 from app.db.models import Conversation, Turn
+from app.decisions.engine import DecideContext
+from app.decisions.policy import DecisionPolicy
 from app.llm.service import Overrides
 
 if TYPE_CHECKING:
@@ -55,6 +57,8 @@ class TurnContext:
     now: datetime
     sandbox: bool = False
     overrides: Overrides | None = None
+    # rules of the decision questions, read when the turn starts (decisions/policy.py)
+    policy: DecisionPolicy | None = None
     # operator mode: how many reply variants to prepare (channel setting)
     operator_variants: int = 3
     trace: Trace = field(default_factory=Trace)
@@ -62,6 +66,18 @@ class TurnContext:
     extra: dict[str, Any] = field(default_factory=dict)
     # attachments of this turn's client messages: [{type, url, title?, message_id}]
     attachments: list[dict[str, Any]] = field(default_factory=list)
+    # unsure answers whose rule wants a person (below: operator): this turn's reply goes
+    # to an operator as variants, like in operator mode
+    unsure_operator: list[str] = field(default_factory=list)
+
+    def decide_context(self) -> DecideContext:
+        return DecideContext(
+            self.tenant_id,
+            self.turn_id,
+            self.overrides,
+            policy=self.policy,
+            unsure=self.unsure_operator,
+        )
 
 
 # applied inside the "write" transaction, conversation row locked by hold()

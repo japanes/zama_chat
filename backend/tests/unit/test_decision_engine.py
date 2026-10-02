@@ -192,3 +192,61 @@ async def test_fake_decider_fails_on_value_that_does_not_fit():
     fake = FakeDecider({"service_type": "nope"})
     with pytest.raises(AssertionError, match="does not fit"):
         await fake.decide("s", [choice("service_type", "none")], CTX)
+
+
+# --- unsure answers (stage 7) ------------------------------------------------------------
+
+
+def _answer(key: str, value, *, unsure=False, below=None, reason=DecisionReason.PRIMARY):
+    a = Answer(key, DecisionType.BOOLEAN, value, 0.6, DecisionProvider.JEV, "m", reason=reason)
+    a.unsure, a.below = unsure, below
+    return a
+
+
+def test_unsure_answer_gives_the_default():
+    s = DecisionSet()
+    s.answers["a"] = _answer("a", True, unsure=True, below="ask_client")
+    s.answers["b"] = _answer("b", True)
+    assert s.value("a") is None
+    assert s.value("a", False) is False
+    assert s.is_unsure("a") and not s.is_unsure("b") and not s.is_unsure("missing")
+    assert s.value("b") is True
+
+
+def test_operator_keys_are_only_the_operator_ones():
+    s = DecisionSet()
+    s.answers["a"] = _answer("a", True, unsure=True, below="operator")
+    s.answers["b"] = _answer("b", True, unsure=True, below="ask_client")
+    s.answers["c"] = _answer("c", True)
+    assert s.operator_keys == ["a"]
+
+
+def test_trace_answers_shows_reason_and_unsure():
+    answers = {
+        "a": _answer("a", True, reason=DecisionReason.BELOW_THRESHOLD),
+        "b": _answer("b", False, unsure=True, below="operator", reason=DecisionReason.UNSURE),
+    }
+    assert trace_answers(answers) == {
+        "a": {"value": True, "confidence": 0.6, "provider": "jev", "reason": "below_threshold"},
+        "b": {
+            "value": False,
+            "confidence": 0.6,
+            "provider": "jev",
+            "reason": "unsure",
+            "unsure": "operator",
+        },
+    }
+
+
+async def test_fake_decider_unsure_keys():
+    fake = FakeDecider({"*": True}, unsure={"filter:*": "ask_client", "wants_human": "operator"})
+    result = await fake.decide(
+        "s", [yes_no("filter:x.y.z"), yes_no("wants_human"), yes_no("field:x.y")], CTX
+    )
+    assert result.is_unsure("filter:x.y.z")
+    assert result.answers["filter:x.y.z"].below == "ask_client"
+    assert result.answers["wants_human"].reason == DecisionReason.UNSURE
+    assert result.operator_keys == ["wants_human"]
+    assert result.value("field:x.y") is True
+    used = {r.key: r.used for r in result.rows}
+    assert used == {"filter:x.y.z": False, "wants_human": False, "field:x.y": True}

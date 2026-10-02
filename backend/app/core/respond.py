@@ -222,7 +222,10 @@ async def respond(
     info["service"] = is_service
     if search is not None and search.searched:
         info["context"] = len(search.context)
-    if ctx.operator_mode and not ctx.sandbox:
+    if ctx.unsure_operator:
+        # the decider was unsure and the rule wants a person to pick the reply
+        info["unsure"] = list(ctx.unsure_operator)
+    if (ctx.operator_mode or ctx.unsure_operator) and not ctx.sandbox:
         return await _variants(services, ctx, messages, logged, info)
     with ctx.trace.step(
         "respond",

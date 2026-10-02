@@ -1,0 +1,26 @@
+# TODO(review): drafts — check the texts and the expected answers before trusting the ✓/✗
+# Vague answers: the field filters must fail and the bot must ask again.
+name: Offer interview, vague answers
+settings:
+  languages: [uk, en]
+  reply_language: {uk: uk, ru: uk, "*": en}
+  business_description: Консультації з маркетингу для малого бізнесу.
+scenarios: [offer_interview]
+messages:
+  - text: допоможіть з позиціонуванням
+    expect:
+      decisions: {start:offer_interview.wants_offer_help: true}
+      scenario: {key: offer_interview, asking: niche}
+  - text: краса
+    expect:
+      decisions: {filter:offer_interview.niche.concrete_niche: false}
+      scenario: {key: offer_interview, asking: niche, fields: {niche: partial}}
+  - text: брови, ламінування і корекція в студії
+    expect:
+      scenario: {key: offer_interview, asking: audience, fields: {niche: filled}}
+  - text: всі
+    expect:
+      scenario: {key: offer_interview, asking: audience, fields: {audience: partial}}
+  - text: здебільшого студентки, яким важливо недорого і швидко
+    expect:
+      scenario: {key: offer_interview, asking: main_offer, fields: {audience: filled}}

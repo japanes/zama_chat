@@ -9,7 +9,15 @@ from app.db.models.conversations import (
     Turn,
     TurnStatus,
 )
-from app.db.models.decisions import Decision, DecisionProvider, DecisionReason, DecisionType
+from app.db.models.decisions import (
+    BelowAction,
+    Decision,
+    DecisionProvider,
+    DecisionReason,
+    DecisionRule,
+    DecisionType,
+    PolicyMode,
+)
 from app.db.models.jobs import Job, JobStatus
 from app.db.models.llm import ROLES_NEED_JSON_SCHEMA, LlmCall, LlmModel, LlmRole, ModelRole
 from app.db.models.operator import (
@@ -50,6 +58,7 @@ __all__ = [
     "AdminSession",
     "ApiKey",
     "AuditLog",
+    "BelowAction",
     "CatalogItem",
     "Channel",
     "ChannelKind",
@@ -60,6 +69,7 @@ __all__ = [
     "Decision",
     "DecisionProvider",
     "DecisionReason",
+    "DecisionRule",
     "DecisionType",
     "Delivery",
     "DeliveryStatus",
@@ -81,6 +91,7 @@ __all__ = [
     "Notifier",
     "NotifierKind",
     "OperatorTask",
+    "PolicyMode",
     "Prompt",
     "Receipt",
     "ReceiptStatus",

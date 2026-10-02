@@ -47,6 +47,7 @@ from app.db.models import (
     Turn,
     TurnStatus,
 )
+from app.decisions.policy import load_policy
 from app.errors import AppError
 from app.jobs.queue import enqueue
 from app.llm.service import Overrides
@@ -220,6 +221,9 @@ async def _take(
         turn.input_text = input_text
 
         history = await _load_history(session, conv.id, turn.id, services.settings.history_messages)
+        policy = await load_policy(session, conv.tenant_id)
+        if overrides is not None:
+            policy = policy.with_mode(overrides.decision_mode)
         return TurnContext(
             turn_id=turn.id,
             conversation_id=conv.id,
@@ -242,6 +246,7 @@ async def _take(
             now=now,
             sandbox=sandbox,
             overrides=overrides,
+            policy=policy,
             operator_variants=variant_count(channel.settings or {}),
             trace=Trace(),
             attachments=[

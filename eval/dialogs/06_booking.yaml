@@ -1,0 +1,33 @@
+# TODO(review): drafts — check the texts and the expected answers before trusting the ✓/✗
+# Needs a catalog with salon services (admin → Catalog) for the `service` field to match;
+# without one the bot keeps asking for the service.
+name: Salon booking
+settings:
+  languages: [uk, en]
+  reply_language: {uk: uk, ru: uk, "*": en}
+  business_description: Салон краси. Манікюр, педикюр, стрижки, фарбування.
+  timezone: Europe/Kyiv
+scenarios: [beauty_booking, cancel_booking]
+messages:
+  - text: Добрий день, хочу записатися на манікюр
+    expect:
+      decisions: {start:beauty_booking.wants_booking: true}
+      scenario: {key: beauty_booking, status: focus}
+  - text: на Хрещатику
+    expect:
+      scenario: {key: beauty_booking, fields: {location: filled}}
+  - text: до будь-якого майстра
+    expect:
+      scenario: {key: beauty_booking, fields: {specialist: filled}}
+  - text: завтра
+    expect:
+      scenario: {key: beauty_booking, fields: {date: filled}}
+  - text: десь о 15:00
+    expect:
+      scenario: {key: beauty_booking, fields: {time: filled}}
+  - text: Олена
+    expect:
+      scenario: {key: beauty_booking, asking: name, fields: {name: partial}}
+  - text: Олена Коваленко, +380 67 123 45 67
+    expect:
+      scenario: {key: beauty_booking, fields: {name: filled, phone: filled}}

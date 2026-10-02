@@ -1,0 +1,20 @@
+# TODO(review): drafts — check the texts and the expected answers before trusting the ✓/✗
+# A Russian-speaking client (answers in Ukrainian by the rule) who gives several answers at once.
+name: Offer interview, Russian client, early answers
+settings:
+  languages: [uk, en]
+  reply_language: {uk: uk, ru: uk, "*": en}
+  business_description: Консультації з маркетингу для малого бізнесу.
+scenarios: [offer_interview]
+messages:
+  - text: Здравствуйте, у меня барбершоп в Харькове, стрижка стоит 500 грн, хочу понять как выделиться
+    expect:
+      reply_language: uk
+      scenario: {key: offer_interview, status: focus, fields: {niche: filled}}
+  - text: Мужчины 20-45, айтишники и студенты рядом с офисами
+    expect:
+      reply_language: uk
+      scenario: {key: offer_interview, fields: {audience: filled}}
+  - text: Мужская стрижка и оформление бороды
+    expect:
+      scenario: {key: offer_interview, fields: {main_offer: filled, price: filled}}
