@@ -8,6 +8,8 @@ from app.db.models import Channel, Contact, Conversation, Message, SendStatus
 from app.errors import Conflict
 from app.jobs.worker import Fail, Handler, JobContext, Retry
 from app.logging import get_logger
+from app.results.delivery import deliver_job
+from app.scenarios.jobs import expire_run_job, silence_check_job
 from app.services import Services
 
 log = get_logger(__name__)
@@ -93,4 +95,7 @@ async def _set_status(
 HANDLERS: dict[str, Handler] = {
     "run_turn": run_turn_job,
     "send_message": send_message_job,
+    "deliver": deliver_job,
+    "silence_check": silence_check_job,
+    "expire_run": expire_run_job,
 }

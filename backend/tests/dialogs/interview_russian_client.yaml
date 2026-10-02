@@ -1,0 +1,72 @@
+name: A Russian-speaking client gets Ukrainian questions; the values stay in the client's words
+tenant:
+  settings:
+    languages: [uk, en]
+    reply_language: {uk: uk, ru: uk, "*": en}
+scenarios: [offer_interview]
+turns:
+  - client: Здравствуйте, хочу разобраться со своим предложением. Я делаю маникюр
+    rewrite: {question: ["Хочу розібратися зі своєю пропозицією. Я роблю манікюр"], language: ru}
+    decide:
+      start:offer_interview.wants_offer_help: true
+      field:offer_interview.niche: true
+    extract:
+      offer_interview__niche: маникюр
+      offer_interview__audience: null
+      offer_interview__main_offer: null
+      offer_interview__price: null
+      offer_interview__positioning: null
+    reply: Вітаю! Хто ваші клієнти?
+    expect:
+      client_language: ru
+      reply_language: uk
+      step: {ask_next: {question: "Хто ваші клієнти? Для кого ваша пропозиція?"}}
+      scenario:
+        key: offer_interview
+        asking: audience
+        values: {niche: маникюр}
+
+  - client: Девушки 20-35 лет
+    rewrite: {question: ["Мої клієнти — дівчата 20-35 років"], language: ru}
+    decide: {field:offer_interview.audience: true}
+    extract: {offer_interview__audience: Девушки 20-35 лет}
+    reply: Що саме ви продаєте?
+    expect:
+      scenario: {key: offer_interview, asking: main_offer, values: {audience: Девушки 20-35 лет}}
+
+  - client: Маникюр с покрытием гель-лак
+    rewrite: {question: ["Я продаю манікюр з покриттям гель-лак"], language: ru}
+    decide: {field:offer_interview.main_offer: true}
+    extract: {offer_interview__main_offer: Маникюр с покрытием гель-лак}
+    reply: Скільки він коштує?
+    expect:
+      scenario: {key: offer_interview, asking: price}
+
+  - client: от 600 до 900 гривен
+    rewrite: {question: ["Манікюр коштує від 600 до 900 гривень"], language: ru}
+    decide: {field:offer_interview.price: true}
+    extract: {offer_interview__price: от 600 до 900 гривен}
+    reply: Чим ви відрізняєтесь від конкурентів?
+    expect:
+      scenario: {key: offer_interview, asking: positioning}
+
+  - client: Работаю только стерильными инструментами и даю гарантию
+    rewrite: {question: ["Я працюю лише стерильними інструментами і даю гарантію"], language: ru}
+    decide: {field:offer_interview.positioning: true}
+    extract: {offer_interview__positioning: Работаю только стерильными инструментами и даю гарантию}
+    reply: Дякую, все записала!
+    expect:
+      client_language: ru
+      reply_language: uk
+      scenario: {key: offer_interview, status: completed}
+      sink:
+        - status: completed
+          client_language: ru
+          reply_language: uk
+          fields:
+            niche: маникюр
+            audience: Девушки 20-35 лет
+            main_offer: Маникюр с покрытием гель-лак
+            price: от 600 до 900 гривен
+            positioning: Работаю только стерильными инструментами и даю гарантию
+          missing: []

@@ -1,0 +1,99 @@
+# Interview: the client's offer and positioning (stage 2 example scenario).
+# TODO(review): all wording (questions, filters, start signs) — check before the first run.
+key: offer_interview
+title:
+  uk: "Інтерв'ю: пропозиція та позиціонування"
+  en: "Interview: offer and positioning"
+language: uk
+description:
+  uk: Збираємо відповіді клієнта про його нішу, аудиторію, пропозицію, ціну та позиціонування.
+  en: We collect the client's answers about their niche, audience, offer, price and positioning.
+
+start:
+  questions:
+    - key: wants_offer_help
+      ask:
+        uk: Клієнт хоче розібратися зі своєю пропозицією, позиціонуванням або тим, як продавати свої послуги чи товари?
+        en: Does the client want to sort out their offer, positioning or how to sell their services or products?
+      weight: 2
+    - field: niche
+    - field: main_offer
+  threshold: 2            # "wants help" alone, or niche + offer named together
+
+fields:
+  - key: niche
+    type: text
+    question:
+      uk: Чим ви займаєтесь? Яка у вас ніша?
+      en: What do you do? What is your niche?
+    description:
+      uk: Сфера та конкретна ніша бізнесу клієнта (наприклад «манікюр у власному кабінеті», а не просто «краса»).
+      en: The client's field and specific niche (e.g. "manicure in my own studio", not just "beauty").
+    filters:
+      - key: concrete_niche
+        ask:
+          uk: Клієнт назвав конкретну нішу, а не лише загальну сферу?
+          en: Did the client name a specific niche, not only a general field?
+
+  - key: audience
+    type: text
+    question:
+      uk: Хто ваші клієнти? Для кого ваша пропозиція?
+      en: Who are your clients? Who is your offer for?
+    filters:
+      - key: concrete_audience
+        ask:
+          uk: Клієнт описав, хто саме його клієнти (хоча б одна ознака — вік, стать, професія, ситуація, проблема), а не відповів «усі»?
+          en: Did the client describe who exactly their clients are (at least one trait — age, gender, job, situation, problem), not just "everyone"?
+
+  - key: main_offer
+    type: text
+    question:
+      uk: Що саме ви продаєте? Яка ваша головна послуга чи продукт?
+      en: What exactly do you sell? What is your main service or product?
+
+  - key: price
+    type: text
+    question:
+      uk: Скільки коштує ваша головна послуга чи продукт?
+      en: How much does your main service or product cost?
+    filters:
+      - key: has_price
+        ask:
+          uk: Клієнт назвав ціну або діапазон цін?
+          en: Did the client name a price or a price range?
+
+  - key: positioning
+    type: text
+    question:
+      uk: Чим ви відрізняєтесь від конкурентів? Чому клієнти обирають саме вас?
+      en: How are you different from competitors? Why do clients choose you?
+    ask_after: [niche, main_offer]
+    filters:
+      - key: concrete_difference
+        ask:
+          uk: Клієнт назвав конкретну відмінність від конкурентів, яка стосується його ніші та пропозиції, а не загальні слова на кшталт «якісно» чи «з любов'ю»?
+          en: Did the client name a concrete difference from competitors that fits their niche and offer, not general words like "quality" or "with love"?
+
+completion: all_fields
+
+resume:
+  mode: always
+
+cancel:
+  description:
+    uk: Клієнт каже, що інтерв'ю йому не потрібне, не хоче відповідати на питання або просить припинити.
+    en: The client says they do not need the interview, do not want to answer the questions or ask to stop.
+
+actions:
+  - on: completed
+    do: http_post
+    endpoint: results_api
+  - on: silence
+    after_minutes: 15
+    do: http_post
+    endpoint: results_api
+    status: incomplete
+  - on: cancelled
+    do: http_post
+    endpoint: results_api

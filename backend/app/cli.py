@@ -163,6 +163,85 @@ def seed_prompts_cmd(
     _run(go)
 
 
+# --- scenarios and endpoints -----------------------------------------------------------
+
+
+@app.command("load-scenarios")
+def load_scenarios_cmd(
+    path: Annotated[str, typer.Argument(help="a scenario file or a folder of them")],
+    tenant: Annotated[str, typer.Option(help="tenant slug")],
+    channel: Annotated[
+        str | None, typer.Option(help="switch on in this channel (default: all channels)")
+    ] = None,
+    author: str = "cli",
+) -> None:
+    """Load scenarios (YAML / JSON) for a tenant. A new version is saved only when the
+    definition changed. Loaded scenarios are switched on in the channel(s)."""
+    from pathlib import Path
+
+    from app.scenarios.loader import enable_loaded, load_path
+
+    async def go(services: Services) -> None:
+        async with services.sm() as session, session.begin():
+            t = await _tenant(session, tenant)
+            results = await load_path(session, t, Path(path), author=author)
+            added = await enable_loaded(
+                session, t, results, channel_id=uuid.UUID(channel) if channel else None
+            )
+        failed = 0
+        for r in results:
+            if r.error is not None:
+                failed += 1
+                typer.secho(f"error        {r.path}: {r.error}", fg=typer.colors.RED, err=True)
+                continue
+            state = "new version " if r.created else "unchanged   "
+            typer.echo(f"{state} {r.key} v{r.version}  ({r.path})")
+            for w in r.warnings:
+                typer.secho(f"  warning: {w['code']} {w.get('params') or ''}", fg="yellow")
+        for channel_id, keys in added.items():
+            if keys:
+                typer.echo(f"channel {channel_id}: switched on {', '.join(keys)}")
+        if failed:
+            raise typer.Exit(1)
+
+    _run(go)
+
+
+@app.command("create-endpoint")
+def create_endpoint(
+    tenant: Annotated[str, typer.Option(help="tenant slug")],
+    name: Annotated[str, typer.Option(help="name used by scenario actions (endpoint: …)")],
+    url: Annotated[str, typer.Option(help="where results are POSTed")],
+    secret: Annotated[
+        str | None, typer.Option(help="HMAC key for X-Zama-Signature (default: generated)")
+    ] = None,
+) -> None:
+    """Create or update an external endpoint for results. The secret is printed once."""
+    from app.db.models import Endpoint
+
+    async def go(services: Services) -> None:
+        key = secret or new_token(32)
+        async with services.sm() as session, session.begin():
+            t = await _tenant(session, tenant)
+            row = (
+                await session.execute(
+                    select(Endpoint).where(Endpoint.tenant_id == t.id, Endpoint.name == name)
+                )
+            ).scalar_one_or_none()
+            if row is None:
+                row = Endpoint(tenant_id=t.id, name=name, url=url, headers={})
+                session.add(row)
+            row.url = url
+            row.secret_enc = services.crypto.encrypt(key)
+            row.is_active = True
+        typer.echo(f"endpoint {name} -> {url}")
+        if secret is None:
+            typer.echo(key)
+            typer.secho("signature secret: save it now, it is not shown again", err=True)
+
+    _run(go)
+
+
 # --- models ---------------------------------------------------------------------------
 
 

@@ -1,0 +1,55 @@
+name: The client answers several questions at once; the early answer is re-checked, not asked
+tenant:
+  settings:
+    languages: [uk, en]
+scenarios: [offer_interview]
+turns:
+  - client: Хочу розібратися з позиціонуванням. Я печу весільні торти, роблю їх за добу, коли інші печуть тиждень
+    rewrite:
+      question: ["Хочу розібратися з позиціонуванням. Я печу весільні торти за добу, а інші — за тиждень"]
+      language: uk
+    decide:
+      start:offer_interview.wants_offer_help: true
+      field:offer_interview.niche: true
+      field:offer_interview.main_offer: true
+      field:offer_interview.positioning: true
+    extract:
+      offer_interview__niche: весільні торти
+      offer_interview__audience: null
+      offer_interview__main_offer: весільні торти
+      offer_interview__price: null
+      offer_interview__positioning: роблю їх за добу, коли інші печуть тиждень
+    reply: Як цікаво! А хто ваші клієнти?
+    expect:
+      step: {ask_next: {question: "Хто ваші клієнти? Для кого ваша пропозиція?"}}
+      scenario:
+        key: offer_interview
+        status: focus
+        asking: audience
+        # positioning came before niche and main_offer were accepted: it was re-checked
+        # in the same turn once they were, so the bot does not ask it again
+        states: {niche: filled, main_offer: filled, positioning: filled, audience: empty}
+
+  - client: Наречені та їхні мами
+    rewrite: {question: ["Мої клієнти — наречені та їхні мами"], language: uk}
+    decide: {field:offer_interview.audience: true}
+    extract: {offer_interview__audience: Наречені та їхні мами}
+    reply: А скільки коштує торт?
+    expect:
+      scenario: {key: offer_interview, asking: price}
+
+  - client: Від 900 гривень за кілограм
+    rewrite: {question: ["Весільний торт коштує від 900 гривень за кілограм"], language: uk}
+    decide: {field:offer_interview.price: true}
+    extract: {offer_interview__price: Від 900 гривень за кілограм}
+    reply: Дякую, все записала!
+    expect:
+      scenario: {key: offer_interview, status: completed}
+      sink:
+        - status: completed
+          fields:
+            niche: весільні торти
+            audience: Наречені та їхні мами
+            main_offer: весільні торти
+            price: Від 900 гривень за кілограм
+            positioning: роблю їх за добу, коли інші печуть тиждень

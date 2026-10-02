@@ -8,7 +8,7 @@ decide:
   wants_human: false
 turns:
   - client: Привіт!
-    rewrite: {question: [Привіт], language: uk}
+    rewrite: {question: ["Привіт"], language: uk}
     decide: {service_type: greeting_only}
     reply: Вітаю! Чим можу допомогти?
     expect:
@@ -19,7 +19,7 @@ turns:
       reply_language: uk
 
   - client: а скільки манік?
-    rewrite: {question: [Скільки коштує манікюр?], language: uk}
+    rewrite: {question: ["Скільки коштує манікюр?"], language: uk}
     reply: Манікюр коштує 500 грн.
     expect:
       reply: Манікюр коштує 500 грн.
@@ -28,7 +28,7 @@ turns:
       rewritten: Скільки коштує манікюр?
 
   - client: Дякую, до побачення!
-    rewrite: {question: [Дякую, до побачення], language: uk}
+    rewrite: {question: ["Дякую, до побачення"], language: uk}
     decide: {service_type: goodbye_only}
     reply: Гарного дня!
     expect:

@@ -7,7 +7,11 @@ Two kinds of answers (stage 1):
 - service (greeting / goodbye / "are you a bot" / ethical violation): the prompt
   `service_<type>` (legacy scripts 2–5) as the system message + history + the client's text.
 
-From stage 2 the reply is built from a RespondPlan (answer + next scenario question).
+From stage 2 a RespondPlan (scenarios/plan.py) adds `scenario_step` to the user prompt:
+answer the client's own question first (if any), then the next scenario question /
+the clarification / "everything is collected". The rules for it are the prompt
+`scenario_step` (prompts/builtin.py). A bare greeting in the middle of a scenario goes
+the normal way, so the bot greets back and asks the next question.
 """
 
 from dataclasses import dataclass
@@ -19,10 +23,12 @@ from app.core.rewrite import answer_language_line
 from app.core.routing import SERVICE_TYPES, Route
 from app.db.models import LlmRole, MessageRole
 from app.logging import get_logger
-from app.prompts.render import render_json, render_text, to_text
+from app.prompts.builtin import SCENARIO_STEP, SCENARIO_STEP_KEY
+from app.prompts.render import parse_json_prompt, render_json, render_text, to_text
 from app.prompts.store import PromptText
 
 if TYPE_CHECKING:
+    from app.scenarios.plan import RespondPlan
     from app.services import Services
 
 log = get_logger(__name__)
@@ -30,7 +36,10 @@ log = get_logger(__name__)
 SYSTEM_KEY = "system_prompt"
 USER_KEY = "user_prompt"
 SERVICE_KEYS = {t: f"service_{t}" for t in SERVICE_TYPES if t != "none"}
-PROMPT_KEYS = (SYSTEM_KEY, USER_KEY, *SERVICE_KEYS.values())
+PROMPT_KEYS = (SYSTEM_KEY, USER_KEY, *SERVICE_KEYS.values(), SCENARIO_STEP_KEY)
+# service types answered the normal way when a scenario step is due
+# TODO(review): goodbye / "are you a bot" in the middle of a scenario use their prompts
+SCENARIO_OVER_SERVICE = ("greeting_only",)
 
 # TODO(review): wording of the note added when the client asks for a human. The real
 # handover (the bot goes quiet, an operator task) comes in stage 4.
@@ -80,6 +89,7 @@ def answer_messages(
     *,
     wants_human: bool = False,
     context: list[Any] | None = None,
+    scenario_step: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     values = prompt_values(ctx, reply_language, rewritten)
     data = render_json(
@@ -95,6 +105,8 @@ def answer_messages(
     )
     if wants_human:
         data["handover_note"] = HANDOVER_RULE
+    if scenario_step is not None:
+        data["scenario_step"] = scenario_step
     return [
         {"role": "system", "content": render_text(system.body, values)},
         *history_messages(ctx),
@@ -113,10 +125,22 @@ def service_messages(
     ]
 
 
+def scenario_rules(prompts: dict[str, PromptText]) -> list[str]:
+    prompt = prompts.get(SCENARIO_STEP_KEY)
+    if prompt is not None:
+        rules = parse_json_prompt(prompt.body, prompt.key).get("rules")
+        if isinstance(rules, list) and rules:
+            return [str(r) for r in rules]
+        log.warning("respond.scenario_rules_missing", version=prompt.version)
+    return list(SCENARIO_STEP["rules"])
+
+
 def pick_prompt(
-    route: Route, prompts: dict[str, PromptText]
+    route: Route, prompts: dict[str, PromptText], plan: "RespondPlan | None" = None
 ) -> tuple[PromptText, bool]:  # (prompt, is_service)
-    if route.is_service:
+    if route.is_service and not (
+        plan is not None and plan.asks and route.service_type in SCENARIO_OVER_SERVICE
+    ):
         key = SERVICE_KEYS.get(route.service_type)
         prompt = prompts.get(key) if key else None
         if prompt is not None:
@@ -133,11 +157,16 @@ async def respond(
     route: Route,
     rewritten: str,
     reply_language: str,
+    *,
+    plan: "RespondPlan | None" = None,
 ) -> Reply:
-    prompt, is_service = pick_prompt(route, prompts)
+    prompt, is_service = pick_prompt(route, prompts, plan)
+    step_data = None
     if is_service:
         messages = service_messages(ctx, prompt, rewritten, reply_language)
     else:
+        if plan is not None:
+            step_data = plan.to_prompt(scenario_rules(prompts))
         messages = answer_messages(
             ctx,
             prompts[SYSTEM_KEY],
@@ -145,11 +174,20 @@ async def respond(
             rewritten,
             reply_language,
             wants_human=route.wants_human,
+            scenario_step=step_data,
         )
     # the user prompt carries the turn-specific part; its version is the one to log
     logged = prompt if is_service else prompts[USER_KEY]
+    info: dict[str, Any] = {}
+    if step_data is not None:
+        rules = prompts.get(SCENARIO_STEP_KEY)
+        info["scenario_step_version"] = rules.version if rules is not None else None
     with ctx.trace.step(
-        "respond", prompt_key=logged.key, prompt_version=logged.version, service=is_service
+        "respond",
+        prompt_key=logged.key,
+        prompt_version=logged.version,
+        service=is_service,
+        **info,
     ) as step:
         result = await services.llm.complete(
             LlmRole.REPLY,

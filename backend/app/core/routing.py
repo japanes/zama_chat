@@ -1,22 +1,29 @@
 """Step 2 — route: one batch of questions to the decider (Jev) about the rewritten text.
 
-Stage 1 questions: `service_type` (choice) and `wants_human` (boolean). Scenario questions
-(start:*, stop, change_field, field:*) are added in stage 2.
+Stage 1 questions: `service_type` (choice) and `wants_human` (boolean). The scenario
+questions (start:*, field:*, stop, change_field, client_question — scenarios/questions.py)
+go in the same batch, with the scenario sections of the state.
 
 Questions are written in English and Ukrainian; the tenant setting
 `jev_question_language` picks one (the Jev probe decides which is more accurate).
 """
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from app.core.context import TurnContext
 from app.core.state_render import render_route_state
 from app.db.models import DecisionType
-from app.decisions.engine import DecideContext, Question, run_decisions, trace_answers
+from app.decisions.engine import (
+    DecideContext,
+    DecisionSet,
+    Question,
+    run_decisions,
+    trace_answers,
+)
 
 if TYPE_CHECKING:
-    from app.decisions.engine import DecisionSet
     from app.services import Services
 
 SERVICE_NONE = "none"
@@ -96,6 +103,8 @@ class Route:
     service_type: str = SERVICE_NONE
     wants_human: bool = False
     answers: dict[str, Any] = field(default_factory=dict)  # trace_answers() view
+    # all answers of the batch, the scenario ones included (scenarios/runtime.py)
+    decisions: DecisionSet = field(default_factory=DecisionSet, compare=False, repr=False)
 
     @property
     def is_service(self) -> bool:
@@ -109,7 +118,7 @@ class Route:
         }
 
 
-def route_from(decisions: "DecisionSet") -> Route:
+def route_from(decisions: DecisionSet) -> Route:
     service_type = decisions.value("service_type", SERVICE_NONE)
     if service_type not in SERVICE_TYPES:
         service_type = SERVICE_NONE
@@ -117,12 +126,20 @@ def route_from(decisions: "DecisionSet") -> Route:
         service_type=service_type,
         wants_human=bool(decisions.value("wants_human", False)),
         answers=trace_answers(decisions.answers),
+        decisions=decisions,
     )
 
 
-async def route(services: "Services", ctx: TurnContext, rewritten: str) -> Route:
-    state = render_route_state(rewritten)
-    questions = route_questions(ctx.settings.jev_question_language)
+async def route(
+    services: "Services",
+    ctx: TurnContext,
+    rewritten: str,
+    *,
+    extra_questions: Iterable[Question] = (),
+    sections: Iterable[tuple[str, str]] = (),
+) -> Route:
+    state = render_route_state(rewritten, sections=sections)
+    questions = [*route_questions(ctx.settings.jev_question_language), *extra_questions]
     with ctx.trace.step("route", questions=[q.key for q in questions]) as step:
         decisions = await run_decisions(
             services,

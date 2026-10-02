@@ -1,8 +1,9 @@
 # zama_chat — common commands. Backend lives in backend/, admin (Nuxt) in admin/.
 BACKEND = cd backend &&
 UV = uv run
+TENANT ?= demo
 
-.PHONY: up up-search down migrate revision api worker test test-db lint fmt seed jev-probe eval i18n-check admin
+.PHONY: up up-search down migrate revision api worker test test-db lint fmt seed seed-scenarios jev-probe eval i18n-check admin
 
 up:            ## start PostgreSQL
 	docker compose up -d postgres
@@ -39,9 +40,12 @@ fmt:
 	$(BACKEND) $(UV) ruff format .
 	$(BACKEND) $(UV) ruff check --fix .
 
-seed:          ## load legacy prompts and scenarios
+seed:          ## load the shared prompts and the scenarios of TENANT (default demo)
 	$(BACKEND) $(UV) zama seed-prompts
-	$(BACKEND) $(UV) zama load-scenarios ../scenarios
+	$(BACKEND) $(UV) zama load-scenarios ../scenarios --tenant $(TENANT)
+
+seed-scenarios: ## load scenarios/ for TENANT (default demo)
+	$(BACKEND) $(UV) zama load-scenarios ../scenarios --tenant $(TENANT)
 
 jev-probe:     ## Jev probe on uk/ru/en -> tmp/jev-probe/report.md
 	$(BACKEND) $(UV) python -m scripts.jev_probe

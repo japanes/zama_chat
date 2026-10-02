@@ -1,0 +1,89 @@
+name: A side question is answered with a return to the interview; silence sends a partial result
+tenant:
+  settings:
+    languages: [uk, en]
+scenarios: [offer_interview]
+turns:
+  - client: Допоможіть з позиціонуванням, я весільний фотограф
+    rewrite: {question: ["Допоможіть з позиціонуванням, я весільний фотограф"], language: uk}
+    decide:
+      start:offer_interview.wants_offer_help: true
+      field:offer_interview.niche: true
+    extract:
+      offer_interview__niche: весільний фотограф
+      offer_interview__audience: null
+      offer_interview__main_offer: null
+      offer_interview__price: null
+      offer_interview__positioning: null
+    reply: Залюбки! Хто ваші клієнти?
+    expect:
+      scenario: {key: offer_interview, asking: audience, values: {niche: весільний фотограф}}
+
+  - client: А скільки коштує ваша консультація?
+    rewrite: {question: ["Скільки коштує ваша консультація?"], language: uk}
+    decide: {client_question: true}
+    reply: Консультація безкоштовна. А хто ваші клієнти?
+    expect:
+      step:
+        answer_client_question_first: true
+        ask_next: {question: "Хто ваші клієнти? Для кого ваша пропозиція?"}
+      scenario: {key: offer_interview, asking: audience}
+
+  - wait_minutes: 14
+    expect: {sink: []}
+
+  # 15 minutes after the last message: the partial result goes out, nothing is closed
+  - wait_minutes: 1
+    expect:
+      scenario: {key: offer_interview, status: focus, asking: audience}
+      sink:
+        - event: scenario.silence
+          status: incomplete
+          seq: 1
+          fields: {niche: весільний фотограф}
+          missing: [audience, main_offer, price, positioning]
+
+  - client: Пари, які одружуються
+    wait_minutes: 120
+    rewrite: {question: ["Мої клієнти — пари, які одружуються"], language: uk}
+    decide: {field:offer_interview.audience: true}
+    extract: {offer_interview__audience: Пари, які одружуються}
+    reply: Що саме ви продаєте?
+    expect:
+      scenario: {key: offer_interview, asking: main_offer}
+
+  - client: Зйомка весілля на цілий день
+    rewrite: {question: ["Я продаю зйомку весілля на цілий день"], language: uk}
+    decide: {field:offer_interview.main_offer: true}
+    extract: {offer_interview__main_offer: Зйомка весілля на цілий день}
+    reply: Скільки вона коштує?
+    expect:
+      scenario: {key: offer_interview, asking: price}
+
+  - client: 25000 гривень
+    rewrite: {question: ["Зйомка весілля на цілий день коштує 25000 гривень"], language: uk}
+    decide: {field:offer_interview.price: true}
+    extract: {offer_interview__price: 25000 гривень}
+    reply: Чим ви відрізняєтесь від інших фотографів?
+    expect:
+      scenario: {key: offer_interview, asking: positioning}
+
+  - client: Віддаю 300 фото вже за тиждень, а не за два місяці
+    rewrite: {question: ["Я віддаю 300 фото за тиждень, а не за два місяці"], language: uk}
+    decide: {field:offer_interview.positioning: true}
+    extract: {offer_interview__positioning: Віддаю 300 фото вже за тиждень, а не за два місяці}
+    reply: Дякую, все записала!
+    expect:
+      scenario: {key: offer_interview, status: completed}
+      sink:
+        - {status: incomplete, seq: 1}
+        - status: completed
+          event: scenario.completed
+          seq: 2
+          fields:
+            niche: весільний фотограф
+            audience: Пари, які одружуються
+            main_offer: Зйомка весілля на цілий день
+            price: 25000 гривень
+            positioning: Віддаю 300 фото вже за тиждень, а не за два місяці
+          missing: []

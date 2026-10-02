@@ -1,0 +1,99 @@
+name: The full offer interview, with one clarification of a too general niche
+tenant:
+  settings:
+    languages: [uk, en]
+scenarios: [offer_interview]
+turns:
+  - client: Привіт! Хочу розібратися, як краще продавати свої послуги
+    rewrite: {question: ["Хочу розібратися, як краще продавати свої послуги"], language: uk}
+    decide: {start:offer_interview.wants_offer_help: true}
+    # a run started in this turn: every field is looked for in the message
+    extract:
+      offer_interview__niche: null
+      offer_interview__audience: null
+      offer_interview__main_offer: null
+      offer_interview__price: null
+      offer_interview__positioning: null
+    reply: Із задоволенням допоможу! Розкажіть, чим ви займаєтесь?
+    expect:
+      step:
+        scenario_started: "Інтерв'ю: пропозиція та позиціонування"
+        ask_next: {question: "Чим ви займаєтесь? Яка у вас ніша?"}
+      scenario: {key: offer_interview, status: focus, asking: niche}
+
+  - client: Я працюю в бʼюті сфері
+    rewrite: {question: ["Я працюю в бʼюті сфері"], language: uk}
+    decide:
+      field:offer_interview.niche: true
+      filter:offer_interview.niche.concrete_niche: false
+    extract: {offer_interview__niche: бʼюті сфері}
+    reply: А що саме ви робите в бʼюті?
+    expect:
+      step:
+        clarify:
+          client_answer: бʼюті сфері
+          missing: ["Клієнт назвав конкретну нішу, а не лише загальну сферу?"]
+      scenario:
+        key: offer_interview
+        asking: niche
+        states: {niche: partial}
+
+  - client: Роблю манікюр у своєму кабінеті
+    rewrite: {question: ["Роблю манікюр у своєму кабінеті"], language: uk}
+    decide: {field:offer_interview.niche: true}
+    extract: {offer_interview__niche: манікюр у своєму кабінеті}
+    reply: Чудово! А хто ваші клієнти?
+    expect:
+      step: {ask_next: {question: "Хто ваші клієнти? Для кого ваша пропозиція?"}}
+      scenario:
+        key: offer_interview
+        asking: audience
+        states: {niche: filled}
+        values: {niche: "бʼюті сфері\nманікюр у своєму кабінеті"}
+
+  - client: Жінки 25-40, які працюють в офісі
+    rewrite: {question: ["Мої клієнти — жінки 25-40, які працюють в офісі"], language: uk}
+    decide: {field:offer_interview.audience: true}
+    extract: {offer_interview__audience: Жінки 25-40, які працюють в офісі}
+    reply: Зрозуміло. Що саме ви продаєте?
+    expect:
+      scenario: {key: offer_interview, asking: main_offer}
+
+  - client: Класичний манікюр з покриттям
+    rewrite: {question: ["Я продаю класичний манікюр з покриттям"], language: uk}
+    decide: {field:offer_interview.main_offer: true}
+    extract: {offer_interview__main_offer: Класичний манікюр з покриттям}
+    reply: Скільки він коштує?
+    expect:
+      scenario: {key: offer_interview, asking: price}
+
+  - client: 800 гривень
+    rewrite: {question: ["Класичний манікюр з покриттям коштує 800 гривень"], language: uk}
+    decide: {field:offer_interview.price: true}
+    extract: {offer_interview__price: 800 гривень}
+    reply: Чим ви відрізняєтесь від конкурентів?
+    expect:
+      scenario: {key: offer_interview, asking: positioning}
+      sink: []
+
+  - client: Роблю за годину і даю гарантію 2 тижні
+    rewrite: {question: ["Я роблю манікюр за годину і даю гарантію 2 тижні"], language: uk}
+    decide: {field:offer_interview.positioning: true}
+    extract: {offer_interview__positioning: Роблю за годину і даю гарантію 2 тижні}
+    reply: Дякую, я все записала!
+    expect:
+      step: {scenario_completed: "Інтерв'ю: пропозиція та позиціонування"}
+      scenario: {key: offer_interview, status: completed, no_asking: true}
+      sink:
+        - event: scenario.completed
+          status: completed
+          scenario: offer_interview
+          fields:
+            niche: "бʼюті сфері\nманікюр у своєму кабінеті"
+            audience: Жінки 25-40, які працюють в офісі
+            main_offer: Класичний манікюр з покриттям
+            price: 800 гривень
+            positioning: Роблю за годину і даю гарантію 2 тижні
+          missing: []
+          client_language: uk
+          reply_language: uk

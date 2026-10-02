@@ -4,7 +4,8 @@ Every *.txt becomes a prompt with key = file stem, as is. On top of that:
 - service scripts 2–5 (`scripts/<n>_<type>.json`, the prompt of the first step) become
   `service_<type>` — the answers to greeting / goodbye / ethical violation / "are you a bot";
 - `rewrite` is assembled from context_manager_question + the question rules and the
-  language rule of context_manager (docs/03 §4), without the role/type parts.
+  language rule of context_manager (docs/03 §4), without the role/type parts;
+- the prompts written for zama_chat (prompts/builtin.py: extract, scenario_step).
 
 Idempotent: a new version is added only when the body differs from the active one.
 """
@@ -16,6 +17,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.prompts.builtin import builtin_prompts
 from app.prompts.store import active_prompts, save_version
 from app.settings import PROJECT_ROOT
 
@@ -96,6 +98,7 @@ def legacy_prompts(directory: Path = LEGACY_DIR) -> dict[str, str]:
     for name, key in SERVICE_SCRIPTS.items():
         prompts[key] = _service_prompt(directory / "scripts" / name)
     prompts[REWRITE_KEY] = build_rewrite(directory)
+    prompts.update(builtin_prompts())
     return prompts
 
 

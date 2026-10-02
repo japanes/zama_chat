@@ -7,7 +7,7 @@ decide:
   wants_human: false
 turns:
   - client: Ти бот?
-    rewrite: {question: [Ти бот?], language: uk}
+    rewrite: {question: ["Ти бот?"], language: uk}
     decide: {service_type: not_a_bot}
     reply: Я віртуальний помічник салону.
     expect:
@@ -15,7 +15,7 @@ turns:
       handover: false
 
   - client: покличте менеджера, хочу записатись
-    rewrite: {question: [Покличте менеджера, хочу записатися], language: uk}
+    rewrite: {question: ["Покличте менеджера, хочу записатися"], language: uk}
     decide: {wants_human: true}
     reply: Зараз передам ваше питання менеджеру.
     expect:
@@ -25,7 +25,7 @@ turns:
 
   # the conversation stays handed over even when the next message does not ask again
   - client: а коли він відповість?
-    rewrite: {question: [Коли відповість менеджер?], language: uk}
+    rewrite: {question: ["Коли відповість менеджер?"], language: uk}
     reply: Менеджер відповість найближчим часом.
     expect:
       route: {wants_human: false}
