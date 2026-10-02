@@ -13,6 +13,7 @@ from app.logging import get_logger
 from app.notify.service import notify_job
 from app.results.delivery import deliver_job
 from app.scenarios.jobs import expire_run_job, silence_check_job
+from app.search.index import INDEX_HANDLERS
 from app.services import Services
 
 log = get_logger(__name__)
@@ -123,4 +124,5 @@ HANDLERS: dict[str, Handler] = {
     "ig_echo": ig_echo_job,
     "ig_profile": ig_profile_job,
     "refresh_ig_token": refresh_ig_token_job,
+    **INDEX_HANDLERS,
 }

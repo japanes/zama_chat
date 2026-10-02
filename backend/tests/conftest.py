@@ -24,6 +24,7 @@ from app.core.simple_pipeline import simple_pipeline
 from app.db.base import Base
 from app.db.session import make_engine, make_sessionmaker
 from app.main import create_app
+from app.search.base import SearchClients
 from app.services import Services
 from app.settings import PROJECT_ROOT, Settings
 
@@ -186,6 +187,8 @@ async def services(
     )
     # stage 0 pipeline; tests of the full pipeline set their own
     svc.extra["pipeline"] = simple_pipeline
+    # no Elasticsearch / Qdrant in tests: search tests put fakes here (search_fakes.py)
+    svc.extra["search"] = SearchClients()
     try:
         yield svc
     finally:

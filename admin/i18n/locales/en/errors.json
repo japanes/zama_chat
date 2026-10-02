@@ -135,7 +135,8 @@
       "version_not_found": "The scenario {key} has no version {version}",
       "yaml_invalid": "YAML cannot be read (line {line}): {error}",
       "action_notifier_required": "Action {index} ({on}): choose a notification channel",
-      "action_text_required": "Action {index} ({on}): write the message text"
+      "action_text_required": "Action {index} ({on}): write the message text",
+      "catalog_not_allowed": "Field {field}: catalog settings are only for the “catalog item” type"
     },
     "tenant": {
       "language_duplicate": "A language is listed twice",
@@ -145,7 +146,8 @@
       "reply_language_unknown": "Rule {source} → {target}: the language {target} is not in the list",
       "silence_minutes_invalid": "Wrong silence time: {value}",
       "slug_invalid": "Short name: lowercase Latin letters, digits and dashes, 3–64 characters",
-      "slug_taken": "The short name {slug} is already taken"
+      "slug_taken": "The short name {slug} is already taken",
+      "unknown_answer_invalid": "Unknown value “{value}”"
     },
     "turn": {
       "failed": "The bot could not answer: {error}",
@@ -192,6 +194,22 @@
     "send": {
       "empty": "Empty message: nothing to send",
       "failed": "Could not send after several attempts"
+    },
+    "catalog": {
+      "external_id_taken": "An item with ID {external_id} already exists",
+      "import_columns": "Unknown CSV columns: {columns}",
+      "import_duplicate": "The same ID appears twice in the import: {external_ids}",
+      "import_empty": "Nothing to import",
+      "import_invalid": "Row {row}, field {field}: {error}",
+      "import_too_big": "Too many rows: {rows}. At most {max} at a time.",
+      "not_found": "Catalog item not found"
+    },
+    "knowledge": {
+      "not_found": "Text not found"
+    },
+    "search": {
+      "vectors_off": "Meaning search is off on the server (no QDRANT_URL)",
+      "embed_unassigned": "No model is assigned to the “embed” role"
     }
   }
 }

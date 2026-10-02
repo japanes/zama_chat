@@ -29,6 +29,7 @@ from app.db.models.scenarios import (
     Scenario,
     ScenarioRun,
 )
+from app.db.models.search import CatalogItem, IndexStatus, KnowledgeChunk, KnowledgeSource
 from app.db.models.tenants import ApiKey, Channel, ChannelKind, ChannelStatus, Tenant
 from app.db.models.users import (
     ROLE_RANK,
@@ -48,6 +49,7 @@ __all__ = [
     "AdminSession",
     "ApiKey",
     "AuditLog",
+    "CatalogItem",
     "Channel",
     "ChannelKind",
     "ChannelScenario",
@@ -62,8 +64,11 @@ __all__ = [
     "DeliveryStatus",
     "DevSinkItem",
     "Endpoint",
+    "IndexStatus",
     "Job",
     "JobStatus",
+    "KnowledgeChunk",
+    "KnowledgeSource",
     "LlmCall",
     "LlmModel",
     "LlmRole",

@@ -12,8 +12,10 @@ from typing import TYPE_CHECKING, Any
 from app.core.context import TurnContext
 from app.core.language import language_name
 from app.db.models import LlmRole, MessageRole
+from app.prompts.builtin import SELECT_PRESENTED
 from app.prompts.render import render_json, to_text
 from app.prompts.store import PromptText
+from app.search.presented import presented, rewrite_view
 
 if TYPE_CHECKING:
     from app.services import Services
@@ -55,7 +57,13 @@ def answer_language_line(code: str) -> str:
     return f"Give the answer in {language_name(code)} language"
 
 
-def build_messages(ctx: TurnContext, prompt: PromptText, answer_language: str) -> list[dict]:
+def build_messages(
+    ctx: TurnContext,
+    prompt: PromptText,
+    answer_language: str,
+    *,
+    presented_rules: list[str] | None = None,
+) -> list[dict]:
     data = render_json(
         prompt.body,
         {
@@ -65,11 +73,21 @@ def build_messages(ctx: TurnContext, prompt: PromptText, answer_language: str) -
         },
         key=prompt.key,
     )
+    # stage 5: the options the bot showed last, so «давайте другий» gets its full title
+    options = presented(ctx.state)
+    if options:
+        data["last_presented_options"] = rewrite_view(options)
+        data["last_presented_rules"] = presented_rules or list(SELECT_PRESENTED["rules"])
     return [{"role": "user", "content": to_text(data)}]
 
 
 async def rewrite(
-    services: "Services", ctx: TurnContext, prompt: PromptText, answer_language: str
+    services: "Services",
+    ctx: TurnContext,
+    prompt: PromptText,
+    answer_language: str,
+    *,
+    presented_rules: list[str] | None = None,
 ) -> Rewrite:
     """`answer_language` is the reply language known BEFORE this message (the previous
     turn's, or the tenant's first). If this message switches the language, the rewritten
@@ -77,7 +95,7 @@ async def rewrite(
     TODO(review): check on mixed-language dialogues whether a second pass is worth it."""
     result = await services.llm.complete(
         LlmRole.REWRITE,
-        build_messages(ctx, prompt, answer_language),
+        build_messages(ctx, prompt, answer_language, presented_rules=presented_rules),
         tenant_id=ctx.tenant_id,
         turn_id=ctx.turn_id,
         schema=SCHEMA,

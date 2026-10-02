@@ -25,6 +25,7 @@ from app.decisions.policy import DecisionPolicy
 from app.llm.gateway_catalog import GatewayCatalog
 from app.llm.openai_client import ChatBackend, OpenAIGatewayBackend
 from app.llm.service import LLMService
+from app.search.base import make_search_clients
 from app.settings import Settings, get_settings
 
 
@@ -88,6 +89,8 @@ class Services:
         )
         # admin sign-in emails; None without SMTP_HOST (dev: MAGIC_LINK_DEV_ECHO)
         services.extra["mailer"] = make_mailer(settings)
+        # catalog / knowledge search (stage 5): ES by words, Qdrant by meaning
+        services.extra["search"] = make_search_clients(http, settings)
         return services
 
     def channel_adapter(self, kind: str) -> ChannelAdapter | None:

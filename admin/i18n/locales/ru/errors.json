@@ -135,7 +135,8 @@
       "version_not_found": "У сценария {key} нет версии {version}",
       "yaml_invalid": "YAML не читается (строка {line}): {error}",
       "action_notifier_required": "Действие {index} ({on}): выберите канал уведомлений",
-      "action_text_required": "Действие {index} ({on}): напишите текст сообщения"
+      "action_text_required": "Действие {index} ({on}): напишите текст сообщения",
+      "catalog_not_allowed": "Поле {field}: настройки каталога — только для типа «позиция каталога»"
     },
     "tenant": {
       "language_duplicate": "Язык указан дважды",
@@ -145,7 +146,8 @@
       "reply_language_unknown": "Правило {source} → {target}: языка {target} нет в списке",
       "silence_minutes_invalid": "Неверное время тишины: {value}",
       "slug_invalid": "Короткое имя: строчные латинские буквы, цифры и дефис, 3–64 символа",
-      "slug_taken": "Короткое имя {slug} уже занято"
+      "slug_taken": "Короткое имя {slug} уже занято",
+      "unknown_answer_invalid": "Неизвестное значение «{value}»"
     },
     "turn": {
       "failed": "Бот не смог ответить: {error}",
@@ -192,6 +194,22 @@
     "send": {
       "empty": "Пустое сообщение: нечего отправлять",
       "failed": "Не удалось отправить после нескольких попыток"
+    },
+    "catalog": {
+      "external_id_taken": "Позиция с ID {external_id} уже существует",
+      "import_columns": "Неизвестные колонки CSV: {columns}",
+      "import_duplicate": "Один и тот же ID дважды в импорте: {external_ids}",
+      "import_empty": "Нечего импортировать",
+      "import_invalid": "Строка {row}, поле {field}: {error}",
+      "import_too_big": "Слишком много строк: {rows}. Не больше {max} за раз.",
+      "not_found": "Позиция каталога не найдена"
+    },
+    "knowledge": {
+      "not_found": "Текст не найден"
+    },
+    "search": {
+      "vectors_off": "Поиск по смыслу на сервере выключен (нет QDRANT_URL)",
+      "embed_unassigned": "На роль «embed» не назначена модель"
     }
   }
 }

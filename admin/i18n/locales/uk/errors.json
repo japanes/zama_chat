@@ -135,7 +135,8 @@
       "version_not_found": "У сценарію {key} немає версії {version}",
       "yaml_invalid": "YAML не читається (рядок {line}): {error}",
       "action_notifier_required": "Дія {index} ({on}): оберіть канал сповіщень",
-      "action_text_required": "Дія {index} ({on}): напишіть текст повідомлення"
+      "action_text_required": "Дія {index} ({on}): напишіть текст повідомлення",
+      "catalog_not_allowed": "Поле {field}: налаштування каталогу — лише для типу «позиція каталогу»"
     },
     "tenant": {
       "language_duplicate": "Мову вказано двічі",
@@ -145,7 +146,8 @@
       "reply_language_unknown": "Правило {source} → {target}: мови {target} немає у списку",
       "silence_minutes_invalid": "Неправильний час тиші: {value}",
       "slug_invalid": "Коротке ім'я: малі латинські літери, цифри й дефіс, 3–64 символи",
-      "slug_taken": "Коротке ім'я {slug} уже зайняте"
+      "slug_taken": "Коротке ім'я {slug} уже зайняте",
+      "unknown_answer_invalid": "Невідоме значення «{value}»"
     },
     "turn": {
       "failed": "Бот не зміг відповісти: {error}",
@@ -192,6 +194,22 @@
     "send": {
       "empty": "Порожнє повідомлення: нічого надсилати",
       "failed": "Не вдалося надіслати після кількох спроб"
+    },
+    "catalog": {
+      "external_id_taken": "Позиція з ID {external_id} уже існує",
+      "import_columns": "Невідомі колонки CSV: {columns}",
+      "import_duplicate": "Той самий ID двічі в імпорті: {external_ids}",
+      "import_empty": "Нічого імпортувати",
+      "import_invalid": "Рядок {row}, поле {field}: {error}",
+      "import_too_big": "Забагато рядків: {rows}. Не більше {max} за раз.",
+      "not_found": "Позицію каталогу не знайдено"
+    },
+    "knowledge": {
+      "not_found": "Текст не знайдено"
+    },
+    "search": {
+      "vectors_off": "Пошук за змістом на сервері вимкнено (немає QDRANT_URL)",
+      "embed_unassigned": "На роль «embed» не призначено модель"
     }
   }
 }

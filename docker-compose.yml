@@ -18,5 +18,35 @@ services:
       timeout: 3s
       retries: 20
 
+  # stage 5: `make up-search`. Dev only — no security, ports on localhost.
+  elasticsearch:
+    profiles: ["search"]
+    build:
+      context: ./docker/elasticsearch
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: "-Xms1g -Xmx1g"
+    ports:
+      - "127.0.0.1:9201:9200"
+    volumes:
+      - esdata:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  qdrant:
+    profiles: ["search"]
+    # TODO(review): version (the code uses POST /points/query — Qdrant 1.10+)
+    image: qdrant/qdrant:v1.13.6
+    ports:
+      - "127.0.0.1:6334:6333"
+    volumes:
+      - qdrantdata:/qdrant/storage
+
 volumes:
   pgdata:
+  esdata:
+  qdrantdata:

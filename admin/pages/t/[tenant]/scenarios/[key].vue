@@ -48,6 +48,7 @@
               :languages="languages"
               :endpoints="endpoints"
               :notifiers="notifiers"
+              :categories="categories"
               :is-new="isNew"
               :readonly="!canEdit"
             />
@@ -146,6 +147,7 @@ const languages = ref<string[]>([])
 const versions = ref<any[]>([])
 const endpoints = ref<string[]>([])
 const notifiers = ref<{ name: string; kind: string }[]>([])
+const categories = ref<string[]>([])
 const viewing = ref<number | null>(null)
 const mode = ref<Mode>('form')
 const source = ref('')
@@ -323,6 +325,12 @@ onMounted(async () => {
       notifiers.value = (await api<{ items: any[] }>(path('/notifiers'))).items.map((n) => ({ name: n.name, kind: n.kind }))
     } catch {
       notifiers.value = []
+    }
+    try {
+      const res = await api<{ categories: { name: string | null }[] }>(path('/catalog'), { query: { limit: 1 } })
+      categories.value = res.categories.map((c) => c.name).filter((c): c is string => !!c)
+    } catch {
+      categories.value = []
     }
   }
 })

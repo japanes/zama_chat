@@ -47,6 +47,7 @@ testpaths = ["tests"]
 markers = [
     "db: needs a real PostgreSQL (TEST_DATABASE_URL)",
     "live: calls real external services (Gateway, Jev); skipped by default",
+    "search: needs Elasticsearch (docker compose --profile search); skipped when it is down",
 ]
 addopts = "-m 'not live'"
 

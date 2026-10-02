@@ -31,6 +31,7 @@ from app.jobs.queue import cancel, cancel_prefix, enqueue
 from app.logging import get_logger
 from app.prompts.store import PromptText
 from app.scenarios import fields as fl
+from app.scenarios.catalog import ask_options, option_label, with_choices
 from app.scenarios.checks import CheckItem, check_filters
 from app.scenarios.events import FOCUSED, PAUSED
 from app.scenarios.extract import Extracted, Target, extract
@@ -45,7 +46,7 @@ from app.scenarios.questions import (
     field_key,
     start_question_key,
 )
-from app.scenarios.schema import ActionEvent, Completion
+from app.scenarios.schema import ActionEvent, Completion, FieldType
 from app.scenarios.start import Candidate, StartResult, Vote, decide_start
 from app.scenarios.store import ScenarioView
 from app.scenarios.work import WorkRun, focus_of, open_run
@@ -192,8 +193,18 @@ def apply_values(
         run = by_id[t.run_id]
         fs = run.states[t.field.key]
         early = not fl.ask_after_ready(t.field, run.states)
+        if t.field.type == FieldType.CATALOG:
+            # the model returned the item's external_id: the value is its title
+            fs.ref = value
+            value = dict(t.choices).get(value, value)
         fl.set_answer(
-            fs, value, replace=t.correction, early=early, message_ids=message_ids, now=now
+            fs,
+            value,
+            # a catalog item is picked whole, never merged with an earlier answer
+            replace=t.correction or t.field.type == FieldType.CATALOG,
+            early=early,
+            message_ids=message_ids,
+            now=now,
         )
         run.answered.append(t.field.key)
         if t.correction:
@@ -287,6 +298,25 @@ def next_questions(runs: list[WorkRun], *, ask: bool = True) -> None:
         run.asking = nxt.key
 
 
+async def _catalog_options(
+    services: "Services", ctx: TurnContext, runs: list[WorkRun]
+) -> dict[str, list[str]]:
+    """Options for a catalog field the focus asks now; the listed items become the
+    conversation's last_presented (core/pipeline.py)."""
+    out: dict[str, list[str]] = {}
+    for run in runs:
+        if run.status != RunStatus.FOCUS or run.asking is None:
+            continue
+        f = run.definition.field(run.asking)
+        if f.type != FieldType.CATALOG or run.states[f.key].value:
+            continue
+        items = await ask_options(services, ctx, f)
+        if items:
+            out[f"{run.key}.{f.key}"] = [option_label(n, i) for n, i in enumerate(items, 1)]
+            ctx.extra["presented"] = [i.to_presented(n) for n, i in enumerate(items, 1)]
+    return out
+
+
 # --- the step ---------------------------------------------------------------------------
 
 
@@ -321,6 +351,7 @@ async def run_scenarios(
     started = apply_start(view, runs, decisions, now)
 
     targets = extract_targets(runs, decisions, focus_before)
+    targets, no_choices = await with_choices(services, ctx, targets, rewritten)
     extracted = await extract(
         services,
         ctx,
@@ -351,12 +382,14 @@ async def run_scenarios(
     passed = pass_focus(runs)
     next_questions(runs, ask=not wants_human)
 
+    catalog_options = await _catalog_options(services, ctx, runs)
     all_runs = [*expired, *runs]
     plan = build_plan(
         all_runs,
         language=reply_language,
         client_question=decisions.value(CLIENT_QUESTION, False) is True,
         wants_human=wants_human,
+        catalog_options=catalog_options,
     )
     summary = {
         "stop": stopped,
@@ -365,6 +398,7 @@ async def run_scenarios(
         "focus": next((r.key for r in runs if r.status == RunStatus.FOCUS), None),
         "focus_passed_to": passed.key if passed else None,
         "extract_targets": [f"{t.scenario}.{t.field.key}" for t in targets],
+        "catalog_no_choices": no_choices,
         "extracted": {f"{s}.{f}": v for (s, f), v in extracted.values.items()},
         "rejected": extracted.rejected,
         "recheck_marked": marked,

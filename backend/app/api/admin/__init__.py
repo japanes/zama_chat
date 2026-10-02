@@ -8,6 +8,7 @@ from app.api.admin import (
     models,
     notifiers,
     operator,
+    search,
     tenants,
 )
 
@@ -20,4 +21,5 @@ routers = [
     instagram.router,
     operator.router,
     notifiers.router,
+    search.router,
 ]

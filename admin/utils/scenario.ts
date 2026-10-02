@@ -3,7 +3,7 @@
 
 export type LText = string | Record<string, string>
 
-export const FIELD_TYPES = ['text', 'choice', 'yes_no'] as const
+export const FIELD_TYPES = ['text', 'choice', 'yes_no', 'catalog'] as const
 export const COMPLETIONS = ['all_fields', 'explicit_yes', 'external_event', 'receipt'] as const
 export const ACTION_EVENTS = [
   'started',
@@ -21,7 +21,15 @@ export const NOTIFY_ACTIONS = ['notify_telegram', 'notify_email']
 export const KEY_RE = /^[a-z][a-z0-9]*(_[a-z0-9]+)*$/
 
 export function newField(n: number): any {
-  return { key: `field_${n}`, type: 'text', question: {}, options: [], filters: [], ask_after: [] }
+  return {
+    key: `field_${n}`,
+    type: 'text',
+    question: {},
+    options: [],
+    filters: [],
+    ask_after: [],
+    catalog: { categories: [], max_options: 5 },
+  }
 }
 
 export function newDefinition(language: string): any {
@@ -93,6 +101,13 @@ export function cleanDefinition(d: any): any {
           f.type === 'choice'
             ? (f.options || []).map((o: any) => ({ key: o.key, label: text(o.label) ?? {} }))
             : undefined,
+        catalog:
+          f.type === 'catalog'
+            ? compact({
+                categories: (f.catalog?.categories || []).map((c: string) => c.trim()).filter(Boolean),
+                max_options: f.catalog?.max_options === '' || f.catalog?.max_options == null ? undefined : Number(f.catalog.max_options),
+              })
+            : undefined,
         filters: (f.filters || []).length
           ? f.filters.map((x: any) => compact({ key: x.key, ask: text(x.ask) ?? {}, yes: text(x.yes), no: text(x.no) }))
           : undefined,
@@ -131,6 +146,8 @@ export function toForm(d: any): any {
     f.options ||= []
     f.filters ||= []
     f.ask_after ||= []
+    f.catalog ||= { categories: [], max_options: 5 }
+    f.catalog.categories ||= []
   }
   out.completion ||= 'all_fields'
   out.resume ||= { mode: 'always' }

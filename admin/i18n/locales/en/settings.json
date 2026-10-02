@@ -18,13 +18,20 @@
     "section": {
       "company": "Company",
       "languages": "Bot languages",
-      "timers": "Timers"
+      "timers": "Timers",
+      "search": "Search and answers"
     },
     "silence_minutes": "Silence, minutes",
     "silence_minutes_hint": "If the client is silent this long in the middle of a scenario, the data collected so far is sent with status “incomplete”.",
     "sub": "How the bot talks and what it knows about the business.",
     "tenant_title": "Tenant name in the admin",
-    "timezone": "Time zone"
+    "timezone": "Time zone",
+    "unknown_answer": "When the bot found nothing",
+    "unknown_answer_hint": "The client asked about products or company terms, and nothing in the catalog or the knowledge base fits.",
+    "unknown": {
+      "say": "Say honestly that it does not know",
+      "handover": "Say it and pass the conversation to a person"
+    }
   },
   "channels": {
     "add_scenario": "Add a scenario…",

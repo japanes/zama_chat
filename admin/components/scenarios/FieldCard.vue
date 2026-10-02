@@ -48,6 +48,23 @@
         </button>
       </div>
 
+      <!-- catalog item -->
+      <div v-if="field.type === 'catalog'" class="grid gap-4 md:grid-cols-[1fr_10rem]">
+        <div>
+          <label class="label">{{ t('scenarios.catalog_categories') }}</label>
+          <input v-model="categoriesText" class="input" :readonly="readonly" :list="`cats-${index}`" />
+          <datalist :id="`cats-${index}`">
+            <option v-for="c in categories" :key="c" :value="c" />
+          </datalist>
+          <p class="hint">{{ t('scenarios.catalog_categories_hint') }}</p>
+        </div>
+        <div>
+          <label class="label">{{ t('scenarios.catalog_max_options') }}</label>
+          <input v-model.number="field.catalog.max_options" type="number" min="2" max="10" class="input" :readonly="readonly" />
+          <p class="hint">{{ t('scenarios.catalog_max_options_hint') }}</p>
+        </div>
+      </div>
+
       <!-- filters -->
       <div>
         <label class="label">{{ t('scenarios.filters') }}</label>
@@ -116,9 +133,20 @@ const props = defineProps<{
   languages: string[]
   main: string
   readonly?: boolean
+  // catalog categories of the tenant, for the hints of a catalog field
+  categories?: string[]
 }>()
 const emit = defineEmits<{ move: [dir: number]; remove: [] }>()
 const { t } = useI18n()
+
+// categories as "a, b, c"
+const categoriesText = computed({
+  get: () => (props.field.catalog?.categories || []).join(', '),
+  set: (v: string) => {
+    props.field.catalog ||= { categories: [], max_options: 5 }
+    props.field.catalog.categories = v.split(',').map((x) => x.trim()).filter(Boolean)
+  },
+})
 
 const keyOk = computed(() => KEY_RE.test(props.field.key || ''))
 const others = computed(() => props.allKeys.filter((k) => k && k !== props.field.key))

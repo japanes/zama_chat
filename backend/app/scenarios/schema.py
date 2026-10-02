@@ -112,11 +112,21 @@ class FieldType(StrEnum):
     TEXT = "text"
     CHOICE = "choice"
     YES_NO = "yes_no"
+    CATALOG = "catalog"  # an item of the tenant's catalog (stage 5)
 
 
 class Option(Strict):
     key: Key
     label: LocalizedText
+
+
+class CatalogSource(Strict):
+    """Where a `catalog` field takes its items from."""
+
+    # only items of these categories; empty = the whole catalog
+    categories: list[str] = Field(default_factory=list)
+    # the bot lists the items as options when there are at most this many
+    max_options: int = Field(default=5, ge=2, le=10)
 
 
 class FieldDef(Strict):
@@ -127,6 +137,9 @@ class FieldDef(Strict):
     # what counts as an answer (for the extract model and the "field:" question)
     description: LocalizedText | None = None
     options: list[Option] = Field(default_factory=list)
+    # type catalog: which items fit (the value is the item title, the result also gets
+    # its external_id in `refs`)
+    catalog: CatalogSource | None = None
     filters: list[Filter] = Field(default_factory=list)
     # asked only after these fields are filled
     ask_after: list[Key] = Field(default_factory=list)
@@ -311,6 +324,8 @@ def check_definition(
             raise AppError("scenario.choice_options_missing", {"field": f.key})
         if f.type != FieldType.CHOICE and f.options:
             raise AppError("scenario.options_not_allowed", {"field": f.key, "type": str(f.type)})
+        if f.type != FieldType.CATALOG and f.catalog is not None:
+            raise AppError("scenario.catalog_not_allowed", {"field": f.key, "type": str(f.type)})
     if cycle := _cycle(defn):
         raise AppError("scenario.ask_after_cycle", {"fields": cycle})
 

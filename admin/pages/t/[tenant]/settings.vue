@@ -50,6 +50,18 @@
         </section>
 
         <section class="card card-body space-y-4">
+          <h2 class="card-title">{{ t('settings.section.search') }}</h2>
+          <div class="md:w-1/2">
+            <label class="label">{{ t('settings.unknown_answer') }}</label>
+            <select v-model="form.unknown_answer" class="select">
+              <option value="say">{{ t('settings.unknown.say') }}</option>
+              <option value="handover">{{ t('settings.unknown.handover') }}</option>
+            </select>
+            <p class="hint">{{ t('settings.unknown_answer_hint') }}</p>
+          </div>
+        </section>
+
+        <section class="card card-body space-y-4">
           <h2 class="card-title">{{ t('settings.section.timers') }}</h2>
           <div class="md:w-1/2">
             <label class="label">{{ t('settings.silence_minutes') }}</label>

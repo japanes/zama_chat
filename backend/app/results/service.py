@@ -43,15 +43,19 @@ def collected(defn: ScenarioDef, raw: dict[str, Any] | None) -> dict[str, Any]:
     fields: dict[str, str] = {}
     partial: dict[str, str] = {}
     missing: list[str] = []
+    refs: dict[str, str] = {}
     for f in defn.fields:
         fs = states[f.key]
+        if fs.ref and fs.value is not None:
+            # catalog field: the item's external_id next to its title
+            refs[f.key] = fs.ref
         if fs.complete and fs.value is not None:
             fields[f.key] = fs.value
             continue
         if fs.value is not None and fs.state in (PARTIAL, FILLED):
             partial[f.key] = fs.value
         missing.append(f.key)
-    return {"fields": fields, "partial": partial, "missing": missing}
+    return {"fields": fields, "partial": partial, "missing": missing, "refs": refs}
 
 
 def build_payload(
@@ -84,6 +88,7 @@ def build_payload(
         "fields": data["fields"],
         "partial": data["partial"],
         "missing": data["missing"],
+        **({"refs": data["refs"]} if data["refs"] else {}),
         "client_language": run.client_language,
         "reply_language": run.reply_language,
         "started_at": _iso(run.started_at),

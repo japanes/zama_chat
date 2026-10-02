@@ -85,9 +85,16 @@ class Settings(BaseSettings):
     # Notifications (stage 4)
     telegram_api_url: str = "https://api.telegram.org"
 
-    # Search (stage 5)
+    # Search (stage 5): Elasticsearch — the catalog by words; Qdrant — the catalog and the
+    # knowledge base by meaning. Empty URL → that index is off (the bot searches without it).
     elasticsearch_url: str = "http://localhost:9201"
+    elasticsearch_user: str = ""
+    elasticsearch_password: SecretStr = SecretStr("")
     qdrant_url: str = "http://localhost:6334"
+    qdrant_api_key: SecretStr = SecretStr("")
+    # index / collection names start with it (one ES / Qdrant for several installs)
+    search_index_prefix: str = "zama_"
+    search_timeout_s: float = 10.0
 
     @property
     def is_dev(self) -> bool:

@@ -3,7 +3,8 @@
 Two kinds of answers (stage 1):
 - normal: legacy `system_prompt` (%COMPANY_TITLE%…) + history + legacy `user_prompt` JSON
   with `user_question` = the rewritten text, `answer_language`, `client_description` =
-  the tenant's business description, `context` = [] (search arrives in stage 5);
+  the tenant's business description, `context` = what the search found (stage 5,
+  search/step.py; empty → the legacy "I don't know" rules) + `search_rules`;
 - service (greeting / goodbye / "are you a bot" / ethical violation): the prompt
   `service_<type>` (legacy scripts 2–5) as the system message + history + the client's text.
 
@@ -24,12 +25,19 @@ from app.core.routing import SERVICE_TYPES, Route
 from app.db.models import LlmRole, MessageRole
 from app.logging import get_logger
 from app.operator import variants as op_variants
-from app.prompts.builtin import SCENARIO_STEP, SCENARIO_STEP_KEY
+from app.prompts.builtin import (
+    SCENARIO_STEP,
+    SCENARIO_STEP_KEY,
+    SEARCH_CONTEXT,
+    SEARCH_CONTEXT_KEY,
+    prompt_rules,
+)
 from app.prompts.render import parse_json_prompt, render_json, render_text, to_text
 from app.prompts.store import PromptText
 
 if TYPE_CHECKING:
     from app.scenarios.plan import RespondPlan
+    from app.search.step import SearchOutcome
     from app.services import Services
 
 log = get_logger(__name__)
@@ -37,7 +45,13 @@ log = get_logger(__name__)
 SYSTEM_KEY = "system_prompt"
 USER_KEY = "user_prompt"
 SERVICE_KEYS = {t: f"service_{t}" for t in SERVICE_TYPES if t != "none"}
-PROMPT_KEYS = (SYSTEM_KEY, USER_KEY, *SERVICE_KEYS.values(), SCENARIO_STEP_KEY)
+PROMPT_KEYS = (
+    SYSTEM_KEY,
+    USER_KEY,
+    *SERVICE_KEYS.values(),
+    SCENARIO_STEP_KEY,
+    SEARCH_CONTEXT_KEY,
+)
 # service types answered the normal way when a scenario step is due
 # TODO(review): goodbye / "are you a bot" in the middle of a scenario use their prompts
 SCENARIO_OVER_SERVICE = ("greeting_only",)
@@ -93,6 +107,7 @@ def answer_messages(
     *,
     wants_human: bool = False,
     context: list[Any] | None = None,
+    search_rules: list[str] | None = None,
     scenario_step: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     values = prompt_values(ctx, reply_language, rewritten)
@@ -107,6 +122,8 @@ def answer_messages(
         values,
         key=user.key,
     )
+    if search_rules:
+        data["search_rules"] = search_rules
     if wants_human:
         data["handover_note"] = HANDOVER_RULE
     if scenario_step is not None:
@@ -163,8 +180,18 @@ async def respond(
     reply_language: str,
     *,
     plan: "RespondPlan | None" = None,
+    search: "SearchOutcome | None" = None,
+    handover: bool | None = None,
 ) -> Reply:
+    """`search` — what the search step found (stage 5): its context goes into the user
+    prompt. `handover` — the bot hands the conversation over (the client asked, or the
+    answer was not found and the tenant wants a human then); default route.wants_human."""
     prompt, is_service = pick_prompt(route, prompts, plan)
+    if search is not None and search.context and is_service:
+        # "hi, how much is the manicure?" may be classed as a greeting: found
+        # information wins over the service prompt
+        prompt, is_service = prompts[SYSTEM_KEY], False
+    wants_human = route.wants_human if handover is None else handover
     step_data = None
     if is_service:
         messages = service_messages(ctx, prompt, rewritten, reply_language)
@@ -177,7 +204,13 @@ async def respond(
             prompts[USER_KEY],
             rewritten,
             reply_language,
-            wants_human=route.wants_human,
+            wants_human=wants_human,
+            context=search.context if search is not None else None,
+            search_rules=(
+                prompt_rules(prompts, SEARCH_CONTEXT_KEY, SEARCH_CONTEXT)
+                if search is not None and search.searched
+                else None
+            ),
             scenario_step=step_data,
         )
     # the user prompt carries the turn-specific part; its version is the one to log
@@ -187,6 +220,8 @@ async def respond(
         rules = prompts.get(SCENARIO_STEP_KEY)
         info["scenario_step_version"] = rules.version if rules is not None else None
     info["service"] = is_service
+    if search is not None and search.searched:
+        info["context"] = len(search.context)
     if ctx.operator_mode and not ctx.sandbox:
         return await _variants(services, ctx, messages, logged, info)
     with ctx.trace.step(

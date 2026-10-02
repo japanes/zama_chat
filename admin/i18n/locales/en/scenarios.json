@@ -124,7 +124,8 @@
     "type": {
       "text": "Text",
       "choice": "Choice",
-      "yes_no": "Yes / no"
+      "yes_no": "Yes / no",
+      "catalog": "Catalog item"
     },
     "unchanged": "Nothing changed, no new version",
     "updated": "Updated",
@@ -137,6 +138,10 @@
     "notifier": "Notification channel",
     "message_text": "Message text",
     "message_text_hint": "Sent as is, in the reply language of the conversation. In Instagram only within 24 hours of the last client message.",
-    "handover_hint": "The bot goes quiet in this conversation, the operator gets a task."
+    "handover_hint": "The bot goes quiet in this conversation, the operator gets a task.",
+    "catalog_categories": "Catalog categories",
+    "catalog_categories_hint": "Comma-separated. The client picks only from these categories. Empty — the whole catalog.",
+    "catalog_max_options": "List up to",
+    "catalog_max_options_hint": "If the categories have this many items or fewer, the bot lists them as numbered options."
   }
 }

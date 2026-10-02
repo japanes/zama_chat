@@ -32,7 +32,8 @@
     "shown": "{from}–{to} of {total}",
     "tenant_missing": "Tenant not found or you have no access to it",
     "theme_dark": "Dark theme",
-    "theme_light": "Light theme"
+    "theme_light": "Light theme",
+    "open": "Open"
   },
   "nav": {
     "results": "Results",
@@ -67,7 +68,9 @@
       "system": "System"
     },
     "operator": "Operator",
-    "notifiers": "Notifications"
+    "notifiers": "Notifications",
+    "catalog": "Catalog",
+    "knowledge": "Knowledge base"
   },
   "auth": {
     "another_email": "Use another email",
@@ -129,6 +132,12 @@
       "expiring": "Token expiring",
       "error": "Error",
       "disabled": "Off"
+    },
+    "index": {
+      "pending": "Waiting for indexing",
+      "indexed": "Indexed",
+      "error": "Index error",
+      "inactive": "Switched off"
     }
   },
   "profile": {
@@ -181,7 +190,15 @@
       "conversation_update": "Conversation changed",
       "notifier_create": "Notification channel added",
       "notifier_update": "Notification channel changed",
-      "notifier_delete": "Notification channel deleted"
+      "notifier_delete": "Notification channel deleted",
+      "catalog_create": "Catalog item added",
+      "catalog_update": "Catalog item changed",
+      "catalog_delete": "Catalog item deleted",
+      "catalog_import": "Catalog imported",
+      "knowledge_create": "Knowledge source added",
+      "knowledge_update": "Knowledge source changed",
+      "knowledge_delete": "Knowledge source deleted",
+      "search_reindex": "Re-indexing started"
     }
   },
   "users": {

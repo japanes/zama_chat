@@ -32,7 +32,8 @@
     "shown": "{from}–{to} из {total}",
     "tenant_missing": "Тенант не найден или у вас нет к нему доступа",
     "theme_dark": "Тёмная тема",
-    "theme_light": "Светлая тема"
+    "theme_light": "Светлая тема",
+    "open": "Открыть"
   },
   "nav": {
     "results": "Результаты",
@@ -67,7 +68,9 @@
       "system": "Система"
     },
     "operator": "Оператор",
-    "notifiers": "Уведомления"
+    "notifiers": "Уведомления",
+    "catalog": "Каталог",
+    "knowledge": "База знаний"
   },
   "auth": {
     "another_email": "Другая почта",
@@ -129,6 +132,12 @@
       "expiring": "Токен истекает",
       "error": "Ошибка",
       "disabled": "Выключен"
+    },
+    "index": {
+      "pending": "Ждёт индексации",
+      "indexed": "Проиндексировано",
+      "error": "Ошибка индексации",
+      "inactive": "Выключено"
     }
   },
   "profile": {
@@ -181,7 +190,15 @@
       "conversation_update": "Диалог изменён",
       "notifier_create": "Добавлен канал уведомлений",
       "notifier_update": "Изменён канал уведомлений",
-      "notifier_delete": "Удалён канал уведомлений"
+      "notifier_delete": "Удалён канал уведомлений",
+      "catalog_create": "Добавлена позиция каталога",
+      "catalog_update": "Изменена позиция каталога",
+      "catalog_delete": "Удалена позиция каталога",
+      "catalog_import": "Импортирован каталог",
+      "knowledge_create": "Добавлен источник знаний",
+      "knowledge_update": "Изменён источник знаний",
+      "knowledge_delete": "Удалён источник знаний",
+      "search_reindex": "Запущена переиндексация"
     }
   },
   "users": {

@@ -98,6 +98,8 @@ const groups = computed(() => {
     const bot: Item[] = [
       { key: 'scenarios', to: `${b}/scenarios`, icon: 'scenarios' },
       { key: 'channels', to: `${b}/channels`, icon: 'channels' },
+      { key: 'catalog', to: `${b}/catalog`, icon: 'catalog' },
+      { key: 'knowledge', to: `${b}/knowledge`, icon: 'knowledge' },
     ]
     if (can('admin')) {
       bot.push({ key: 'notifiers', to: `${b}/notifiers`, icon: 'bell' })

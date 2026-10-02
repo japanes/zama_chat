@@ -5,7 +5,7 @@
 <script setup lang="ts">
 // Status of a result, delivery, turn, message or channel, colored and translated.
 // Labels: status.<kind>.<value> in common.json.
-const props = defineProps<{ kind: 'run' | 'delivery' | 'turn' | 'send' | 'channel'; value?: string | null }>()
+const props = defineProps<{ kind: 'run' | 'delivery' | 'turn' | 'send' | 'channel' | 'index'; value?: string | null }>()
 const { t, te } = useI18n()
 
 const COLORS: Record<string, string> = {
@@ -30,6 +30,8 @@ const COLORS: Record<string, string> = {
   expiring: 'badge-amber',
   error: 'badge-red',
   disabled: 'badge-gray',
+  // catalog items, knowledge sources
+  indexed: 'badge-green',
 }
 
 const cls = computed(() => COLORS[props.value || ''] || 'badge-gray')

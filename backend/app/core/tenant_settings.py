@@ -13,6 +13,7 @@ from app.errors import AppError
 
 LANG_RE = re.compile(r"^[a-z]{2,3}(-[a-z0-9]{2,8})?$")
 ANY_LANGUAGE = "*"
+UNKNOWN_ANSWER = ("say", "handover")
 
 # keys a channel may override on top of the tenant
 CHANNEL_OVERRIDABLE = ("languages", "reply_language", "business_description", "bot_name")
@@ -33,6 +34,10 @@ class TenantSettings(BaseModel):
     silence_minutes: int = 15
     # language of service questions to Jev (route); the probe decides — see docs/04 §5
     jev_question_language: str = "en"
+    # the client asked something the search did not find (stage 5): "say" — the bot
+    # says it has no answer (legacy i_dont_know_rules); "handover" — also hands the
+    # conversation to a human. TODO(review): default
+    unknown_answer: str = "say"
 
     def validate_rules(self) -> "TenantSettings":
         if not self.languages:
@@ -50,6 +55,8 @@ class TenantSettings(BaseModel):
                     "tenant.reply_language_unknown",
                     {"source": source, "target": target, "languages": self.languages},
                 )
+        if self.unknown_answer not in UNKNOWN_ANSWER:
+            raise AppError("tenant.unknown_answer_invalid", {"value": self.unknown_answer})
         if self.silence_minutes < 1:
             raise AppError("tenant.silence_minutes_invalid", {"value": self.silence_minutes})
         return self

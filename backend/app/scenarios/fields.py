@@ -35,6 +35,8 @@ class FieldState:
     stuck: bool = False
     message_ids: list[str] = field(default_factory=list)
     updated_at: str | None = None
+    # type catalog: external_id of the chosen item (value = its title)
+    ref: str | None = None
 
     @property
     def complete(self) -> bool:

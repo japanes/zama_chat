@@ -116,7 +116,9 @@ class _Texts:
         return picked.text
 
 
-def _ask_step(run: WorkRun, texts: _Texts) -> tuple[AskStep | None, ClarifyStep | None]:
+def _ask_step(
+    run: WorkRun, texts: _Texts, catalog_options: dict[str, list[str]]
+) -> tuple[AskStep | None, ClarifyStep | None]:
     if run.asking is None:
         return None, None
     defn = run.definition
@@ -130,6 +132,9 @@ def _ask_step(run: WorkRun, texts: _Texts) -> tuple[AskStep | None, ClarifyStep 
     options: list[str] = []
     if f.type == FieldType.CHOICE:
         options = [texts(defn, o.label) for o in f.options]
+    elif f.type == FieldType.CATALOG:
+        # numbered catalog items (scenarios/catalog.py); none → an open question
+        options = list(catalog_options.get(f"{defn.key}.{f.key}", []))
     return AskStep(f.key, question, str(f.type), hint, options), None
 
 
@@ -139,6 +144,7 @@ def build_plan(
     language: str,
     client_question: bool,
     wants_human: bool = False,
+    catalog_options: dict[str, list[str]] | None = None,
 ) -> RespondPlan | None:
     """None when the scenarios have nothing to say in this reply (no focus, nothing
     started / finished): the reply is an ordinary answer."""
@@ -169,7 +175,7 @@ def build_plan(
     if focus is not None:
         plan.scenario = focus.key
         if not wants_human:
-            plan.ask, plan.clarify = _ask_step(focus, texts)
+            plan.ask, plan.clarify = _ask_step(focus, texts, catalog_options or {})
     happened = plan.started or plan.completed or plan.cancelled or plan.paused or plan.accepted
     if focus is None and not happened:
         return None

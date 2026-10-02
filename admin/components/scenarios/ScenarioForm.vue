@@ -104,6 +104,7 @@
         :languages="languages"
         :main="def.language"
         :readonly="readonly"
+        :categories="categories"
         @move="moveField(i, $event)"
         @remove="removeField(i)"
       />
@@ -209,6 +210,8 @@ const props = defineProps<{
   endpoints: string[]
   // [{name, kind}] of the tenant's notifiers
   notifiers?: { name: string; kind: string }[]
+  // catalog categories of the tenant (hints for catalog fields)
+  categories?: string[]
   isNew?: boolean
   readonly?: boolean
 }>()

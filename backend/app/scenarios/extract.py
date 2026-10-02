@@ -6,7 +6,8 @@ hints where to look. A text value whose words are not found in the client's mess
 rejected: the field stays empty, the bot asks it, the case goes to the trace.
 
 Schema: one property per field, `<scenario>__<field>` (keys never contain "__"),
-`string | null`; choice / yes_no fields get an enum.
+`string | null`; choice / yes_no fields get an enum; catalog fields — an enum of the
+items' external_ids (the candidates found for this turn, scenarios/catalog.py).
 """
 
 import re
@@ -36,6 +37,8 @@ class Target:
     field: FieldDef
     current: str | None = None  # value so far (partial answer / corrected answer)
     correction: bool = False
+    # type catalog: the items to choose from, (external_id, title) — scenarios/catalog.py
+    choices: tuple[tuple[str, str], ...] = ()
 
     @property
     def scenario(self) -> str:
@@ -64,6 +67,8 @@ def _property(target: Target) -> dict[str, Any]:
         return {"type": ["string", "null"], "enum": [*(o.key for o in f.options), None]}
     if f.type == FieldType.YES_NO:
         return {"type": ["string", "null"], "enum": [*YES_NO, None]}
+    if f.type == FieldType.CATALOG:
+        return {"type": ["string", "null"], "enum": [*(ref for ref, _ in target.choices), None]}
     return {"type": ["string", "null"]}
 
 
@@ -90,6 +95,8 @@ def field_spec(target: Target, language: str) -> dict[str, Any]:
         spec["options"] = [
             {"key": o.key, "label": defn.text(o.label, language).text} for o in f.options
         ]
+    if f.type == FieldType.CATALOG:
+        spec["options"] = [{"key": ref, "label": title} for ref, title in target.choices]
     if target.current:
         spec["current_value"] = target.current
     return spec
@@ -178,6 +185,11 @@ def parse_values(
         elif t.field.type == FieldType.YES_NO:
             if value not in YES_NO:
                 rejected.append({"field": where, "value": value, "reason": "not_yes_no"})
+                continue
+        elif t.field.type == FieldType.CATALOG:
+            # the value is the item's external_id; apply_values turns it into the title
+            if value not in {ref for ref, _ in t.choices}:
+                rejected.append({"field": where, "value": value, "reason": "unknown_item"})
                 continue
         elif not grounded(value, source):
             rejected.append({"field": where, "value": value, "reason": "not_in_message"})
