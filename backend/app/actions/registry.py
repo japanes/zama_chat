@@ -11,17 +11,28 @@ Handlers:
 - message_client: a message from the bot (`params: {text: LocalizedText}`), only when
   the channel may write now (Instagram: the 24-hour window) and nobody took over;
 - handover: the bot goes quiet in this conversation, an operator gets a task.
+
+An action with `requires_approval` does not run at once: an approve_action task waits
+in the operator queue; «approve» runs it then (`run_approved`), «reject» drops it.
 """
 
 from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.channels.outbox import queue_outgoing
-from app.db.models import Conversation, MessageRole, NotifierKind, ScenarioRun
+from app.db.models import (
+    Conversation,
+    MessageRole,
+    NotifierKind,
+    OperatorTask,
+    ScenarioRun,
+    TaskKind,
+    TaskStatus,
+)
 from app.errors import Conflict
 from app.logging import get_logger
 from app.notify.service import conversation_values, find_notifier, notify_event, queue
@@ -199,8 +210,79 @@ async def fire(
             if handler is None:
                 log.error("action.unknown", do=action.do, scenario=definition.key)
                 continue
-            await handler(
-                ActionContext(session, services, run, definition, action, index, event, now)
-            )
+            ctx = ActionContext(session, services, run, definition, action, index, event, now)
+            if action.requires_approval:
+                await request_approval(ctx)
+            else:
+                await handler(ctx)
             done += 1
     return done
+
+
+async def request_approval(ctx: ActionContext) -> OperatorTask:
+    """The action waits for a person: an approve_action task + a notification."""
+    conv = await _conversation(ctx)
+    language = conv.reply_language or ctx.definition.language
+    title = pick_text(ctx.definition.title, language, ctx.definition.language).text
+    task = OperatorTask(
+        tenant_id=conv.tenant_id,
+        channel_id=conv.channel_id,
+        conversation_id=conv.id,
+        turn_id=None,
+        kind=TaskKind.APPROVE_ACTION,
+        status=TaskStatus.OPEN,
+        version=1,
+        payload={
+            "run_id": str(ctx.run.id),
+            "scenario": ctx.definition.key,
+            "scenario_title": title,
+            "scenario_version": ctx.run.scenario_version,
+            "action": ctx.index,
+            "do": ctx.action.do,
+            "endpoint": ctx.action.endpoint,
+            "event": ctx.event.name,
+            "field": ctx.event.field,
+            "fields": fields_text(ctx.run, ctx.definition),
+        },
+        result={},
+    )
+    ctx.session.add(task)
+    await ctx.session.flush()
+    values = await conversation_values(ctx.session, ctx.services, conv)
+    values.update(
+        scenario=title,
+        action=ctx.action.do,
+        event=ctx.event.name,
+        fields=fields_text(ctx.run, ctx.definition),
+    )
+    await notify_event(
+        ctx.session, tenant_id=conv.tenant_id, event="approve_action", values=values, now=ctx.now
+    )
+    log.info("action.approval_requested", run_id=str(ctx.run.id), action=ctx.index)
+    return task
+
+
+async def run_approved(
+    session: AsyncSession,
+    services: "Services",
+    run: ScenarioRun,
+    definition: ScenarioDef,
+    payload: dict[str, Any],
+    *,
+    now: datetime,
+) -> bool:
+    """«Approve» on an approve_action task: run the action as it was when it fired.
+    The run row is locked by the caller. False when the action is gone (the scenario
+    changed: the run keeps the version it started with, so only a broken payload)."""
+    index = int(payload.get("action", -1))
+    if not 0 <= index < len(definition.actions):
+        return False
+    action = definition.actions[index]
+    if action.do != payload.get("do"):
+        return False
+    handler = HANDLERS.get(action.do)
+    if handler is None:
+        return False
+    event = Event(str(payload.get("event") or action.on), payload.get("field"))
+    await handler(ActionContext(session, services, run, definition, action, index, event, now))
+    return True

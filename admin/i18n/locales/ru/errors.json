@@ -22,7 +22,8 @@
       "mail_not_configured": "Отправка почты на этом сервере не настроена",
       "no_access": "У этой учётной записи нет доступа к админке. Обратитесь к администратору.",
       "required": "Пожалуйста, войдите",
-      "superadmin_required": "Это может только суперадмин"
+      "superadmin_required": "Это может только суперадмин",
+      "invalid_signature": "Подпись запроса неправильная"
     },
     "channel": {
       "http_not_found": "У тенанта нет HTTP-канала",
@@ -104,7 +105,8 @@
       "not_found": "Результат не найден"
     },
     "sandbox": {
-      "model_unsuitable": "Модель {model} не может отвечать клиентам"
+      "model_unsuitable": "Модель {model} не может отвечать клиентам",
+      "text_required": "Напишите сообщение или приложите файл"
     },
     "scenario": {
       "action_endpoint_required": "Действие {index}: выберите адрес",
@@ -136,7 +138,23 @@
       "yaml_invalid": "YAML не читается (строка {line}): {error}",
       "action_notifier_required": "Действие {index} ({on}): выберите канал уведомлений",
       "action_text_required": "Действие {index} ({on}): напишите текст сообщения",
-      "catalog_not_allowed": "Поле {field}: настройки каталога — только для типа «позиция каталога»"
+      "catalog_not_allowed": "Поле {field}: настройки каталога — только для типа «позиция каталога»",
+      "event_field_unknown": "Событие {event}: нет поля {field}",
+      "event_reopen_fields_not_allowed": "Событие {event}: поля для переспроса — только для «Переспросить некоторые поля»",
+      "event_reopen_fields_required": "Событие {event}: выберите поля, которые переспросить",
+      "events_not_allowed": "Внешние события и ожидание — только для «Подтверждает внешняя система»",
+      "events_required": "Добавьте хотя бы одно внешнее событие",
+      "field_setting_not_allowed": "Поле {field}: настройка {setting} не для типа {type}",
+      "filters_not_allowed": "Поле {field}: у поля-файла нет проверок «да/нет»",
+      "incompatible_self": "Сценарий не может быть несовместим сам с собой",
+      "list_item_duplicate": "Поле {field}: у двух частей пункта одинаковый ключ",
+      "list_range_invalid": "Поле {field}: минимум пунктов больше максимума",
+      "number_range_invalid": "Поле {field}: минимум больше максимума",
+      "receipt_amount_field_invalid": "Поле {field}: {ref} должно быть полем каталога",
+      "receipt_amount_missing": "Поле {field}: сумма не задана, код не будет её проверять",
+      "receipt_currency_required": "Поле {field}: для фиксированной суммы нужна валюта",
+      "receipt_field_required": "«Проверена квитанция» требует поля-квитанции",
+      "receipt_quantity_field_invalid": "Поле {field}: {ref} должно быть числовым полем"
     },
     "tenant": {
       "language_duplicate": "Язык указан дважды",
@@ -147,7 +165,10 @@
       "silence_minutes_invalid": "Неверное время тишины: {value}",
       "slug_invalid": "Короткое имя: строчные латинские буквы, цифры и дефис, 3–64 символа",
       "slug_taken": "Короткое имя {slug} уже занято",
-      "unknown_answer_invalid": "Неизвестное значение «{value}»"
+      "unknown_answer_invalid": "Неизвестное значение «{value}»",
+      "phone_region_invalid": "Страна телефонов — две заглавные буквы, например UA (сейчас {value})",
+      "receipt_review_invalid": "Неизвестный режим проверки квитанций {value}",
+      "receipt_threshold_invalid": "Порог суммы для {currency} неправильный: три заглавные буквы и неотрицательная сумма"
     },
     "turn": {
       "failed": "Бот не смог ответить: {error}",
@@ -210,6 +231,15 @@
     "search": {
       "vectors_off": "Поиск по смыслу на сервере выключен (нет QDRANT_URL)",
       "embed_unassigned": "На роль «embed» не назначена модель"
+    },
+    "event": {
+      "run_not_waiting": "Результат не ждёт событие (статус {status})",
+      "too_large": "Событие слишком большое (не больше {max} байт)",
+      "unknown": "Неизвестное событие {event}; сценарий знает: {known}"
+    },
+    "receipt": {
+      "decided": "По квитанции уже принято решение",
+      "not_found": "Квитанция не найдена"
     }
   }
 }

@@ -96,6 +96,11 @@ class Settings(BaseSettings):
     search_index_prefix: str = "zama_"
     search_timeout_s: float = 10.0
 
+    # Receipts (stage 6): the biggest image the bot downloads; private addresses only in
+    # tests / local dev (a client must not make the server fetch internal services)
+    receipt_max_mb: float = 10.0
+    receipt_fetch_private: bool = False
+
     @property
     def is_dev(self) -> bool:
         return self.env != "prod"

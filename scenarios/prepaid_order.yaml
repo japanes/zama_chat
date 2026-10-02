@@ -1,0 +1,117 @@
+# An order paid in advance (stage 6): the item from the catalog, the quantity, the
+# delivery, the client confirms, then sends a payment receipt. Code checks the receipt
+# (amount = price × quantity, currency, date, recipient); a person checks it according
+# to the tenant setting receipt_review.
+# TODO(review): wording, the recipient of the payment, the currency, the delivery field.
+key: prepaid_order
+title:
+  uk: Замовлення з передоплатою
+  en: Prepaid order
+language: uk
+description:
+  uk: Клієнт замовляє товар з каталогу з доставкою та оплачує його наперед переказом на картку чи рахунок.
+  en: The client orders an item from the catalog with delivery and pays in advance by a card or bank transfer.
+
+start:
+  questions:
+    - key: wants_to_order
+      ask:
+        uk: Клієнт хоче замовити або купити товар?
+        en: Does the client want to order or buy an item?
+      weight: 2
+    - field: product
+  threshold: 2
+
+fields:
+  - key: product
+    type: catalog
+    question:
+      uk: Який товар ви хочете замовити?
+      en: Which item would you like to order?
+    catalog:
+      categories: []
+      max_options: 5
+
+  - key: quantity
+    type: number
+    question:
+      uk: Скільки штук?
+      en: How many?
+    number:
+      min: 1
+      max: 50
+      integer: true
+
+  - key: name
+    type: text
+    question:
+      uk: Ім'я та прізвище отримувача?
+      en: The recipient's first and last name?
+    filters:
+      - key: full_name
+        ask:
+          uk: Клієнт назвав і ім'я, і прізвище?
+          en: Did the client give both a first and a last name?
+
+  - key: phone
+    type: phone
+    question:
+      uk: Номер телефону отримувача?
+      en: The recipient's phone number?
+
+  - key: delivery
+    type: text
+    question:
+      uk: Куди доставити? Місто та відділення пошти.
+      en: Where should we deliver? The city and the post office.
+    filters:
+      - key: city_and_office
+        ask:
+          uk: Клієнт назвав і місто, і відділення (або адресу)?
+          en: Did the client give both the city and the post office (or an address)?
+
+  - key: receipt
+    type: receipt
+    question:
+      uk: Надішліть, будь ласка, квитанцію про оплату (скриншот або фото).
+      en: Please send the payment receipt (a screenshot or a photo).
+    receipt:
+      amount_field: product
+      quantity_field: quantity
+      currency: UAH
+      recipients: ["ФОП Приклад"]   # TODO(review): the real recipient / IBAN / card ending
+      max_age_days: 2
+      tolerance: 1
+
+confirm:
+  question:
+    uk: Перевірте замовлення. Все правильно? Після підтвердження надішлю реквізити для оплати.
+    en: Please check the order. Is everything correct? After you confirm I will send the payment details.
+
+completion: receipt
+
+resume:
+  mode: within_hours
+  hours: 72
+
+cancel:
+  description:
+    uk: Клієнт передумав замовляти.
+    en: The client no longer wants to order.
+
+actions:
+  - on: confirmed
+    do: message_client
+    params:
+      text:
+        uk: "Реквізити для оплати: ФОП Приклад, IBAN UA00 0000 0000 0000 0000 0000 000. Після оплати надішліть квитанцію сюди."
+        en: "Payment details: FOP Example, IBAN UA00 0000 0000 0000 0000 0000 000. After paying, send the receipt here."
+  - on: completed
+    do: http_post
+    endpoint: results_api
+  - on: cancelled
+    do: http_post
+    endpoint: results_api
+  - on: abandoned
+    do: http_post
+    endpoint: results_api

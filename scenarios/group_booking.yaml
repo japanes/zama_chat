@@ -1,0 +1,115 @@
+# A booking for several people at once (stage 6).
+# TODO(review): wording, the guest limits.
+key: group_booking
+title:
+  uk: Груповий запис
+  en: Group booking
+language: uk
+description:
+  uk: Клієнт записує кількох людей одночасно (подруги, мама з донькою, весільний образ).
+  en: The client books several people at once (friends, a mother and a daughter, a wedding party).
+
+start:
+  questions:
+    - key: wants_group_booking
+      ask:
+        uk: Клієнт хоче записати одночасно двох чи більше людей?
+        en: Does the client want to book two or more people at the same time?
+      weight: 2
+  threshold: 2
+
+fields:
+  - key: guests
+    type: list
+    question:
+      uk: Хто прийде і на які послуги? Напишіть ім'я та послугу для кожної людини.
+      en: Who is coming and for which services? Give a name and a service for each person.
+    items:
+      min_items: 2
+      max_items: 6
+      item_fields:
+        - key: name
+          label:
+            uk: Ім'я
+            en: Name
+        - key: service
+          label:
+            uk: Послуга
+            en: Service
+
+  - key: date
+    type: date
+    question:
+      uk: На яку дату вас записати?
+      en: For which date?
+    date:
+      max_days_ahead: 90
+
+  - key: time
+    type: time
+    question:
+      uk: О котрій годині вам зручно почати?
+      en: What time would you like to start?
+
+  - key: name
+    type: text
+    question:
+      uk: На чиє ім'я оформити запис?
+      en: Whose name should the booking be under?
+
+  - key: phone
+    type: phone
+    question:
+      uk: Ваш номер телефону для підтвердження?
+      en: Your phone number for the confirmation?
+
+confirm: {}
+
+completion: external_event
+
+events:
+  booked:
+    result: completed
+    say:
+      uk: Готово! Ви записані {date} о {time}. Чекаємо на вас!
+      en: Done! You are booked on {date} at {time}. See you!
+  slot_taken:
+    result: reopen
+    reopen_fields: [date, time]
+    say:
+      uk: На цей час не вистачає вільних майстрів. Оберіть, будь ласка, інший день або час.
+      en: There are not enough free specialists at this time. Please choose another day or time.
+  failed:
+    result: cancelled
+    say:
+      uk: Не вдалося оформити груповий запис. Адміністратор зв'яжеться з вами.
+      en: We could not make the group booking. The administrator will contact you.
+
+waiting:
+  hours: 4
+
+incompatible_with: [beauty_booking, reschedule_booking, cancel_booking]
+
+resume:
+  mode: within_hours
+  hours: 48
+
+cancel:
+  description:
+    uk: Клієнт передумав робити груповий запис.
+    en: The client no longer wants the group booking.
+
+actions:
+  - on: waiting
+    do: http_post
+    endpoint: results_api
+  - on: waiting
+    do: notify_telegram
+    params:
+      notifier: team
+  - on: completed
+    do: http_post
+    endpoint: results_api
+  - on: cancelled
+    do: http_post
+    endpoint: results_api

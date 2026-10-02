@@ -21,6 +21,7 @@ from app.db.models.operator import (
     TaskStatus,
 )
 from app.db.models.prompts import Prompt
+from app.db.models.receipts import Receipt, ReceiptStatus
 from app.db.models.results import Delivery, DeliveryStatus, DevSinkItem, Endpoint
 from app.db.models.scenarios import (
     OPEN_STATUSES,
@@ -81,6 +82,8 @@ __all__ = [
     "NotifierKind",
     "OperatorTask",
     "Prompt",
+    "Receipt",
+    "ReceiptStatus",
     "RunStatus",
     "Scenario",
     "ScenarioRun",

@@ -8,6 +8,11 @@ rejected: the field stays empty, the bot asks it, the case goes to the trace.
 Schema: one property per field, `<scenario>__<field>` (keys never contain "__"),
 `string | null`; choice / yes_no fields get an enum; catalog fields — an enum of the
 items' external_ids (the candidates found for this turn, scenarios/catalog.py).
+
+Stage 6: date / time / number fields get a second property `<scenario>__<field>__norm` —
+the model's machine reading (YYYY-MM-DD, HH:MM, a number), used only when code can not
+read the words itself (scenarios/typed.py); a list field is an array (of objects when it
+has item fields). Attachment / receipt fields never go to the model.
 """
 
 import re
@@ -20,13 +25,20 @@ from app.db.models import LlmRole, MessageRole
 from app.prompts.builtin import EXTRACT, EXTRACT_KEY
 from app.prompts.render import render_json, to_text
 from app.prompts.store import PromptText
-from app.scenarios.schema import FieldDef, FieldType, ScenarioDef
+from app.scenarios.schema import ATTACHMENT_TYPES, NORM_TYPES, FieldDef, FieldType, ScenarioDef
+from app.scenarios.typed import list_items, typed_grounded
 
 if TYPE_CHECKING:
     from app.services import Services
 
 SEP = "__"
+NORM = "__norm"
 YES_NO = ("yes", "no")
+NORM_FORMATS = {
+    FieldType.DATE: "YYYY-MM-DD",
+    FieldType.TIME: "HH:MM (24 hours)",
+    FieldType.NUMBER: "number",
+}
 DEFAULT_PROMPT = PromptText(EXTRACT_KEY, 0, to_text(EXTRACT))
 
 
@@ -51,7 +63,10 @@ class Target:
 
 @dataclass
 class Extracted:
-    values: dict[tuple[str, str], str] = field(default_factory=dict)  # (scenario, field)
+    # (scenario, field) → the client's words; an array for a list field
+    values: dict[tuple[str, str], Any] = field(default_factory=dict)
+    # (scenario, field) → the model's machine reading of a date / time / number
+    norms: dict[tuple[str, str], Any] = field(default_factory=dict)
     rejected: list[dict[str, Any]] = field(default_factory=list)
     llm_call_id: str | None = None
     model: str | None = None
@@ -61,8 +76,24 @@ def prop_name(scenario: str, field_name: str) -> str:
     return f"{scenario}{SEP}{field_name}"
 
 
+def _list_property(f: FieldDef) -> dict[str, Any]:
+    keys = [i.key for i in f.items.item_fields] if f.items is not None else []
+    if not keys:
+        item: dict[str, Any] = {"type": "string"}
+    else:
+        item = {
+            "type": "object",
+            "properties": {k: {"type": ["string", "null"]} for k in keys},
+            "required": keys,
+            "additionalProperties": False,
+        }
+    return {"type": ["array", "null"], "items": item}
+
+
 def _property(target: Target) -> dict[str, Any]:
     f = target.field
+    if f.type == FieldType.LIST:
+        return _list_property(f)
     if f.type == FieldType.CHOICE:
         return {"type": ["string", "null"], "enum": [*(o.key for o in f.options), None]}
     if f.type == FieldType.YES_NO:
@@ -72,8 +103,17 @@ def _property(target: Target) -> dict[str, Any]:
     return {"type": ["string", "null"]}
 
 
+def extractable(target: Target) -> bool:
+    return target.field.type not in ATTACHMENT_TYPES
+
+
 def extract_schema(targets: list[Target]) -> dict[str, Any]:
-    props = {t.prop: _property(t) for t in targets}
+    props: dict[str, Any] = {}
+    for t in targets:
+        props[t.prop] = _property(t)
+        if t.field.type in NORM_TYPES:
+            kind = "number" if t.field.type == FieldType.NUMBER else "string"
+            props[t.prop + NORM] = {"type": [kind, "null"]}
     return {
         "type": "object",
         "properties": props,
@@ -97,6 +137,12 @@ def field_spec(target: Target, language: str) -> dict[str, Any]:
         ]
     if f.type == FieldType.CATALOG:
         spec["options"] = [{"key": ref, "label": title} for ref, title in target.choices]
+    if f.type in NORM_FORMATS:
+        spec["norm"] = {"property": target.prop + NORM, "format": NORM_FORMATS[f.type]}
+    if f.type == FieldType.LIST and f.items is not None and f.items.item_fields:
+        spec["item_fields"] = [
+            {"key": i.key, "label": defn.text(i.label, language).text} for i in f.items.item_fields
+        ]
     if target.current:
         spec["current_value"] = target.current
     return spec
@@ -109,19 +155,25 @@ def last_bot_message(ctx: TurnContext) -> str:
     return ""
 
 
+def today_line(ctx: TurnContext) -> str:
+    from app.scenarios.typed import local_now
+
+    local = local_now(ctx.now, ctx.settings.timezone)
+    return f"{local.date().isoformat()} ({local.strftime('%A')}), {ctx.settings.timezone}"
+
+
 def extract_messages(
     prompt: PromptText, targets: list[Target], ctx: TurnContext, rewritten: str, language: str
 ) -> list[dict[str, Any]]:
-    data = render_json(
-        prompt.body,
-        {
-            "fields": [field_spec(t, language) for t in targets],
-            "client_message": ctx.input_text,
-            "rewritten": rewritten,
-            "bot_question": last_bot_message(ctx),
-        },
-        key=prompt.key,
-    )
+    values: dict[str, Any] = {
+        "fields": [field_spec(t, language) for t in targets],
+        "client_message": ctx.input_text,
+        "rewritten": rewritten,
+        "bot_question": last_bot_message(ctx),
+    }
+    if any(t.field.type in NORM_FORMATS for t in targets):
+        values["today"] = today_line(ctx)
+    data = render_json(prompt.body, values, key=prompt.key)
     return [{"role": "user", "content": to_text(data)}]
 
 
@@ -165,20 +217,58 @@ def grounded(value: str, source: str, *, min_share: float = MIN_GROUNDED_SHARE) 
     return hits / len(counted) >= min_share
 
 
+def _list_value(
+    t: Target, raw: Any, source: str, rejected: list[dict[str, Any]]
+) -> list[Any] | None:
+    """Every item must come from the client: this message or the list so far."""
+    items = list_items(t.field, raw)
+    if not items:
+        return None
+    where = f"{t.scenario}.{t.field.key}"
+    known = f"{source}\n{t.current or ''}"
+    for item in items:
+        parts = list(item.values()) if isinstance(item, dict) else [item]
+        for part in parts:
+            if not grounded(str(part), known):
+                rejected.append({"field": where, "value": str(part), "reason": "not_in_message"})
+                return None
+    return items
+
+
+def parse_norms(data: dict[str, Any] | None, targets: list[Target]) -> dict[tuple[str, str], Any]:
+    out: dict[tuple[str, str], Any] = {}
+    for t in targets:
+        if t.field.type in NORM_TYPES:
+            raw = (data or {}).get(t.prop + NORM)
+            if raw not in (None, ""):
+                out[(t.scenario, t.field.key)] = raw
+    return out
+
+
 def parse_values(
     data: dict[str, Any] | None, targets: list[Target], source: str
-) -> tuple[dict[tuple[str, str], str], list[dict[str, Any]]]:
-    values: dict[tuple[str, str], str] = {}
+) -> tuple[dict[tuple[str, str], Any], list[dict[str, Any]]]:
+    values: dict[tuple[str, str], Any] = {}
     rejected: list[dict[str, Any]] = []
     for t in targets:
         raw = (data or {}).get(t.prop)
         if raw is None:
             continue
+        if t.field.type == FieldType.LIST:
+            items = _list_value(t, raw, source, rejected)
+            if items is not None:
+                values[(t.scenario, t.field.key)] = items
+            continue
         value = str(raw).strip()
         if not value:
             continue
         where = f"{t.scenario}.{t.field.key}"
-        if t.field.type == FieldType.CHOICE:
+        by_type = typed_grounded(t.field, value, source)
+        if by_type is not None:
+            if not by_type:
+                rejected.append({"field": where, "value": value, "reason": "not_in_message"})
+                continue
+        elif t.field.type == FieldType.CHOICE:
             if value not in {o.key for o in t.field.options}:
                 rejected.append({"field": where, "value": value, "reason": "unknown_option"})
                 continue
@@ -207,6 +297,7 @@ async def extract(
     rewritten: str,
     language: str,
 ) -> Extracted:
+    targets = [t for t in targets if extractable(t)]
     if not targets:
         return Extracted()
     prompt = prompt or DEFAULT_PROMPT
@@ -224,6 +315,7 @@ async def extract(
     values, rejected = parse_values(result.data, targets, ctx.input_text)
     return Extracted(
         values=values,
+        norms=parse_norms(result.data, targets),
         rejected=rejected,
         llm_call_id=str(result.call_id),
         model=result.model,

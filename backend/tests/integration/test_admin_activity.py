@@ -325,3 +325,21 @@ async def test_sandbox_shows_a_failed_turn(client, services, tenant, adm, fake_l
     async with services.sm() as session:
         msg = (await session.execute(select(Message).where(Message.text == "hi"))).scalar_one()
     assert msg.turn_id is not None
+
+
+async def test_sandbox_sends_a_file_by_link(client, services, tenant, adm, fake_llm):
+    await make_model(services.sm, "openai/a", roles=(LlmRole.REPLY,))
+    fake_llm.default = chat_reply("Бачу фото.")
+    files = [{"type": "image", "url": "https://cdn.example/receipt.jpg"}]
+    resp = await client.post(_t(tenant, "/sandbox/turn"), json={"attachments": files}, headers=adm)
+    assert resp.status_code == 200, resp.text
+    out = resp.json()
+    first = out["state"]["messages"][0]
+    assert first["text"] == "[image]"
+    assert first["attachments"] == files
+
+
+async def test_sandbox_needs_words_or_a_file(client, services, tenant, adm):
+    resp = await client.post(_t(tenant, "/sandbox/turn"), json={"text": "  "}, headers=adm)
+    assert resp.status_code == 400
+    assert resp.json()["error"]["code"] == "sandbox.text_required"

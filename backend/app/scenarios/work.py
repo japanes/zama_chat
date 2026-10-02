@@ -1,8 +1,10 @@
 """WorkRun: a scenario run as a turn changes it, before it is written to the DB."""
 
+import copy
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Any
 
 from app.db.base import new_id
 from app.db.models import OPEN_STATUSES, RunStatus
@@ -28,6 +30,13 @@ class WorkRun:
     filled: list[str] = field(default_factory=list)  # became complete in this turn
     # (complete, value) of every field when the turn started
     snapshot: dict[str, tuple[bool, str | None]] = field(default_factory=dict)
+    # scenario_runs.data: confirmed_at, waiting_for, waiting_since, external, events_seen
+    data: dict[str, Any] = field(default_factory=dict)
+    data_before: dict[str, Any] = field(default_factory=dict)
+    # every field was complete when the turn started (all_fields fires once)
+    was_all_complete: bool = False
+    # the client answered «no» to «is everything correct?» in this turn
+    confirm_rejected: bool = False
 
     @classmethod
     def from_open(cls, run: OpenRun) -> "WorkRun":
@@ -42,6 +51,9 @@ class WorkRun:
             started_at=run.started_at,
             last_activity_at=run.last_activity_at,
             snapshot={k: (fs.complete, fs.value) for k, fs in states.items()},
+            data=copy.deepcopy(run.data),
+            data_before=copy.deepcopy(run.data),
+            was_all_complete=all(fs.complete for fs in states.values()),
         )
 
     @classmethod
@@ -90,8 +102,21 @@ class WorkRun:
             or self.status != self.before
             or bool(self.events)
             or bool(self.answered)
+            or self.data != self.data_before
             or any((fs.complete, fs.value) != self.snapshot.get(k) for k, fs in self.states.items())
         )
+
+    @property
+    def confirmed(self) -> bool:
+        """The client confirmed the collected answers (or the scenario does not ask)."""
+        return not self.definition.needs_confirm or bool(self.data.get("confirmed_at"))
+
+    @property
+    def values_changed(self) -> list[str]:
+        """Fields whose value differs from the start of the turn."""
+        return [
+            k for k, fs in self.states.items() if fs.value != self.snapshot.get(k, (0, None))[1]
+        ]
 
     def add(self, name: str, field_name: str | None = None) -> None:
         self.events.append(Event(name, field_name))

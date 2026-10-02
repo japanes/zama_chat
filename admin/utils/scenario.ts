@@ -3,7 +3,24 @@
 
 export type LText = string | Record<string, string>
 
-export const FIELD_TYPES = ['text', 'choice', 'yes_no', 'catalog'] as const
+export const FIELD_TYPES = [
+  'text',
+  'choice',
+  'yes_no',
+  'catalog',
+  'date',
+  'time',
+  'phone',
+  'email',
+  'number',
+  'list',
+  'attachment',
+  'receipt',
+] as const
+// filled from the client's files, not from words
+export const ATTACHMENT_TYPES = ['attachment', 'receipt']
+export const ATTACHMENT_KINDS = ['image', 'video', 'audio', 'file'] as const
+export const EVENT_RESULTS = ['completed', 'cancelled', 'reopen'] as const
 export const COMPLETIONS = ['all_fields', 'explicit_yes', 'external_event', 'receipt'] as const
 export const ACTION_EVENTS = [
   'started',
@@ -11,6 +28,7 @@ export const ACTION_EVENTS = [
   'field_stuck',
   'all_fields',
   'confirmed',
+  'waiting',
   'completed',
   'cancelled',
   'abandoned',
@@ -28,8 +46,25 @@ export function newField(n: number): any {
     options: [],
     filters: [],
     ask_after: [],
-    catalog: { categories: [], max_options: 5 },
+    ...typedDefaults(),
   }
+}
+
+// settings of every typed field, so the form can bind to them whatever the type is;
+// cleanDefinition sends only the one of the field's type
+function typedDefaults(): any {
+  return {
+    catalog: { categories: [], max_options: 5 },
+    date: { allow_past: false, max_days_ahead: '' },
+    number: { min: '', max: '', integer: false },
+    items: { min_items: 1, max_items: 10, item_fields: [] },
+    attachment: { kinds: ['image', 'file'], max_items: 1 },
+    receipt: { amount: '', amount_field: '', quantity_field: '', currency: '', recipients: [], max_age_days: 3, tolerance: 0 },
+  }
+}
+
+function num(value: unknown): number | undefined {
+  return value === '' || value == null || Number.isNaN(Number(value)) ? undefined : Number(value)
 }
 
 export function newDefinition(language: string): any {
@@ -40,6 +75,10 @@ export function newDefinition(language: string): any {
     start: { questions: [{ key: 'wants_it', ask: {}, weight: 1 }], threshold: 1 },
     fields: [newField(1)],
     completion: 'all_fields',
+    confirm: null,
+    events_list: [],
+    waiting: { hours: '' },
+    incompatible_with: [],
     resume: { mode: 'always' },
     cancel: {},
     actions: [],
@@ -108,6 +147,7 @@ export function cleanDefinition(d: any): any {
                 max_options: f.catalog?.max_options === '' || f.catalog?.max_options == null ? undefined : Number(f.catalog.max_options),
               })
             : undefined,
+        ...typedSettings(f),
         filters: (f.filters || []).length
           ? f.filters.map((x: any) => compact({ key: x.key, ask: text(x.ask) ?? {}, yes: text(x.yes), no: text(x.no) }))
           : undefined,
@@ -115,6 +155,22 @@ export function cleanDefinition(d: any): any {
       }),
     ),
     completion: d.completion || 'all_fields',
+    confirm: d.confirm ? compact({ question: text(d.confirm.question) }) : undefined,
+    events:
+      d.completion === 'external_event' && (d.events_list || []).length
+        ? Object.fromEntries(
+            d.events_list.map((e: any) => [
+              (e.name || '').trim(),
+              compact({
+                result: e.result || 'completed',
+                reopen_fields: e.result === 'reopen' ? [...(e.reopen_fields || [])] : undefined,
+                say: text(e.say),
+              }),
+            ]),
+          )
+        : undefined,
+    waiting: d.completion === 'external_event' && num(d.waiting?.hours) ? { hours: num(d.waiting.hours) } : undefined,
+    incompatible_with: (d.incompatible_with || []).length ? [...d.incompatible_with] : undefined,
     resume:
       d.resume?.mode === 'within_hours'
         ? compact({ mode: 'within_hours', hours: d.resume.hours === '' || d.resume.hours == null ? undefined : Number(d.resume.hours) })
@@ -129,6 +185,7 @@ export function cleanDefinition(d: any): any {
         status: a.status || undefined,
         field: ['field_filled', 'field_stuck'].includes(a.on) && a.field ? a.field : undefined,
         params: actionParams(a),
+        requires_approval: a.requires_approval ? true : undefined,
       }),
     ),
   })
@@ -146,10 +203,25 @@ export function toForm(d: any): any {
     f.options ||= []
     f.filters ||= []
     f.ask_after ||= []
-    f.catalog ||= { categories: [], max_options: 5 }
-    f.catalog.categories ||= []
+    const defaults = typedDefaults()
+    for (const k of Object.keys(defaults)) f[k] = { ...defaults[k], ...(f[k] || {}) }
+    for (const k of ['min', 'max']) f.number[k] ??= ''
+    f.date.max_days_ahead ??= ''
+    for (const k of ['amount', 'amount_field', 'quantity_field', 'currency']) f.receipt[k] ??= ''
+    f.receipt.recipients ||= []
+    f.items.item_fields ||= []
   }
   out.completion ||= 'all_fields'
+  out.confirm ??= null
+  out.events_list = Object.entries(out.events || {}).map(([name, e]: [string, any]) => ({
+    name,
+    result: e.result || 'completed',
+    reopen_fields: e.reopen_fields || [],
+    say: e.say ?? {},
+  }))
+  delete out.events
+  out.waiting = { hours: out.waiting?.hours ?? '' }
+  out.incompatible_with ||= []
   out.resume ||= { mode: 'always' }
   out.cancel ||= {}
   out.actions ||= []
@@ -158,6 +230,46 @@ export function toForm(d: any): any {
     a.params ||= {}
   }
   return out
+}
+
+// the settings block of a typed field, only for its own type (the server forbids others)
+function typedSettings(f: any): any {
+  switch (f.type) {
+    case 'date':
+      return { date: compact({ allow_past: !!f.date?.allow_past, max_days_ahead: num(f.date?.max_days_ahead) }) }
+    case 'number':
+      return { number: compact({ min: num(f.number?.min), max: num(f.number?.max), integer: !!f.number?.integer }) }
+    case 'list':
+      return {
+        items: {
+          min_items: num(f.items?.min_items) ?? 1,
+          max_items: num(f.items?.max_items) ?? 10,
+          item_fields: (f.items?.item_fields || []).map((x: any) => ({
+            key: x.key,
+            label: text(x.label) ?? {},
+            required: x.required !== false,
+          })),
+        },
+      }
+    case 'attachment':
+      return { attachment: { kinds: [...(f.attachment?.kinds || ['image', 'file'])], max_items: num(f.attachment?.max_items) ?? 1 } }
+    case 'receipt': {
+      const r = f.receipt || {}
+      return {
+        receipt: compact({
+          amount: num(r.amount),
+          amount_field: r.amount_field || undefined,
+          quantity_field: r.quantity_field || undefined,
+          currency: (r.currency || '').trim().toUpperCase() || undefined,
+          recipients: (r.recipients || []).map((x: string) => x.trim()).filter(Boolean),
+          max_age_days: num(r.max_age_days) ?? 3,
+          tolerance: num(r.tolerance) ?? 0,
+        }),
+      }
+    }
+    default:
+      return {}
+  }
 }
 
 export function startLabel(q: any): string {

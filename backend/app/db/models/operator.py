@@ -31,19 +31,22 @@ class OperatorTask(IdMixin, TimestampsMixin, Base):
     choose_reply: payload = {variants, turn_id, input_text, …}; a new client message
     rebuilds the variants of the same open task (`version` + 1), so an operator who
     picks a variant of an old version gets `operator_task.outdated`.
+    approve_action: payload = {run_id, scenario, action, do, event, field, fields};
+    review_receipt: payload = {run_id, receipt_id, field, scenario, extracted, issues, …}.
     """
 
     __tablename__ = "operator_tasks"
     __table_args__ = (
         Index("ix_operator_tasks_tenant_status", "tenant_id", "status", "created_at"),
         Index("ix_operator_tasks_conversation", "conversation_id", "created_at"),
-        # one open task of a kind per conversation
+        # one open choose_reply / handover per conversation; approvals and receipts may
+        # be several at a time (two actions, two receipts)
         Index(
             "uq_operator_tasks_open",
             "conversation_id",
             "kind",
             unique=True,
-            postgresql_where="status = 'open'",
+            postgresql_where="status = 'open' AND kind IN ('choose_reply', 'handover')",
         ),
     )
 
@@ -71,7 +74,13 @@ class NotifierKind(StrEnum):
 
 
 # events a notifier can subscribe to (scenario actions name the notifier directly)
-NOTIFY_EVENTS = ("handover", "choose_reply", "channel_error")
+NOTIFY_EVENTS = (
+    "handover",
+    "choose_reply",
+    "channel_error",
+    "approve_action",  # stage 6: an action waits for «approve»
+    "review_receipt",  # stage 6: a payment receipt waits for a check
+)
 
 
 class Notifier(IdMixin, TimestampsMixin, Base):

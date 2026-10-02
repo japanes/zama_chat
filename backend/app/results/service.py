@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Any
 
 from app.db.models import Channel, Contact, RunStatus, ScenarioRun
-from app.scenarios.fields import FILLED, PARTIAL, load_states
+from app.scenarios.fields import FILLED, PARTIAL, REVIEW, load_states
 from app.scenarios.schema import ActionEvent, ScenarioDef
 
 # result status by the event that sends it
@@ -16,6 +16,8 @@ EVENT_STATUS = {
     ActionEvent.CANCELLED: "cancelled",
     ActionEvent.ABANDONED: "abandoned",
     ActionEvent.SILENCE: "incomplete",
+    ActionEvent.WAITING: "waiting",
+    ActionEvent.CONFIRMED: "confirmed",
 }
 RUN_STATUS = {
     RunStatus.FOCUS: "in_progress",
@@ -38,12 +40,16 @@ def _iso(value: datetime | None) -> str | None:
 
 
 def collected(defn: ScenarioDef, raw: dict[str, Any] | None) -> dict[str, Any]:
-    """fields (accepted answers), partial (incomplete or not re-checked yet), missing."""
+    """fields (accepted answers, the client's words), partial (incomplete or not
+    re-checked yet), missing; refs — catalog items' external_id; normalized — the machine
+    values of accepted typed fields (ISO date, HH:MM, E.164 phone, e-mail, number, list
+    items, files, the receipt's amount / date / reference)."""
     states = load_states(defn, raw)
     fields: dict[str, str] = {}
     partial: dict[str, str] = {}
     missing: list[str] = []
     refs: dict[str, str] = {}
+    normalized: dict[str, Any] = {}
     for f in defn.fields:
         fs = states[f.key]
         if fs.ref and fs.value is not None:
@@ -51,11 +57,19 @@ def collected(defn: ScenarioDef, raw: dict[str, Any] | None) -> dict[str, Any]:
             refs[f.key] = fs.ref
         if fs.complete and fs.value is not None:
             fields[f.key] = fs.value
+            if fs.norm is not None:
+                normalized[f.key] = fs.norm
             continue
-        if fs.value is not None and fs.state in (PARTIAL, FILLED):
+        if fs.value is not None and fs.state in (PARTIAL, FILLED, REVIEW):
             partial[f.key] = fs.value
         missing.append(f.key)
-    return {"fields": fields, "partial": partial, "missing": missing, "refs": refs}
+    return {
+        "fields": fields,
+        "partial": partial,
+        "missing": missing,
+        "refs": refs,
+        "normalized": normalized,
+    }
 
 
 def build_payload(
@@ -89,6 +103,9 @@ def build_payload(
         "partial": data["partial"],
         "missing": data["missing"],
         **({"refs": data["refs"]} if data["refs"] else {}),
+        **({"normalized": data["normalized"]} if data["normalized"] else {}),
+        # an external event the run got (POST /v1/events): name and data
+        **({"external": run.data["external"]} if (run.data or {}).get("external") else {}),
         "client_language": run.client_language,
         "reply_language": run.reply_language,
         "started_at": _iso(run.started_at),

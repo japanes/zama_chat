@@ -22,7 +22,8 @@
       "mail_not_configured": "Sending email is not set up on this server",
       "no_access": "This account has no access to the admin panel. Ask an administrator.",
       "required": "Please sign in",
-      "superadmin_required": "Only a superadmin can do this"
+      "superadmin_required": "Only a superadmin can do this",
+      "invalid_signature": "The signature of the request is not valid"
     },
     "channel": {
       "http_not_found": "The tenant has no HTTP channel",
@@ -104,7 +105,8 @@
       "not_found": "Result not found"
     },
     "sandbox": {
-      "model_unsuitable": "The model {model} cannot reply to clients"
+      "model_unsuitable": "The model {model} cannot reply to clients",
+      "text_required": "Write a message or attach a file"
     },
     "scenario": {
       "action_endpoint_required": "Action {index}: choose an endpoint",
@@ -136,7 +138,23 @@
       "yaml_invalid": "YAML cannot be read (line {line}): {error}",
       "action_notifier_required": "Action {index} ({on}): choose a notification channel",
       "action_text_required": "Action {index} ({on}): write the message text",
-      "catalog_not_allowed": "Field {field}: catalog settings are only for the “catalog item” type"
+      "catalog_not_allowed": "Field {field}: catalog settings are only for the “catalog item” type",
+      "event_field_unknown": "Event {event}: there is no field {field}",
+      "event_reopen_fields_not_allowed": "Event {event}: fields to ask again are only for “Ask some fields again”",
+      "event_reopen_fields_required": "Event {event}: choose the fields to ask again",
+      "events_not_allowed": "External events and waiting are only for “An external system confirms”",
+      "events_required": "Add at least one external event",
+      "field_setting_not_allowed": "Field {field}: the setting {setting} is not for the type {type}",
+      "filters_not_allowed": "Field {field}: a file field has no yes/no checks",
+      "incompatible_self": "A scenario cannot be incompatible with itself",
+      "list_item_duplicate": "Field {field}: two parts of an item have the same key",
+      "list_range_invalid": "Field {field}: the minimum of items is above the maximum",
+      "number_range_invalid": "Field {field}: the minimum is above the maximum",
+      "receipt_amount_field_invalid": "Field {field}: {ref} must be a catalog field",
+      "receipt_amount_missing": "Field {field}: no amount is set, code will not check it",
+      "receipt_currency_required": "Field {field}: a fixed amount needs a currency",
+      "receipt_field_required": "“A payment receipt is checked” needs a receipt field",
+      "receipt_quantity_field_invalid": "Field {field}: {ref} must be a number field"
     },
     "tenant": {
       "language_duplicate": "A language is listed twice",
@@ -147,7 +165,10 @@
       "silence_minutes_invalid": "Wrong silence time: {value}",
       "slug_invalid": "Short name: lowercase Latin letters, digits and dashes, 3–64 characters",
       "slug_taken": "The short name {slug} is already taken",
-      "unknown_answer_invalid": "Unknown value “{value}”"
+      "unknown_answer_invalid": "Unknown value “{value}”",
+      "phone_region_invalid": "The phone country must be two capital letters, for example UA (got {value})",
+      "receipt_review_invalid": "Unknown receipt check mode {value}",
+      "receipt_threshold_invalid": "The amount threshold for {currency} is not valid: three capital letters and a non-negative amount"
     },
     "turn": {
       "failed": "The bot could not answer: {error}",
@@ -210,6 +231,15 @@
     "search": {
       "vectors_off": "Meaning search is off on the server (no QDRANT_URL)",
       "embed_unassigned": "No model is assigned to the “embed” role"
+    },
+    "event": {
+      "run_not_waiting": "The result does not wait for an event (status {status})",
+      "too_large": "The event is too large (at most {max} bytes)",
+      "unknown": "Unknown event {event}; the scenario knows: {known}"
+    },
+    "receipt": {
+      "decided": "The receipt has already been decided",
+      "not_found": "Receipt not found"
     }
   }
 }

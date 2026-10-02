@@ -296,12 +296,23 @@ async def test_history_hides_system_and_dropped(client, services, fake_llm, cloc
 
 
 async def test_empty_text_is_a_validation_error(client, services):
+    """Words, files or both (stage 6): neither is an error of the whole body."""
     bundle = await make_tenant(services.sm)
-    resp = await client.post("/v1/messages", json=_msg(""), headers=bundle.auth)
+    resp = await client.post("/v1/messages", json=_msg("  "), headers=bundle.auth)
     assert resp.status_code == 422
     error = resp.json()["error"]
     assert error["code"] == "request.invalid"
-    assert any(f["loc"][-1] == "text" for f in error["params"]["fields"])
+    assert error["params"]["fields"][0]["type"] == "value_error"
+
+
+async def test_an_attachment_must_be_a_link_of_a_known_type(client, services):
+    bundle = await make_tenant(services.sm)
+    bad = [{"type": "sticker", "url": "https://cdn.example/1.webp"}]
+    resp = await client.post("/v1/messages", json=_msg("", attachments=bad), headers=bundle.auth)
+    assert resp.status_code == 422
+    bad = [{"type": "image", "url": "not a link"}]
+    resp = await client.post("/v1/messages", json=_msg("", attachments=bad), headers=bundle.auth)
+    assert resp.status_code == 422
 
 
 async def test_different_contacts_get_different_conversations(client, services, fake_llm):

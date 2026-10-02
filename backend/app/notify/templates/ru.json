@@ -4,14 +4,18 @@
     "choose_reply": "Ответ ждёт оператора",
     "channel_error": "Канал требует внимания",
     "scenario": "Сценарий: {scenario}",
-    "test": "Тестовое уведомление"
+    "test": "Тестовое уведомление",
+    "approve_action": "Действие ждёт одобрения",
+    "review_receipt": "Квитанция об оплате на проверку"
   },
   "body": {
     "handover": "🙋 {contact} просит поговорить с человеком.\nКанал: {channel}\nСообщение: {text}\n\n{link}",
     "choose_reply": "💬 {contact} ждёт ответа. Бот подготовил варианты.\nКанал: {channel}\nСообщение: {text}\n\n{link}",
     "channel_error": "⚠️ Канал {channel} требует внимания: {error}\n\n{link}",
     "scenario": "📋 {scenario}: {event}\nКлиент: {contact}\nКанал: {channel}\n{fields}\n\n{link}",
-    "test": "✅ Тестовое уведомление от Zama Chat: этот получатель работает."
+    "test": "✅ Тестовое уведомление от Zama Chat: этот получатель работает.",
+    "approve_action": "✋ {scenario}: «{action}» на событие «{event}» ждёт вашего одобрения.\nКлиент: {contact}\nКанал: {channel}\n{fields}\n\n{link}",
+    "review_receipt": "🧾 {contact} прислал(а) квитанцию об оплате за «{scenario}». Проверьте её.\nКанал: {channel}\nЗамечания: {text}\n\n{link}"
   },
   "event": {
     "started": "начался",
@@ -22,7 +26,8 @@
     "completed": "завершён",
     "cancelled": "отменён",
     "abandoned": "не завершён",
-    "silence": "клиент замолчал"
+    "silence": "клиент замолчал",
+    "waiting": "передано, ждём ответа"
   },
   "no_text": "(без текста)",
   "no_fields": "Ответов пока нет.",

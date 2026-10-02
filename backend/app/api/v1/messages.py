@@ -3,14 +3,14 @@ response) and POST /v1/conversations/history."""
 
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, HttpUrl, model_validator
 from sqlalchemy import select
 
 from app.api.deps import ApiClientDep, ServicesDep
-from app.core.ingest import save_client_message
+from app.core.ingest import attachment_note, save_client_message
 from app.core.turn import run_turn
 from app.db.models import (
     Contact,
@@ -35,11 +35,31 @@ class ContactIn(BaseModel):
     username: str | None = Field(default=None, max_length=200)
 
 
+class AttachmentIn(BaseModel):
+    # image / video / audio / file (a receipt is an image)
+    type: Literal["image", "video", "audio", "file"]
+    # an https link the bot can download (receipts: up to RECEIPT_MAX_MB)
+    url: HttpUrl
+    title: str | None = Field(default=None, max_length=200)
+
+
 class MessageIn(BaseModel):
     contact: ContactIn
-    text: str = Field(min_length=1, max_length=8000)
+    # words, files or both
+    text: str | None = Field(default=None, max_length=8000)
+    attachments: list[AttachmentIn] = Field(default_factory=list, max_length=10)
     # the caller's id of this message: sending it again returns the same reply
     client_message_id: str | None = Field(default=None, min_length=1, max_length=200)
+
+    @model_validator(mode="after")
+    def _not_empty(self) -> "MessageIn":
+        self.text = (self.text or "").strip() or None
+        if self.text is None and not self.attachments:
+            raise ValueError("text or attachments required")
+        return self
+
+    def attachment_dicts(self) -> list[dict[str, Any]]:
+        return [a.model_dump(mode="json", exclude_none=True) for a in self.attachments]
 
 
 class MessageOut(BaseModel):
@@ -64,9 +84,10 @@ async def post_message(body: MessageIn, client: ApiClientDep, services: Services
             contact_external_id=body.contact.external_id,
             contact_name=body.contact.name,
             contact_username=body.contact.username,
-            text=body.text,
+            text=body.text or attachment_note(body.attachment_dicts()),
             external_id=body.client_message_id,
             now=now,
+            attachments=body.attachment_dicts(),
         )
 
     # A repeated client_message_id whose turn is running or done finds nothing to take:

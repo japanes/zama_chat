@@ -98,6 +98,7 @@ async def make_model(
     price_cached_input: str | None = None,
     supports_json_schema: bool = True,
     supports_reasoning: bool = False,
+    supports_vision: bool = False,
     reasoning_efforts: list[str] | None = None,
     timeout_s: float | None = None,
     reasoning_effort: str | None = None,
@@ -120,6 +121,7 @@ async def make_model(
                 ),
                 supports_json_schema=supports_json_schema,
                 supports_reasoning=supports_reasoning,
+                supports_vision=supports_vision,
                 reasoning_efforts=reasoning_efforts or [],
             )
             session.add(model)

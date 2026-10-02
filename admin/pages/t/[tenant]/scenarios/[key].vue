@@ -49,6 +49,7 @@
               :endpoints="endpoints"
               :notifiers="notifiers"
               :categories="categories"
+              :scenario-keys="scenarioKeys"
               :is-new="isNew"
               :readonly="!canEdit"
             />
@@ -148,6 +149,7 @@ const versions = ref<any[]>([])
 const endpoints = ref<string[]>([])
 const notifiers = ref<{ name: string; kind: string }[]>([])
 const categories = ref<string[]>([])
+const scenarioKeys = ref<string[]>([])
 const viewing = ref<number | null>(null)
 const mode = ref<Mode>('form')
 const source = ref('')
@@ -325,6 +327,11 @@ onMounted(async () => {
       notifiers.value = (await api<{ items: any[] }>(path('/notifiers'))).items.map((n) => ({ name: n.name, kind: n.kind }))
     } catch {
       notifiers.value = []
+    }
+    try {
+      scenarioKeys.value = (await api<{ items: { key: string }[] }>(path('/scenarios'))).items.map((x) => x.key)
+    } catch {
+      scenarioKeys.value = []
     }
     try {
       const res = await api<{ categories: { name: string | null }[] }>(path('/catalog'), { query: { limit: 1 } })

@@ -44,6 +44,8 @@ class StartResult:
     focus: str | None = None  # scenario in focus after this message
     focus_changed: bool = False
     sums: dict[str, dict[str, object]] = field(default_factory=dict)  # for the trace
+    # fired, but an open (or a stronger new) scenario is incompatible with it
+    blocked: list[str] = field(default_factory=list)
 
 
 def decide_start(candidates: Iterable[Candidate], focus: str | None) -> StartResult:

@@ -101,6 +101,7 @@
         :index="i"
         :last="i === def.fields.length - 1"
         :all-keys="fieldKeys"
+        :all-fields="def.fields"
         :languages="languages"
         :main="def.language"
         :readonly="readonly"
@@ -127,6 +128,87 @@
         </div>
       </div>
       <p class="hint -mt-2">{{ t('scenarios.resume_hint') }}</p>
+      <!-- confirm -->
+      <div class="space-y-2">
+        <label class="flex items-center gap-2 text-sm font-medium">
+          <input type="checkbox" class="checkbox" :checked="!!def.confirm || def.completion === 'explicit_yes'" :disabled="readonly || def.completion === 'explicit_yes'" @change="toggleConfirm" />
+          {{ t('scenarios.confirm') }}
+        </label>
+        <p class="hint">{{ t('scenarios.confirm_hint') }}</p>
+        <div v-if="def.confirm">
+          <label class="label">{{ t('scenarios.confirm_question') }} <span class="muted font-normal">({{ t('common.optional') }})</span></label>
+          <LocalizedInput v-model="def.confirm.question" :languages="languages" :main="def.language" optional :readonly="readonly" :placeholder="t('scenarios.confirm_default')" />
+        </div>
+      </div>
+
+      <!-- external events -->
+      <div v-if="def.completion === 'external_event'" class="space-y-3">
+        <div>
+          <label class="label">{{ t('scenarios.events') }}</label>
+          <p class="hint -mt-1">{{ t('scenarios.events_hint') }}</p>
+        </div>
+        <div v-for="(e, i) in def.events_list" :key="i" class="rounded-button border border-slate-200 dark:border-slate-700 p-3 space-y-2">
+          <div class="flex flex-wrap items-center gap-2">
+            <input v-model.trim="e.name" class="input h-8 w-44 code" :placeholder="t('scenarios.event_name')" :readonly="readonly" />
+            <select v-model="e.result" class="select h-8 w-56" :disabled="readonly">
+              <option v-for="r in EVENT_RESULTS" :key="r" :value="r">{{ t(`scenarios.event_result.${r}`) }}</option>
+            </select>
+            <button v-if="!readonly" type="button" class="btn-icon btn-ghost btn-sm text-rose-600 ml-auto" :aria-label="t('common.delete')" @click="def.events_list.splice(i, 1)">
+              <UiIcon name="trash" :size="16" />
+            </button>
+          </div>
+          <div v-if="e.result === 'reopen'">
+            <label class="label">{{ t('scenarios.reopen_fields') }}</label>
+            <div class="flex flex-wrap gap-1.5">
+              <button
+                v-for="k in fieldKeys"
+                :key="k"
+                type="button"
+                class="btn-sm rounded-badge border code"
+                :disabled="readonly"
+                :class="e.reopen_fields.includes(k) ? 'border-primary bg-primary/10 text-primary' : 'border-slate-200 dark:border-slate-700 text-slate-500'"
+                @click="toggleIn(e.reopen_fields, k)"
+              >
+                {{ k }}
+              </button>
+            </div>
+          </div>
+          <div>
+            <label class="label">{{ t('scenarios.event_say') }} <span class="muted font-normal">({{ t('common.optional') }})</span></label>
+            <LocalizedInput v-model="e.say" :languages="languages" :main="def.language" multiline optional :readonly="readonly" />
+            <p class="hint">{{ t('scenarios.event_say_hint') }}</p>
+          </div>
+        </div>
+        <div class="flex flex-wrap items-end gap-4">
+          <button v-if="!readonly" type="button" class="btn-ghost btn-sm" @click="def.events_list.push({ name: def.events_list.length ? `event_${def.events_list.length + 1}` : 'booked', result: 'completed', reopen_fields: [], say: {} })">
+            <UiIcon name="plus" :size="14" /> {{ t('scenarios.add_event') }}
+          </button>
+          <label class="flex items-center gap-2 text-sm ml-auto">
+            {{ t('scenarios.waiting_hours') }}
+            <input v-model="def.waiting.hours" type="number" min="0.1" step="0.5" class="input h-8 w-24" :placeholder="t('scenarios.no_limit')" :readonly="readonly" />
+          </label>
+        </div>
+      </div>
+
+      <!-- incompatible -->
+      <div v-if="otherScenarios.length">
+        <label class="label">{{ t('scenarios.incompatible') }}</label>
+        <div class="flex flex-wrap gap-1.5">
+          <button
+            v-for="k in otherScenarios"
+            :key="k"
+            type="button"
+            class="btn-sm rounded-badge border code"
+            :disabled="readonly"
+            :class="def.incompatible_with.includes(k) ? 'border-rose-400 bg-rose-50 text-rose-700 dark:bg-rose-900/20 dark:text-rose-300' : 'border-slate-200 dark:border-slate-700 text-slate-500'"
+            @click="toggleIn(def.incompatible_with, k)"
+          >
+            {{ k }}
+          </button>
+        </div>
+        <p class="hint">{{ t('scenarios.incompatible_hint') }}</p>
+      </div>
+
       <div>
         <label class="label">{{ t('scenarios.cancel') }} <span class="muted font-normal">({{ t('common.optional') }})</span></label>
         <LocalizedInput v-model="def.cancel.description" :languages="languages" :main="def.language" multiline optional :readonly="readonly" />
@@ -190,6 +272,10 @@
           <label class="label">{{ t('scenarios.action_status') }}</label>
           <input v-model.trim="a.status" class="input code" :placeholder="t('scenarios.default')" :readonly="readonly" />
         </div>
+        <label class="flex items-center gap-1.5 text-sm self-center" :title="t('scenarios.requires_approval_hint')">
+          <input v-model="a.requires_approval" type="checkbox" class="checkbox" :disabled="readonly" />
+          {{ t('scenarios.requires_approval') }}
+        </label>
         <button v-if="!readonly" type="button" class="btn-icon btn-ghost text-rose-600 ml-auto" :aria-label="t('common.delete')" @click="def.actions.splice(i, 1)">
           <UiIcon name="trash" :size="16" />
         </button>
@@ -202,7 +288,7 @@
 </template>
 
 <script setup lang="ts">
-import { ACTIONS, ACTION_EVENTS, COMPLETIONS, KEY_RE, NOTIFY_ACTIONS, newField, startExamples, startTotal } from '~/utils/scenario'
+import { ACTIONS, ACTION_EVENTS, COMPLETIONS, EVENT_RESULTS, KEY_RE, NOTIFY_ACTIONS, newField, startExamples, startTotal } from '~/utils/scenario'
 
 const props = defineProps<{
   def: any
@@ -212,6 +298,8 @@ const props = defineProps<{
   notifiers?: { name: string; kind: string }[]
   // catalog categories of the tenant (hints for catalog fields)
   categories?: string[]
+  // keys of the tenant's other scenarios (incompatible_with)
+  scenarioKeys?: string[]
   isNew?: boolean
   readonly?: boolean
 }>()
@@ -231,6 +319,22 @@ const threshold = computed(() =>
     : Number(props.def.start.threshold),
 )
 const examples = computed(() => startExamples(props.def.start))
+
+const otherScenarios = computed(() => {
+  const keys = (props.scenarioKeys || []).filter((k) => k !== props.def.key)
+  for (const k of props.def.incompatible_with || []) if (!keys.includes(k)) keys.push(k)
+  return keys
+})
+
+function toggleIn(list: string[], k: string) {
+  const i = list.indexOf(k)
+  if (i >= 0) list.splice(i, 1)
+  else list.push(k)
+}
+
+function toggleConfirm() {
+  props.def.confirm = props.def.confirm ? null : { question: {} }
+}
 
 function setKind(q: any, kind: string) {
   if (kind === 'field') {
@@ -257,6 +361,7 @@ function removeField(i: number) {
   const [gone] = props.def.fields.splice(i, 1)
   // references to the removed field go with it
   for (const f of props.def.fields) f.ask_after = (f.ask_after || []).filter((k: string) => k !== gone.key)
+  for (const e of props.def.events_list || []) e.reopen_fields = (e.reopen_fields || []).filter((k: string) => k !== gone.key)
 }
 function endpointChoices(current?: string) {
   return current && !props.endpoints.includes(current) ? [...props.endpoints, current] : props.endpoints

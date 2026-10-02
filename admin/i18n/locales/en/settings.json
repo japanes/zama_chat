@@ -19,7 +19,8 @@
       "company": "Company",
       "languages": "Bot languages",
       "timers": "Timers",
-      "search": "Search and answers"
+      "search": "Search and answers",
+      "payments": "Phones and payments"
     },
     "silence_minutes": "Silence, minutes",
     "silence_minutes_hint": "If the client is silent this long in the middle of a scenario, the data collected so far is sent with status “incomplete”.",
@@ -31,7 +32,18 @@
     "unknown": {
       "say": "Say honestly that it does not know",
       "handover": "Say it and pass the conversation to a person"
-    }
+    },
+    "phone_region": "Country of phone numbers",
+    "phone_region_hint": "Two letters (UA, PL…). A number without a country code is read as a number of this country.",
+    "receipt_review": "Who checks payment receipts",
+    "receipt_review_mode": {
+      "always": "A person checks every receipt",
+      "issues_only": "A person checks only receipts with problems"
+    },
+    "receipt_review_hint": "Code checks the amount, currency, date and recipient in both modes.",
+    "receipt_above": "A person also checks amounts above",
+    "receipt_above_hint": "Per currency. A receipt without problems but above this amount goes to a person anyway.",
+    "receipt_above_add": "Add currency"
   },
   "channels": {
     "add_scenario": "Add a scenario…",

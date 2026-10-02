@@ -98,6 +98,9 @@ class ScenarioRun(IdMixin, TimestampsMixin, Base):
     events: Mapped[list[Any]] = mapped_column(default=list)
     # version of the result sent outside; grows with every delivery
     delivery_seq: Mapped[int] = mapped_column(Integer, default=0)
+    # stage 6: {"confirmed_at", "waiting_for": event | receipt_review | approval,
+    #           "waiting_since", "external": {event data}, "events_seen": [event_id…]}
+    data: Mapped[dict[str, Any]] = mapped_column(default=dict, server_default=text("'{}'::jsonb"))
     client_language: Mapped[str | None] = mapped_column(String(16))
     reply_language: Mapped[str | None] = mapped_column(String(16))
     started_turn_id: Mapped[uuid.UUID | None] = mapped_column(

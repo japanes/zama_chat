@@ -1,0 +1,136 @@
+# Booking in a beauty salon (stage 6; from the legacy script 21_beauty_booking).
+# The bot collects the request, the client confirms it, the CRM books the slot and tells
+# us through POST /v1/events: booked / slot_taken / failed.
+# TODO(review): all wording; location / specialist fields — drop them for a single salon.
+key: beauty_booking
+title:
+  uk: Запис у салон
+  en: Salon booking
+language: uk
+description:
+  uk: Клієнт записується на послугу салону. Збираємо послугу, салон, майстра, дату, час, ім'я та телефон, показуємо підсумок і передаємо заявку в CRM.
+  en: The client books a salon service. We collect the service, the salon, the specialist, the date, the time, the name and the phone, show a summary and pass the request to the CRM.
+
+start:
+  questions:
+    - key: wants_booking
+      ask:
+        uk: Клієнт хоче записатися на послугу або питає, чи є вільний час для запису?
+        en: Does the client want to book a service or ask whether there is a free slot to book?
+      weight: 2
+    - field: service
+    - field: date
+  threshold: 2            # "I want to book" alone, or a service + a date together
+
+fields:
+  - key: service
+    type: catalog
+    question:
+      uk: На яку послугу ви хочете записатися?
+      en: Which service would you like to book?
+    catalog:
+      categories: []      # the whole catalog; TODO(review): only the salon services
+      max_options: 6
+
+  - key: location
+    type: text
+    question:
+      uk: У який салон вам зручніше прийти?
+      en: Which salon is more convenient for you?
+    description:
+      uk: Назва або адреса салону.
+      en: The name or the address of the salon.
+
+  - key: specialist
+    type: text
+    question:
+      uk: До якого майстра ви хочете записатися? Можна «будь-який».
+      en: Which specialist would you like? "Anyone" is fine too.
+    description:
+      uk: Ім'я майстра або «будь-який», «неважливо».
+      en: The specialist's name, or "anyone", "doesn't matter".
+
+  - key: date
+    type: date
+    question:
+      uk: На яку дату вас записати?
+      en: For which date shall we book you?
+    date:
+      allow_past: false
+      max_days_ahead: 60
+
+  - key: time
+    type: time
+    question:
+      uk: О котрій годині вам зручно?
+      en: What time suits you?
+
+  - key: name
+    type: text
+    question:
+      uk: Як вас звати? Ім'я та прізвище, будь ласка.
+      en: What is your name? First and last name, please.
+    filters:
+      - key: full_name
+        ask:
+          uk: Клієнт назвав і ім'я, і прізвище?
+          en: Did the client give both a first and a last name?
+
+  - key: phone
+    type: phone
+    question:
+      uk: Ваш номер телефону для підтвердження запису?
+      en: Your phone number to confirm the booking?
+
+confirm:
+  question:
+    uk: Перевірте, будь ласка, дані запису. Все правильно?
+    en: Please check the booking details. Is everything correct?
+
+completion: external_event
+
+events:
+  booked:
+    result: completed
+    say:
+      uk: Готово! Ви записані на {service} {date} о {time}. Чекаємо на вас 🙂
+      en: Done! You are booked for {service} on {date} at {time}. See you!
+  slot_taken:
+    result: reopen
+    reopen_fields: [date, time]
+    say:
+      uk: На жаль, цей час уже зайнятий. Оберіть, будь ласка, інший день або час.
+      en: Sorry, this time is already taken. Please choose another day or time.
+  failed:
+    result: cancelled
+    say:
+      uk: На жаль, не вдалося оформити запис. Адміністратор зв'яжеться з вами.
+      en: Sorry, we could not make the booking. The administrator will contact you.
+
+waiting:
+  hours: 2                # no answer from the CRM in 2 hours → abandoned + final JSON
+
+incompatible_with: [cancel_booking, reschedule_booking, group_booking]
+
+resume:
+  mode: within_hours
+  hours: 24
+
+cancel:
+  description:
+    uk: Клієнт каже, що передумав записуватися, запис йому не потрібен або просить зупинитися.
+    en: The client says they changed their mind, do not need the booking or ask to stop.
+
+actions:
+  - on: waiting           # the request goes to the CRM, which answers with an event
+    do: http_post
+    endpoint: results_api
+  - on: completed
+    do: http_post
+    endpoint: results_api
+  - on: cancelled
+    do: http_post
+    endpoint: results_api
+  - on: abandoned
+    do: http_post
+    endpoint: results_api

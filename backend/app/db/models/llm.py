@@ -36,7 +36,7 @@ class LlmRole(StrEnum):
 
 
 # roles that need structured JSON output from the model
-ROLES_NEED_JSON_SCHEMA = {LlmRole.REWRITE, LlmRole.EXTRACT, LlmRole.DECIDE}
+ROLES_NEED_JSON_SCHEMA = {LlmRole.REWRITE, LlmRole.EXTRACT, LlmRole.DECIDE, LlmRole.VISION}
 
 
 class LlmModel(IdMixin, TimestampsMixin, Base):

@@ -27,8 +27,9 @@ from app.api.admin.common import (
 )
 from app.api.admin.deps import TenantAdmin, TenantOperator
 from app.api.deps import ServicesDep
+from app.api.v1.messages import AttachmentIn
 from app.channels.instagram.window import window_closes_at
-from app.core.ingest import save_client_message
+from app.core.ingest import attachment_note, save_client_message
 from app.core.turn import run_turn
 from app.db.models import (
     OPEN_STATUSES,
@@ -43,6 +44,7 @@ from app.db.models import (
     Message,
     MessageRole,
     OperatorTask,
+    Receipt,
     Scenario,
     ScenarioRun,
     TaskStatus,
@@ -255,15 +257,51 @@ async def get_result(
                 .order_by(Delivery.created_at.desc())
             )
         ).all()
+        receipts = (
+            (
+                await session.execute(
+                    select(Receipt).where(Receipt.run_id == run.id).order_by(Receipt.created_at)
+                )
+            )
+            .scalars()
+            .all()
+        )
     return {
         "result": {
             **run_dict(run, scenario.definition if scenario else None),
             "field_states": run.fields or {},
             "events": run.events or [],
+            "data": _public_data(run.data or {}),
             "scenario_title": scenario.title if scenario else None,
         },
         "contact": contact_dict(contact),
         "deliveries": [delivery_dict(d, name) for d, name in deliveries],
+        "receipts": [receipt_dict(r) for r in receipts],
+    }
+
+
+def _public_data(data: dict[str, Any]) -> dict[str, Any]:
+    """What the admin shows of run.data: confirmation, waiting, the external event."""
+    keys = ("confirmed_at", "waiting_for", "waiting_since", "receipt_id", "external")
+    return {k: data[k] for k in keys if k in data}
+
+
+def receipt_dict(r: Receipt) -> dict[str, Any]:
+    return {
+        "id": str(r.id),
+        "field": r.field_key,
+        "url": r.url,
+        "content_type": r.content_type,
+        "status": r.status,
+        "review_reason": r.review_reason,
+        "extracted": r.extracted or {},
+        "expected": r.expected or {},
+        "issues": r.issues or [],
+        "decided_by": sid(r.decided_by),
+        "decided_at": iso(r.decided_at),
+        "decision_note": r.decision_note,
+        "llm_call_id": sid(r.llm_call_id),
+        "created_at": iso(r.created_at),
     }
 
 
@@ -618,7 +656,10 @@ async def _check_overrides(services: Services, body: "SandboxTurnIn") -> Overrid
 class SandboxTurnIn(BaseModel):
     channel_id: uuid.UUID | None = None
     session: str = Field(default="default", pattern=SESSION_NAME)
-    text: str = Field(min_length=1, max_length=8000)
+    text: str | None = Field(default=None, max_length=8000)
+    # a link to an image / file, as a client would send it (a receipt check is real:
+    # the vision model reads it)
+    attachments: list[AttachmentIn] = Field(default_factory=list, max_length=10)
     # only for this turn; the role settings in the DB stay as they are
     model: str | None = Field(default=None, max_length=200)
     reasoning_effort: str | None = Field(default=None, max_length=16)  # "" = off
@@ -631,6 +672,10 @@ async def sandbox_turn(
     """One turn as a client would have it, answered here. Scenario runs and fields are
     real (and visible with `sandbox=true`), but no actions, timers or sends happen."""
     overrides = await _check_overrides(services, body)
+    files = [a.model_dump(mode="json", exclude_none=True) for a in body.attachments]
+    text = (body.text or "").strip() or (attachment_note(files) if files else "")
+    if not text:
+        raise AppError("sandbox.text_required")
     now = services.clock.now()
     async with services.sm() as session, session.begin():
         channel = await _sandbox_channel(session, access.tenant_id, body.channel_id)
@@ -640,8 +685,9 @@ async def sandbox_turn(
             channel_id=channel.id,
             contact_external_id=sandbox_external_id(access.user.id, body.session),
             contact_name=f"Sandbox · {access.user.name or access.user.email}",
-            text=body.text,
+            text=text,
             now=now,
+            attachments=files,
         )
         await session.execute(
             update(Conversation)

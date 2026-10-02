@@ -24,6 +24,31 @@
               <RunFields :run="data.result" :states="data.result.field_states" />
             </div>
 
+            <div v-if="data.receipts?.length" class="card card-body space-y-3">
+              <h2 class="card-title">{{ t('receipts.title') }}</h2>
+              <div v-for="r in data.receipts" :key="r.id" class="grid gap-3 md:grid-cols-[9rem_1fr] rounded-button border border-slate-200 dark:border-slate-700 p-3">
+                <a :href="r.url" target="_blank" rel="noopener noreferrer" class="block">
+                  <img v-if="!r.content_type || r.content_type.startsWith('image/')" :src="r.url" :alt="t('operator.receipt_image')" class="max-h-48 w-full rounded-button object-contain bg-white" loading="lazy" />
+                  <span v-else class="text-sm text-primary">{{ t('operator.open_original') }}</span>
+                </a>
+                <div class="space-y-2 text-sm">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <span :class="RECEIPT_COLORS[r.status] || 'badge-gray'">{{ t(`receipts.status.${r.status}`) }}</span>
+                    <span class="code text-xs">{{ r.field }}</span>
+                    <span class="text-xs muted">{{ f.dateTime(r.created_at) }}</span>
+                    <span v-if="r.review_reason && r.status === 'review'" class="text-xs muted">{{ t(`operator.review_reason.${r.review_reason}`) }}</span>
+                  </div>
+                  <ReceiptFacts :extracted="r.extracted" :expected="r.expected" />
+                  <ul v-if="r.issues.length" class="space-y-0.5">
+                    <li v-for="(x, i) in r.issues" :key="i" class="text-rose-600 text-xs">• {{ t(`receipt_issue.${x.code}`, x.params || {}) }}</li>
+                  </ul>
+                  <p v-if="r.decided_at" class="text-xs muted">
+                    {{ t('receipts.decided', { at: f.dateTime(r.decided_at) }) }}<template v-if="r.decision_note">: {{ r.decision_note }}</template>
+                  </p>
+                </div>
+              </div>
+            </div>
+
             <div class="card">
               <div class="card-body pb-0"><h2 class="card-title">{{ t('results.deliveries') }}</h2></div>
               <UiState :empty="!data.deliveries.length ? t('results.no_deliveries') : false">
@@ -65,6 +90,16 @@
               <Row :label="t('results.last_activity')">{{ f.dateTime(data.result.last_activity_at) }}</Row>
               <Row :label="t('results.finished')">{{ f.dateTime(data.result.finished_at) }}</Row>
               <Row :label="t('results.result_id')"><span class="code break-all">{{ data.result.id }}</span></Row>
+              <Row v-if="data.result.data?.confirmed_at" :label="t('results.confirmed')">{{ f.dateTime(data.result.data.confirmed_at) }}</Row>
+              <Row v-if="data.result.data?.waiting_for" :label="t('results.waiting_for')">
+                {{ t(`results.waiting.${data.result.data.waiting_for}`) }}
+                <span v-if="data.result.data.waiting_since" class="muted">· {{ f.relative(data.result.data.waiting_since) }}</span>
+              </Row>
+            </div>
+            <div v-if="data.result.data?.external" class="card card-body space-y-2">
+              <h2 class="card-title">{{ t('results.external') }}</h2>
+              <p class="text-sm"><span class="code">{{ data.result.data.external.event }}</span> · <span class="muted">{{ f.dateTime(data.result.data.external.at) }}</span></p>
+              <JsonView v-if="Object.keys(data.result.data.external.data || {}).length" :value="data.result.data.external.data" collapsible :label="t('results.external_data')" />
             </div>
             <div class="card card-body">
               <h2 class="card-title mb-3">{{ t('results.events') }}</h2>
@@ -90,6 +125,8 @@ const f = useFormat()
 const route = useRoute()
 const { base, path, can } = useTenant()
 const { busy, run } = useAction()
+
+const RECEIPT_COLORS: Record<string, string> = { accepted: 'badge-green', review: 'badge-violet', rejected: 'badge-red' }
 
 const { data, loading, error, load } = useLoader(() =>
   api<any>(path(`/results/${route.params.id}`)),

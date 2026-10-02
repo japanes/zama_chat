@@ -70,6 +70,39 @@
           </div>
         </section>
 
+        <section class="card card-body space-y-4">
+          <h2 class="card-title">{{ t('settings.section.payments') }}</h2>
+          <div class="grid gap-4 md:grid-cols-2">
+            <div>
+              <label class="label">{{ t('settings.phone_region') }}</label>
+              <input v-model.trim="form.phone_region" class="input code uppercase" maxlength="2" placeholder="UA" />
+              <p class="hint">{{ t('settings.phone_region_hint') }}</p>
+            </div>
+            <div>
+              <label class="label">{{ t('settings.receipt_review') }}</label>
+              <select v-model="form.receipt_review" class="select">
+                <option value="always">{{ t('settings.receipt_review_mode.always') }}</option>
+                <option value="issues_only">{{ t('settings.receipt_review_mode.issues_only') }}</option>
+              </select>
+              <p class="hint">{{ t('settings.receipt_review_hint') }}</p>
+            </div>
+          </div>
+          <div v-if="form.receipt_review === 'issues_only'">
+            <label class="label">{{ t('settings.receipt_above') }}</label>
+            <p class="hint -mt-1 mb-2">{{ t('settings.receipt_above_hint') }}</p>
+            <div v-for="(row, i) in thresholds" :key="i" class="flex items-center gap-2 mb-2">
+              <input v-model.trim="row.currency" class="input w-24 code uppercase" maxlength="3" placeholder="UAH" />
+              <input v-model="row.amount" type="number" min="0" step="0.01" class="input w-40" />
+              <button type="button" class="btn-icon btn-ghost text-rose-600" :aria-label="t('common.delete')" @click="thresholds.splice(i, 1)">
+                <UiIcon name="trash" :size="16" />
+              </button>
+            </div>
+            <button type="button" class="btn-ghost btn-sm" @click="thresholds.push({ currency: '', amount: '' })">
+              <UiIcon name="plus" :size="14" /> {{ t('settings.receipt_above_add') }}
+            </button>
+          </div>
+        </section>
+
         <p v-if="saveError" class="alert-red">{{ saveError }}</p>
         <div class="flex justify-end">
           <button type="submit" class="btn-primary" :disabled="busy">{{ t('common.save') }}</button>
@@ -95,6 +128,8 @@ const form = ref<any>(null)
 const title = ref('')
 const busy = ref(false)
 const saveError = ref<string | null>(null)
+// receipt_review_above {"UAH": "5000"} as rows the form can edit
+const thresholds = ref<{ currency: string; amount: string | number }[]>([])
 
 const timezones = (() => {
   try {
@@ -114,6 +149,10 @@ const { loading, error, load } = useLoader(async () => {
   // the stored settings with defaults filled in; unknown keys stay as they are
   form.value = JSON.parse(JSON.stringify({ ...info.effective_settings, ...info.tenant.settings }))
   form.value.reply_language ||= {}
+  thresholds.value = Object.entries(form.value.receipt_review_above || {}).map(([currency, amount]) => ({
+    currency,
+    amount: String(amount),
+  }))
   return form.value
 })
 
@@ -121,6 +160,12 @@ async function save() {
   busy.value = true
   saveError.value = null
   try {
+    form.value.phone_region = (form.value.phone_region || '').toUpperCase()
+    form.value.receipt_review_above = Object.fromEntries(
+      thresholds.value
+        .filter((r) => r.currency.trim() && r.amount !== '' && r.amount != null)
+        .map((r) => [r.currency.trim().toUpperCase(), String(r.amount)]),
+    )
     await api(path(), { method: 'PATCH', body: { title: title.value, settings: form.value } })
     await loadInfo(true)
     await auth.fetchMe() // the tenant title in the switcher

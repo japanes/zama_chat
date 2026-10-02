@@ -152,8 +152,27 @@ async def patch_tenant(
         if body.settings is not None:
             # the whole settings object is replaced; checked before saving
             settings = TenantSettings.model_validate(body.settings).validate_rules()
+            before = TenantSettings.model_validate(tenant.settings or {})
             tenant.settings = settings.model_dump(mode="json")
             changes["settings"] = tenant.settings
+            if (before.receipt_review, before.receipt_review_above) != (
+                settings.receipt_review,
+                settings.receipt_review_above,
+            ):
+                # docs/03 §8: switching the human check of receipts is logged on its own
+                await audit(
+                    session,
+                    access.user,
+                    "tenant.receipt_review",
+                    tenant_id=tenant.id,
+                    target_type="tenant",
+                    target_id=tenant.id,
+                    data={
+                        "from": before.receipt_review,
+                        "to": settings.receipt_review,
+                        "above": {k: str(v) for k, v in settings.receipt_review_above.items()},
+                    },
+                )
             # a channel override must still fit the new tenant languages
             channels = (
                 await session.execute(select(Channel).where(Channel.tenant_id == tenant.id))

@@ -5,7 +5,9 @@
     "empty": "Nothing to do: no open tasks.",
     "kind": {
       "choose_reply": "Choose a reply",
-      "handover": "Handed over to a person"
+      "handover": "Handed over to a person",
+      "approve_action": "Approve an action",
+      "review_receipt": "Check a receipt"
     },
     "rebuilt": "The client wrote again, new variants are ready.",
     "show_new": "Show new variants",
@@ -22,7 +24,24 @@
     "take_over": "Take over",
     "write": "Write to the client",
     "write_hint": "The bot keeps answering. Take the conversation over to make it quiet.",
-    "cannot_write": "You cannot write to this client now: the reply window of the channel is closed."
+    "cannot_write": "You cannot write to this client now: the reply window of the channel is closed.",
+    "approve_text": "“{action}” on “{event}” waits for your approval.",
+    "scenario_label": "Scenario",
+    "approve": "Approve",
+    "reject": "Reject",
+    "reject_confirm": "Reject? The client gets no answer from it.",
+    "dismiss_action_confirm": "Close the task without doing anything?",
+    "receipt_image": "Receipt",
+    "open_original": "Open the original",
+    "review_reason": {
+      "always": "Every receipt is checked by a person",
+      "issues": "Code found problems",
+      "amount_above": "The amount is above the threshold"
+    },
+    "note": "Note",
+    "note_placeholder": "Why — stays with the receipt, the client does not see it",
+    "accept_receipt": "Payment is OK",
+    "reject_receipt": "Ask for another receipt"
   },
   "notifiers": {
     "sub": "Where the team is told about handovers, replies to choose, channel problems and scenario events.",

@@ -6,6 +6,8 @@
   stop                          choice  — none / pause_focus / cancel:<scenario>
   change_field                  choice  — none / a field of the focus that has an answer
   client_question               boolean — the message has the client's own question
+  confirm:<scenario>            choice  — yes / no / none: the client's answer to «is
+                                everything correct?» (only when the focus asked it)
 
 and the state sections Jev sees with them: the scenario in focus with its field states,
 the field the bot asked last, the paused scenarios.
@@ -21,13 +23,17 @@ from dataclasses import dataclass, field
 from app.db.models import DecisionType, RunStatus
 from app.decisions.engine import Question
 from app.scenarios.fields import PARTIAL, FieldState, load_states
-from app.scenarios.schema import FieldDef, FieldType, ScenarioDef, StartQuestion
+from app.scenarios.schema import ATTACHMENT_TYPES, FieldDef, FieldType, ScenarioDef, StartQuestion
 from app.scenarios.store import LoadedScenario, OpenRun, ScenarioView
 
 STOP = "stop"
 CHANGE_FIELD = "change_field"
 CLIENT_QUESTION = "client_question"
 NONE = "none"
+YES = "yes"
+NO = "no"
+# run.asking while the bot waits for the client's «yes» to the collected answers
+CONFIRM = "@confirm"
 PAUSE_FOCUS = "pause_focus"
 # TODO(review): the Jev probe checks which choice keys are accepted; ":" is assumed fine
 CANCEL_PREFIX = "cancel:"
@@ -56,6 +62,13 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "client_question_true": "The message has the client's own question or request.",
         "client_question_false": "The message only answers the bot or gives information.",
         "filter": "About the client's answer to the question «{q}»: {ask}",
+        "confirm": "The bot listed the client's answers for «{title}» and asked whether "
+        "everything is correct. What does the client answer?",
+        "confirm_yes": "The client confirms: everything is correct, agrees, says yes.",
+        "confirm_no": "The client says something is wrong or wants to change something.",
+        "confirm_none": "The client neither confirms nor rejects (asks something else or "
+        "the answer is unclear).",
+        "asked_confirm": "asked the client to confirm the collected answers",
     },
     "uk": {
         "field": "Чи є в останньому повідомленні клієнта відповідь на питання «{q}»?",
@@ -78,6 +91,13 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "client_question_true": "У повідомленні є власне питання або прохання клієнта.",
         "client_question_false": "Повідомлення лише відповідає боту або дає інформацію.",
         "filter": "Щодо відповіді клієнта на питання «{q}»: {ask}",
+        "confirm": "Бот перелічив відповіді клієнта для «{title}» і запитав, чи все "
+        "правильно. Що відповідає клієнт?",
+        "confirm_yes": "Клієнт підтверджує: усе правильно, погоджується, каже «так».",
+        "confirm_no": "Клієнт каже, що щось не так, або хоче щось змінити.",
+        "confirm_none": "Клієнт не підтверджує і не заперечує (питає інше або відповідь "
+        "незрозуміла).",
+        "asked_confirm": "попросив клієнта підтвердити зібрані відповіді",
     },
     "ru": {
         "field": "Есть ли в последнем сообщении клиента ответ на вопрос «{q}»?",
@@ -99,6 +119,13 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "client_question_true": "В сообщении есть собственный вопрос или просьба клиента.",
         "client_question_false": "Сообщение только отвечает боту или даёт информацию.",
         "filter": "Об ответе клиента на вопрос «{q}»: {ask}",
+        "confirm": "Бот перечислил ответы клиента для «{title}» и спросил, всё ли верно. "
+        "Что отвечает клиент?",
+        "confirm_yes": "Клиент подтверждает: всё верно, соглашается, говорит «да».",
+        "confirm_no": "Клиент говорит, что что-то не так, или хочет что-то изменить.",
+        "confirm_none": "Клиент не подтверждает и не возражает (спрашивает другое или ответ "
+        "непонятен).",
+        "asked_confirm": "попросил клиента подтвердить собранные ответы",
     },
 }
 DEFAULT_TEMPLATES = "en"
@@ -118,6 +145,10 @@ def field_key(scenario: str, field_name: str) -> str:
 
 def filter_key(scenario: str, field_name: str, flt: str) -> str:
     return f"filter:{scenario}.{field_name}.{flt}"
+
+
+def confirm_key(scenario: str) -> str:
+    return f"confirm:{scenario}"
 
 
 def cancel_option(scenario: str) -> str:
@@ -194,12 +225,27 @@ def change_question(focus: OpenRun, states: dict[str, FieldState], language: str
     criteria = {NONE: t["change_none"]}
     for f in defn.fields:
         fs = states[f.key]
-        if fs.value is None:
+        if fs.value is None or not asks_text(f):
             continue
         criteria[f.key] = t["change_option"].format(
             q=defn.text(f.question, language).text, value=preview(fs.value, 200)
         )
     return Question(CHANGE_FIELD, DecisionType.CHOICE, t["change"], criteria)
+
+
+def confirm_question(defn: ScenarioDef, language: str) -> Question:
+    t = templates(language)
+    return Question(
+        confirm_key(defn.key),
+        DecisionType.CHOICE,
+        t["confirm"].format(title=title_of(defn, language)),
+        {YES: t["confirm_yes"], NO: t["confirm_no"], NONE: t["confirm_none"]},
+    )
+
+
+def asks_text(f: FieldDef) -> bool:
+    """Fields the client answers with words (attachments and receipts come as files)."""
+    return f.type not in ATTACHMENT_TYPES
 
 
 def client_question(language: str) -> Question:
@@ -250,7 +296,7 @@ def build_questions(view: ScenarioView, language: str) -> ScenarioQuestions:
         defn = run.scenario.definition
         states = load_states(defn, run.fields)
         for f in defn.fields:
-            if not states[f.key].complete:
+            if not states[f.key].complete and asks_text(f):
                 add(field_question(defn, f, language))
 
     out = ScenarioQuestions(questions=list(found.values()))
@@ -260,6 +306,8 @@ def build_questions(view: ScenarioView, language: str) -> ScenarioQuestions:
         states = load_states(focus.scenario.definition, focus.fields)
         if any(fs.value is not None for fs in states.values()):
             out.questions.append(change_question(focus, states, language))
+        if focus.asking == CONFIRM:
+            out.questions.append(confirm_question(focus.scenario.definition, language))
     out.questions.append(client_question(language))
     out.sections = list(state_sections(view, language))
     return out
@@ -284,7 +332,9 @@ def state_sections(view: ScenarioView, language: str) -> Iterator[tuple[str, str
         defn = focus.scenario.definition
         states = load_states(defn, focus.fields)
         lines = [_field_line(defn, f, states[f.key], language) for f in defn.fields]
-        if focus.asking is not None:
+        if focus.asking == CONFIRM:
+            lines.append(f"The bot's last question: {templates('en')['asked_confirm']}")
+        elif focus.asking is not None:
             lines.append(f"The bot's last question was about: {focus.asking}")
         yield f"Scenario in progress: {title_of(defn, language)}", "\n".join(lines)
     others = [r for r in view.runs if r is not focus]

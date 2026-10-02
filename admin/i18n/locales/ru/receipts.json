@@ -1,0 +1,60 @@
+{
+  "receipts": {
+    "title": "Квитанции об оплате",
+    "read": "В квитанции",
+    "expected": "Ожидается",
+    "max_age": "не раньше чем {n} дн. назад",
+    "decided": "Решение {at}",
+    "fact": {
+      "amount": "Сумма",
+      "currency": "Валюта",
+      "date": "Дата",
+      "recipient": "Получатель",
+      "reference": "Номер",
+      "purpose": "Назначение",
+      "status": "Статус"
+    },
+    "status": {
+      "accepted": "Принята",
+      "review": "На проверке",
+      "rejected": "Отклонена"
+    }
+  },
+  "receipt_issue": {
+    "not_receipt": "Это не квитанция об оплате",
+    "unreadable": "Квитанцию невозможно прочитать",
+    "not_image": "Не изображение ({content_type})",
+    "fetch_failed": "Файл не удалось скачать ({reason})",
+    "vision_failed": "Модель со зрением не ответила ({reason})",
+    "duplicate_image": "Такое же изображение уже присылали",
+    "duplicate_reference": "Квитанцию с номером {reference} уже присылали",
+    "amount_missing": "В квитанции нет суммы",
+    "amount_mismatch": "Сумма {got}, ожидается {expected} {currency}",
+    "currency_mismatch": "Валюта {got}, ожидается {expected}",
+    "date_missing": "В квитанции нет даты",
+    "date_in_future": "Дата {date} в будущем",
+    "date_too_old": "Оплачено {date}, больше {max_days} дн. назад",
+    "recipient_missing": "В квитанции нет получателя",
+    "recipient_mismatch": "Получатель {got}, ожидается {expected}",
+    "status_not_success": "Статус платежа: {status}"
+  },
+  "field_issue": {
+    "phone_invalid": "Номер телефона неправильный",
+    "email_invalid": "Адрес почты неправильный",
+    "date_invalid": "Дата непонятна",
+    "date_in_past": "Дата уже прошла",
+    "date_too_far": "Дата дальше чем {max} дн. вперёд",
+    "time_invalid": "Время непонятно",
+    "number_invalid": "Не число",
+    "number_not_integer": "Не целое число",
+    "number_too_small": "Меньше {min}",
+    "number_too_large": "Больше {max}",
+    "list_too_few": "Меньше {min} пунктов",
+    "list_too_many": "Больше {max} пунктов",
+    "list_item_incomplete": "В пункте {n} не хватает: {fields}",
+    "attachment_kind": "Не тот тип файла, ожидается: {kinds}",
+    "receipt_unreadable": "Квитанцию невозможно прочитать",
+    "receipt_not_receipt": "Не квитанция об оплате",
+    "receipt_rejected": "Квитанцию отклонил человек"
+  }
+}

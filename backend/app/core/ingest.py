@@ -17,6 +17,12 @@ from app.db.base import new_id
 from app.db.models import Contact, Conversation, Message, MessageRole
 
 
+def attachment_note(attachments: list[dict[str, Any]]) -> str:
+    """Text for a message without words: the bot still sees that something came. The
+    files themselves go to the scenario step (attachment fields, receipts)."""
+    return "[" + ", ".join(str(a.get("type") or "file") for a in attachments) + "]"
+
+
 @dataclass
 class Ingested:
     contact_id: uuid.UUID

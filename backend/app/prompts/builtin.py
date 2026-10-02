@@ -7,7 +7,8 @@ and edited / versioned the same way in the admin.
 - select_presented — rewrite rules for picking one of the options the bot showed last
                    ("let's take the second one"), adapted from the legacy
                    context_manager_select_service;
-- search_context — rules for the reply model about the found catalog items / knowledge.
+- search_context — rules for the reply model about the found catalog items / knowledge;
+- receipt_vision — reading a payment receipt from an image (LLM `vision`, stage 6).
 """
 
 import json
@@ -17,6 +18,7 @@ EXTRACT_KEY = "extract"
 SCENARIO_STEP_KEY = "scenario_step"
 SELECT_PRESENTED_KEY = "select_presented"
 SEARCH_CONTEXT_KEY = "search_context"
+RECEIPT_VISION_KEY = "receipt_vision"
 
 # TODO(review): wording; check on real dialogues with make eval
 EXTRACT: dict[str, Any] = {
@@ -38,11 +40,20 @@ EXTRACT: dict[str, Any] = {
         "named something that is not among the options, or several options fit, return null",
         "If 'current_value' is given, return only what the client says now (new or "
         "corrected words), not the old value",
+        "For a field with 'norm' also return the property named in 'norm.property': the "
+        "same answer in the format of 'norm.format' (a date counted from 'today', a time "
+        "in 24 hours, a number with a dot). Return null there if you are not sure",
+        "For 'phone' and 'email' fields copy the number or the address exactly as written",
+        "For a 'list' field return an array with every item the client listed. If "
+        "'current_value' is given, it is the list so far: return the whole new list (keep "
+        "the old items unless the client removes or changes them). With 'item_fields' each "
+        "item is an object with those keys (null for a part the client did not say)",
     ],
     "fields": [],
     "client_message": "",
     "rewritten": "",
     "bot_question": "",
+    "today": "",
 }
 
 # TODO(review): wording; check on real dialogues with make eval
@@ -69,6 +80,18 @@ SCENARIO_STEP: dict[str, Any] = {
         "If 'scenario_cancelled' is given, confirm it calmly, without persuading",
         "If 'texts_language' is given, the scenario texts are in that language: translate "
         "them into the answer language",
+        "If 'confirm' is given, show the collected answers from 'confirm.summary' as a short "
+        "list and ask the client to confirm them ('confirm.question' is the meaning). If "
+        "'confirm.rejected' is true, the client said something is wrong: ask what to change",
+        "'waiting' lists the client's requests that are passed on and wait for a "
+        "confirmation: 'for' = 'event' (the business confirms it) or 'receipt_review' (a "
+        "person checks the payment receipt). For an item with 'new' true say it is passed "
+        "on (or the receipt is received and being checked) and the client will be told. "
+        "Mention the other items only when the client asks about them. Never say it is "
+        "booked, paid or done",
+        "If 'ask_next.attachment' is true, ask the client to send it as a photo or a file",
+        "If 'ask_next.payment' is given, tell the amount to pay ('amount' and 'currency') "
+        "before asking for the receipt",
         "Never ask more than one scenario question in one message",
     ]
 }
@@ -105,12 +128,37 @@ SEARCH_CONTEXT: dict[str, Any] = {
 }
 
 
+# TODO(review): wording; try on real receipts (Monobank, PrivatBank, card terminals)
+RECEIPT_VISION: dict[str, Any] = {
+    "task": (
+        "The image is sent by a client as a payment receipt. Read it and return the JSON "
+        "object of the schema. Copy what is written; never guess"
+    ),
+    "rules": [
+        "is_receipt: true only for a payment receipt / bank transfer confirmation / "
+        "payment screenshot; false for anything else",
+        "amount: the paid amount as a number with a dot, without the currency and the fee; "
+        "null if it is not visible",
+        "currency: ISO 4217 code (UAH for грн / ₴, EUR, USD…); null if not visible",
+        "date: the payment date and time as YYYY-MM-DDTHH:MM (or YYYY-MM-DD); null if not visible",
+        "recipient: the receiver's name as written; recipient_account: the receiver's IBAN "
+        "or card number (masked digits as on the receipt)",
+        "reference: the receipt / transaction number; purpose: the payment purpose",
+        "status: 'success' when the payment is done, 'pending' when it is in progress, "
+        "'failed' when it failed, null when not shown",
+        "readable: false when the image is too blurry or cut to read the amount",
+    ],
+    # nothing about the expected amount on purpose: the model must read, not confirm
+}
+
+
 def builtin_prompts() -> dict[str, str]:
     return {
         EXTRACT_KEY: json.dumps(EXTRACT, ensure_ascii=False, indent=4),
         SCENARIO_STEP_KEY: json.dumps(SCENARIO_STEP, ensure_ascii=False, indent=4),
         SELECT_PRESENTED_KEY: json.dumps(SELECT_PRESENTED, ensure_ascii=False, indent=4),
         SEARCH_CONTEXT_KEY: json.dumps(SEARCH_CONTEXT, ensure_ascii=False, indent=4),
+        RECEIPT_VISION_KEY: json.dumps(RECEIPT_VISION, ensure_ascii=False, indent=4),
     }
 
 

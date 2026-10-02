@@ -4,7 +4,7 @@
 
 // Every locale is split into the same files (one per area of the admin);
 // `make i18n-check` makes sure all locales have the same keys.
-const LOCALE_FILES = ['common', 'errors', 'activity', 'scenarios', 'settings', 'models', 'operator', 'search']
+const LOCALE_FILES = ['common', 'errors', 'activity', 'scenarios', 'settings', 'models', 'operator', 'search', 'receipts']
 
 const locale = (code: string, name: string) => ({
   code,

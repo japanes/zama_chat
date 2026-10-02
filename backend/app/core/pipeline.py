@@ -19,7 +19,13 @@ from app.core.language import detect_client_language, reply_language_for
 from app.core.rewrite import PROMPT_KEY as REWRITE_KEY
 from app.core.rewrite import rewrite
 from app.core.routing import route
-from app.prompts.builtin import EXTRACT_KEY, SELECT_PRESENTED, SELECT_PRESENTED_KEY, prompt_rules
+from app.prompts.builtin import (
+    EXTRACT_KEY,
+    RECEIPT_VISION_KEY,
+    SELECT_PRESENTED,
+    SELECT_PRESENTED_KEY,
+    prompt_rules,
+)
 from app.prompts.store import load_prompts
 from app.scenarios.questions import build_questions
 from app.scenarios.runtime import run_scenarios
@@ -31,7 +37,13 @@ from app.search.step import UNKNOWN_HANDOVER, SearchOutcome, search_question, se
 if TYPE_CHECKING:
     from app.services import Services
 
-PROMPT_KEYS = (REWRITE_KEY, *respond_step.PROMPT_KEYS, EXTRACT_KEY, SELECT_PRESENTED_KEY)
+PROMPT_KEYS = (
+    REWRITE_KEY,
+    *respond_step.PROMPT_KEYS,
+    EXTRACT_KEY,
+    SELECT_PRESENTED_KEY,
+    RECEIPT_VISION_KEY,
+)
 REQUIRED_PROMPTS = (REWRITE_KEY, respond_step.SYSTEM_KEY, respond_step.USER_KEY)
 
 

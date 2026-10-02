@@ -48,7 +48,7 @@ const api = useApi()
 const { path } = useTenant()
 usePage(() => [{ label: t('nav.operator') }])
 
-const KINDS = ['all', 'choose_reply', 'handover'] as const
+const KINDS = ['all', 'choose_reply', 'handover', 'approve_action', 'review_receipt'] as const
 const POLL_MS = 5000
 const kind = ref<(typeof KINDS)[number]>('all')
 

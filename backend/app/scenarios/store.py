@@ -38,6 +38,8 @@ class OpenRun:
     delivery_seq: int
     started_at: datetime
     last_activity_at: datetime
+    # stage 6: confirmed_at, waiting_for, waiting_since, external, events_seen
+    data: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -60,11 +62,37 @@ class ScenarioView:
         return next((r for r in self.runs if r.scenario.key == key), None)
 
 
-def is_expired(defn: ScenarioDef, last_activity_at: datetime, now: datetime) -> bool:
+def expires_at(
+    defn: ScenarioDef,
+    last_activity_at: datetime,
+    *,
+    status: str | None = None,
+    data: dict[str, Any] | None = None,
+) -> datetime | None:
+    """When an open run is abandoned: a waiting run — `waiting.hours` after it started
+    waiting; others — `resume: within_hours` after the last activity. None = never."""
+    if status == RunStatus.WAITING:
+        if defn.waiting.hours is None:
+            return None
+        since = (data or {}).get("waiting_since")
+        start = datetime.fromisoformat(since) if isinstance(since, str) else last_activity_at
+        return start + timedelta(hours=defn.waiting.hours)
     resume = defn.resume
     if resume.mode != "within_hours" or resume.hours is None:
-        return False
-    return now >= last_activity_at + timedelta(hours=resume.hours)
+        return None
+    return last_activity_at + timedelta(hours=resume.hours)
+
+
+def is_expired(
+    defn: ScenarioDef,
+    last_activity_at: datetime,
+    now: datetime,
+    *,
+    status: str | None = None,
+    data: dict[str, Any] | None = None,
+) -> bool:
+    at = expires_at(defn, last_activity_at, status=status, data=data)
+    return at is not None and now >= at
 
 
 def _loaded(row: Scenario, position: int = 0) -> LoadedScenario | None:
@@ -132,8 +160,11 @@ async def load_view(
             delivery_seq=run.delivery_seq,
             started_at=run.started_at,
             last_activity_at=run.last_activity_at,
+            data=dict(run.data or {}),
         )
-        if is_expired(loaded.definition, run.last_activity_at, now):
+        if is_expired(
+            loaded.definition, run.last_activity_at, now, status=run.status, data=run.data
+        ):
             view.expired.append(item)
         else:
             view.runs.append(item)

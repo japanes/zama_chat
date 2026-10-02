@@ -5,6 +5,7 @@ does not set is taken from the tenant.
 """
 
 import re
+from decimal import Decimal
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -14,6 +15,9 @@ from app.errors import AppError
 LANG_RE = re.compile(r"^[a-z]{2,3}(-[a-z0-9]{2,8})?$")
 ANY_LANGUAGE = "*"
 UNKNOWN_ANSWER = ("say", "handover")
+RECEIPT_REVIEW = ("always", "issues_only")
+REGION_RE = re.compile(r"^[A-Z]{2}$")
+CURRENCY_RE = re.compile(r"^[A-Z]{3}$")
 
 # keys a channel may override on top of the tenant
 CHANNEL_OVERRIDABLE = ("languages", "reply_language", "business_description", "bot_name")
@@ -38,6 +42,15 @@ class TenantSettings(BaseModel):
     # says it has no answer (legacy i_dont_know_rules); "handover" — also hands the
     # conversation to a human. TODO(review): default
     unknown_answer: str = "say"
+    # phone numbers without a country code are read as numbers of this country
+    phone_region: str = "UA"
+    # payment receipts (docs/03 §8): "always" — a person checks every receipt (default);
+    # "issues_only" — code accepts a receipt without issues. Only an owner / admin may
+    # switch it (the settings API is theirs); the change goes to the audit log.
+    receipt_review: str = "always"
+    # even with issues_only a person checks receipts above these amounts, per currency:
+    # {"UAH": "5000", "USD": "200"}
+    receipt_review_above: dict[str, Decimal] = Field(default_factory=dict)
 
     def validate_rules(self) -> "TenantSettings":
         if not self.languages:
@@ -59,6 +72,13 @@ class TenantSettings(BaseModel):
             raise AppError("tenant.unknown_answer_invalid", {"value": self.unknown_answer})
         if self.silence_minutes < 1:
             raise AppError("tenant.silence_minutes_invalid", {"value": self.silence_minutes})
+        if not REGION_RE.match(self.phone_region):
+            raise AppError("tenant.phone_region_invalid", {"value": self.phone_region})
+        if self.receipt_review not in RECEIPT_REVIEW:
+            raise AppError("tenant.receipt_review_invalid", {"value": self.receipt_review})
+        for currency, amount in self.receipt_review_above.items():
+            if not CURRENCY_RE.match(currency) or amount < 0:
+                raise AppError("tenant.receipt_threshold_invalid", {"currency": currency})
         return self
 
     @property

@@ -9,6 +9,7 @@ Not called gateway.py on purpose — not to confuse it with the Vercel AI Gatewa
 
 import asyncio
 import json
+import re
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -56,6 +57,23 @@ class Overrides:
 
     model: str | None = None
     reasoning_effort: str | None = None
+
+
+_DATA_URL_RE = re.compile(r"^data:([\w/+.-]+);base64,(.*)$", re.S)
+
+
+def loggable(value: Any) -> Any:
+    """The request as it goes to the log: images sent inline (receipts) are replaced by
+    their type and size — the log must not hold megabytes of base64."""
+    if isinstance(value, dict):
+        return {k: loggable(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [loggable(v) for v in value]
+    if isinstance(value, str) and value.startswith("data:"):
+        m = _DATA_URL_RE.match(value)
+        if m:
+            return f"data:{m.group(1)};base64,<{len(m.group(2)) * 3 // 4} bytes>"
+    return value
 
 
 class LLMService:
@@ -341,7 +359,7 @@ class LLMService:
             model=spec.name,
             prompt_key=prompt_key,
             prompt_version=prompt_version,
-            request=request,
+            request=loggable(request),
             response=raw,
             tokens_in=result.tokens_in if result else 0,
             tokens_cached=result.tokens_cached if result else 0,

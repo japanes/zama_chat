@@ -7,6 +7,13 @@ from typing import Any
 
 PAUSED = "paused"
 FOCUSED = "focused"
+# a receipt went to a person; the run waits for the decision
+RECEIPT_REVIEW = "receipt_review"
+# a person decided on a receipt / an external event came (POST /v1/events)
+RECEIPT_ACCEPTED = "receipt_accepted"
+RECEIPT_REJECTED = "receipt_rejected"
+EXTERNAL = "external"
+REOPENED = "reopened"
 
 
 @dataclass(frozen=True)

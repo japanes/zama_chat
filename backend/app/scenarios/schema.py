@@ -12,6 +12,7 @@ in its language) and returns warnings in the same form.
 import re
 from collections.abc import Iterator
 from dataclasses import dataclass
+from decimal import Decimal
 from enum import StrEnum
 from typing import Annotated, Any, Literal
 
@@ -113,6 +114,21 @@ class FieldType(StrEnum):
     CHOICE = "choice"
     YES_NO = "yes_no"
     CATALOG = "catalog"  # an item of the tenant's catalog (stage 5)
+    # stage 6: the value is checked and normalized by code (scenarios/typed.py)
+    DATE = "date"
+    TIME = "time"
+    PHONE = "phone"
+    EMAIL = "email"
+    NUMBER = "number"
+    LIST = "list"  # several items: guests, positions of an order…
+    ATTACHMENT = "attachment"  # a photo / file the client sends
+    RECEIPT = "receipt"  # a payment receipt: read by a vision model, checked by code
+
+
+# filled by code from the attachments of the client's message, never by the extract model
+ATTACHMENT_TYPES = (FieldType.ATTACHMENT, FieldType.RECEIPT)
+# the extract model also returns the machine value (`<prop>__norm`), code checks it
+NORM_TYPES = (FieldType.DATE, FieldType.TIME, FieldType.NUMBER)
 
 
 class Option(Strict):
@@ -129,6 +145,60 @@ class CatalogSource(Strict):
     max_options: int = Field(default=5, ge=2, le=10)
 
 
+class DateSettings(Strict):
+    # a date before today is an error the bot re-asks (booking); true for a birthday…
+    allow_past: bool = False
+    # at most this many days ahead; None = no limit
+    max_days_ahead: int | None = Field(default=None, ge=0, le=3650)
+
+
+class NumberSettings(Strict):
+    min: float | None = None
+    max: float | None = None
+    integer: bool = False
+
+
+class ListItemField(Strict):
+    """A part of every list item (guest: name, service…)."""
+
+    key: Key
+    label: LocalizedText
+    required: bool = True
+
+
+class ListSettings(Strict):
+    min_items: int = Field(default=1, ge=1, le=50)
+    max_items: int = Field(default=10, ge=1, le=50)
+    # empty: an item is a plain text
+    item_fields: list[ListItemField] = Field(default_factory=list)
+
+
+AttachmentKind = Literal["image", "video", "audio", "file"]
+
+
+class AttachmentSettings(Strict):
+    kinds: list[AttachmentKind] = Field(default_factory=lambda: ["image", "file"])
+    max_items: int = Field(default=1, ge=1, le=10)
+
+
+class ReceiptSettings(Strict):
+    """What a payment receipt must show (docs/03 §8). The expected amount is a fixed
+    `amount` or the price of the item chosen in a catalog field (`amount_field`), times
+    the number in `quantity_field`."""
+
+    amount: Decimal | None = Field(default=None, gt=0)
+    amount_field: Key | None = None
+    quantity_field: Key | None = None
+    # ISO 4217; with amount_field the item's currency is used when this is empty
+    currency: str | None = Field(default=None, pattern=r"^[A-Z]{3}$")
+    # names / IBAN / card endings of the receiver; one of them must be on the receipt
+    recipients: list[str] = Field(default_factory=list)
+    # the payment may be at most this many days old
+    max_age_days: int = Field(default=3, ge=0, le=365)
+    # allowed difference of the amount
+    tolerance: Decimal = Field(default=Decimal(0), ge=0)
+
+
 class FieldDef(Strict):
     key: Key
     type: FieldType = FieldType.TEXT
@@ -140,16 +210,57 @@ class FieldDef(Strict):
     # type catalog: which items fit (the value is the item title, the result also gets
     # its external_id in `refs`)
     catalog: CatalogSource | None = None
+    # settings of the typed fields (stage 6); each only for its own type
+    date: DateSettings | None = None
+    number: NumberSettings | None = None
+    items: ListSettings | None = None  # type list
+    attachment: AttachmentSettings | None = None
+    receipt: ReceiptSettings | None = None
     filters: list[Filter] = Field(default_factory=list)
     # asked only after these fields are filled
     ask_after: list[Key] = Field(default_factory=list)
 
 
 class Completion(StrEnum):
+    """When a run is completed (stage 6):
+    all_fields     — every field is complete (and confirmed, when `confirm` is set);
+    explicit_yes   — the same, the client's «yes» to the summary is required;
+    external_event — collected (and confirmed) → waiting for an event from outside
+                     (POST /v1/events: CRM booked, slot taken…), see `events`;
+    receipt        — all fields with a receipt field accepted (by code or an operator).
+    """
+
     ALL_FIELDS = "all_fields"
-    EXPLICIT_YES = "explicit_yes"  # stage 6
-    EXTERNAL_EVENT = "external_event"  # stage 6
-    RECEIPT = "receipt"  # stage 6
+    EXPLICIT_YES = "explicit_yes"
+    EXTERNAL_EVENT = "external_event"
+    RECEIPT = "receipt"
+
+
+class Confirm(Strict):
+    """The bot shows the collected answers and asks the client to confirm them."""
+
+    # default: «Is everything correct?» in the reply language
+    question: LocalizedText | None = None
+
+
+class EventResult(StrEnum):
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+    REOPEN = "reopen"  # the run goes back to the client: `reopen_fields` are asked again
+
+
+class EventRule(Strict):
+    """What an external event (POST /v1/events) does to a waiting run."""
+
+    result: EventResult
+    reopen_fields: list[Key] = Field(default_factory=list)
+    # the bot's message to the client; {field_key} and {data.name} are filled in
+    say: LocalizedText | None = None
+
+
+class Waiting(Strict):
+    # waiting for an event longer than this → abandoned (+ final JSON); None = forever
+    hours: float | None = Field(default=None, gt=0)
 
 
 class Resume(Strict):
@@ -170,6 +281,9 @@ class ActionEvent(StrEnum):
     FIELD_STUCK = "field_stuck"
     ALL_FIELDS = "all_fields"
     CONFIRMED = "confirmed"
+    # collected, waiting for an external event (completion: external_event) — the moment
+    # to send the request to the CRM
+    WAITING = "waiting"
     COMPLETED = "completed"
     CANCELLED = "cancelled"
     ABANDONED = "abandoned"
@@ -187,6 +301,8 @@ class Action(Strict):
     # field_filled / field_stuck only: just this field
     field: Key | None = None
     params: dict[str, Any] = Field(default_factory=dict)
+    # the action waits for an operator's «approve» (operator queue, approve_action)
+    requires_approval: bool = False
 
 
 class ScenarioDef(Strict):
@@ -197,9 +313,19 @@ class ScenarioDef(Strict):
     start: Start
     fields: list[FieldDef] = Field(min_length=1)
     completion: Completion = Completion.ALL_FIELDS
+    confirm: Confirm | None = None
+    # completion external_event: event name → what it does
+    events: dict[Key, EventRule] = Field(default_factory=dict)
+    waiting: Waiting = Field(default_factory=Waiting)
+    # scenarios that can not be open together with this one (both ways)
+    incompatible_with: list[Key] = Field(default_factory=list)
     resume: Resume = Field(default_factory=Resume)
     cancel: Cancel = Field(default_factory=Cancel)
     actions: list[Action] = Field(default_factory=list)
+
+    @property
+    def needs_confirm(self) -> bool:
+        return self.confirm is not None or self.completion == Completion.EXPLICIT_YES
 
     @property
     def threshold(self) -> int:
@@ -269,6 +395,9 @@ def _texts(defn: ScenarioDef) -> Iterator[tuple[str, str | dict[str, str]]]:
             yield f"fields.{f.key}.description", f.description
         for o in f.options:
             yield f"fields.{f.key}.options.{o.key}", o.label
+        if f.items is not None:
+            for item in f.items.item_fields:
+                yield f"fields.{f.key}.items.{item.key}", item.label
         for flt in f.filters:
             yield f"fields.{f.key}.filters.{flt.key}", flt.ask
             for name in ("yes", "no"):
@@ -277,9 +406,82 @@ def _texts(defn: ScenarioDef) -> Iterator[tuple[str, str | dict[str, str]]]:
                     yield f"fields.{f.key}.filters.{flt.key}.{name}", value
     if defn.cancel.description is not None:
         yield "cancel.description", defn.cancel.description
+    if defn.confirm is not None and defn.confirm.question is not None:
+        yield "confirm.question", defn.confirm.question
+    for name, rule in defn.events.items():
+        if rule.say is not None:
+            yield f"events.{name}.say", rule.say
     for i, action in enumerate(defn.actions):
         if action.do == "message_client" and action.params.get("text"):
             yield f"actions.{i}.text", action.params["text"]
+
+
+# typed settings and the type they belong to
+TYPED_SETTINGS = {
+    "date": FieldType.DATE,
+    "number": FieldType.NUMBER,
+    "items": FieldType.LIST,
+    "attachment": FieldType.ATTACHMENT,
+    "receipt": FieldType.RECEIPT,
+}
+
+
+def _check_typed(defn: ScenarioDef, f: FieldDef) -> None:
+    for name, field_type in TYPED_SETTINGS.items():
+        if getattr(f, name) is not None and f.type != field_type:
+            raise AppError(
+                "scenario.field_setting_not_allowed",
+                {"field": f.key, "type": str(f.type), "setting": name},
+            )
+    num = f.number
+    if num is not None and num.min is not None and num.max is not None and num.min > num.max:
+        raise AppError("scenario.number_range_invalid", {"field": f.key})
+    if f.items is not None:
+        if f.items.min_items > f.items.max_items:
+            raise AppError("scenario.list_range_invalid", {"field": f.key})
+        keys = [i.key for i in f.items.item_fields]
+        if len(set(keys)) != len(keys):
+            raise AppError("scenario.list_item_duplicate", {"field": f.key})
+    if f.type in ATTACHMENT_TYPES and f.filters:
+        # Jev does not see pictures: an attachment is checked by code only
+        raise AppError("scenario.filters_not_allowed", {"field": f.key, "type": str(f.type)})
+    r = f.receipt
+    if r is None:
+        return
+    if r.amount is not None and r.currency is None:
+        raise AppError("scenario.receipt_currency_required", {"field": f.key})
+    if r.amount_field is not None:
+        ref = r.amount_field
+        if ref not in defn.field_keys or defn.field(ref).type != FieldType.CATALOG:
+            raise AppError("scenario.receipt_amount_field_invalid", {"field": f.key, "ref": ref})
+    if r.quantity_field is not None:
+        ref = r.quantity_field
+        if ref not in defn.field_keys or defn.field(ref).type != FieldType.NUMBER:
+            raise AppError("scenario.receipt_quantity_field_invalid", {"field": f.key, "ref": ref})
+
+
+def _check_completion(defn: ScenarioDef) -> None:
+    if defn.completion == Completion.RECEIPT and not any(
+        f.type == FieldType.RECEIPT for f in defn.fields
+    ):
+        raise AppError("scenario.receipt_field_required")
+    if defn.completion == Completion.EXTERNAL_EVENT:
+        if not defn.events:
+            raise AppError("scenario.events_required")
+    elif defn.events:
+        raise AppError("scenario.events_not_allowed", {"mode": str(defn.completion)})
+    if defn.waiting.hours is not None and defn.completion != Completion.EXTERNAL_EVENT:
+        raise AppError("scenario.events_not_allowed", {"mode": str(defn.completion)})
+    for name, rule in defn.events.items():
+        if rule.result == EventResult.REOPEN and not rule.reopen_fields:
+            raise AppError("scenario.event_reopen_fields_required", {"event": name})
+        if rule.result != EventResult.REOPEN and rule.reopen_fields:
+            raise AppError("scenario.event_reopen_fields_not_allowed", {"event": name})
+        for ref in rule.reopen_fields:
+            if ref not in defn.field_keys:
+                raise AppError("scenario.event_field_unknown", {"event": name, "field": ref})
+    if defn.key in defn.incompatible_with:
+        raise AppError("scenario.incompatible_self")
 
 
 KNOWN_ACTIONS = ("http_post", "notify_telegram", "notify_email", "message_client", "handover")
@@ -326,6 +528,7 @@ def check_definition(
             raise AppError("scenario.options_not_allowed", {"field": f.key, "type": str(f.type)})
         if f.type != FieldType.CATALOG and f.catalog is not None:
             raise AppError("scenario.catalog_not_allowed", {"field": f.key, "type": str(f.type)})
+        _check_typed(defn, f)
     if cycle := _cycle(defn):
         raise AppError("scenario.ask_after_cycle", {"fields": cycle})
 
@@ -345,6 +548,7 @@ def check_definition(
 
     if defn.resume.mode == "within_hours" and defn.resume.hours is None:
         raise AppError("scenario.resume_hours_required")
+    _check_completion(defn)
     for i, action in enumerate(defn.actions):
         if action.do not in actions:
             raise AppError("scenario.action_unknown", {"index": i, "do": action.do})
@@ -372,9 +576,9 @@ def check_definition(
                         "params": {"path": path, "language": lang},
                     }
                 )
-    if defn.completion != Completion.ALL_FIELDS:
-        # TODO(stage 6): explicit_yes / external_event / receipt; until then the run waits
-        warnings.append(
-            {"code": "scenario.completion_not_supported", "params": {"mode": defn.completion}}
-        )
+    for f in defn.fields:
+        r = f.receipt
+        if f.type == FieldType.RECEIPT and (r is None or (r.amount is None and not r.amount_field)):
+            # nothing to compare the amount with: every receipt goes to an operator
+            warnings.append({"code": "scenario.receipt_amount_missing", "params": {"field": f.key}})
     return warnings

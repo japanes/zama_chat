@@ -1,0 +1,102 @@
+# Moving an existing booking (stage 6; from the legacy script 22_reschedule_booking).
+# TODO(review): wording; `booking` is plain text until the CRM gives us the client's
+# bookings (then a choice from them).
+key: reschedule_booking
+title:
+  uk: Перенесення запису
+  en: Reschedule a booking
+language: uk
+description:
+  uk: Клієнт, який уже записаний, хоче змінити дату чи час свого візиту.
+  en: A client who already has a booking wants to change its date or time.
+
+start:
+  questions:
+    - key: wants_reschedule
+      ask:
+        uk: Клієнт прямо просить перенести свій наявний запис на інший день чи час (а не просто питає про вільний час)?
+        en: Does the client directly ask to move their existing booking to another day or time (not just ask about free slots)?
+      weight: 2
+  threshold: 2
+
+fields:
+  - key: booking
+    type: text
+    question:
+      uk: Який саме запис перенести? Назвіть послугу та поточні дату й час.
+      en: Which booking should we move? Name the service and its current date and time.
+    description:
+      uk: Послуга та поточні дата/час запису, який клієнт хоче перенести.
+      en: The service and the current date / time of the booking the client wants to move.
+    filters:
+      - key: booking_identified
+        ask:
+          uk: Із відповіді зрозуміло, який саме запис клієнт хоче перенести (послуга або дата/час)?
+          en: Is it clear from the answer which booking the client wants to move (the service or the date / time)?
+
+  - key: new_date
+    type: date
+    question:
+      uk: На яку дату перенести запис?
+      en: Which date should we move it to?
+    date:
+      max_days_ahead: 60
+
+  - key: new_time
+    type: time
+    question:
+      uk: О котрій годині вам буде зручно?
+      en: What time would suit you?
+
+confirm: {}
+
+completion: external_event
+
+events:
+  rescheduled:
+    result: completed
+    say:
+      uk: Запис перенесено на {new_date} о {new_time}. До зустрічі!
+      en: Your booking is moved to {new_date} at {new_time}. See you!
+  slot_taken:
+    result: reopen
+    reopen_fields: [new_date, new_time]
+    say:
+      uk: На жаль, цей час зайнятий. Оберіть, будь ласка, інший.
+      en: Sorry, this time is taken. Please choose another one.
+  not_found:
+    result: reopen
+    reopen_fields: [booking]
+    say:
+      uk: Не можу знайти такий запис. Уточніть, будь ласка, послугу та дату.
+      en: I cannot find this booking. Please tell me the service and the date.
+  failed:
+    result: cancelled
+    say:
+      uk: Не вдалося перенести запис. Адміністратор зв'яжеться з вами.
+      en: We could not move the booking. The administrator will contact you.
+
+waiting:
+  hours: 2
+
+incompatible_with: [beauty_booking, cancel_booking, group_booking]
+
+resume:
+  mode: within_hours
+  hours: 24
+
+cancel:
+  description:
+    uk: Клієнт передумав переносити запис або каже, що залишає все як є.
+    en: The client no longer wants to move the booking or says to keep it as it is.
+
+actions:
+  - on: waiting
+    do: http_post
+    endpoint: results_api
+  - on: completed
+    do: http_post
+    endpoint: results_api
+  - on: cancelled
+    do: http_post
+    endpoint: results_api

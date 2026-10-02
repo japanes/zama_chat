@@ -1,0 +1,70 @@
+# Cancelling a booking (stage 6; from the legacy script 23_cancel_booking).
+# The client confirms; the cancellation goes to the CRM after an operator approves it.
+# TODO(review): wording; whether a cancellation needs an operator's approval.
+key: cancel_booking
+title:
+  uk: Скасування запису
+  en: Cancel a booking
+language: uk
+description:
+  uk: Клієнт чітко хоче скасувати свій запис.
+  en: The client clearly wants to cancel their booking.
+
+start:
+  questions:
+    - key: wants_cancel
+      ask:
+        uk: Клієнт чітко каже, що хоче скасувати свій запис або не прийде (а не лише сумнівається)?
+        en: Does the client clearly say they want to cancel their booking or will not come (not just doubt)?
+      weight: 1
+  threshold: 1
+
+fields:
+  - key: booking
+    type: text
+    question:
+      uk: Який запис скасувати? Назвіть послугу та дату.
+      en: Which booking should we cancel? Name the service and the date.
+    filters:
+      - key: booking_identified
+        ask:
+          uk: Із відповіді зрозуміло, який саме запис клієнт хоче скасувати?
+          en: Is it clear from the answer which booking the client wants to cancel?
+
+  - key: reason
+    type: text
+    question:
+      uk: Підкажіть, будь ласка, причину — так ми станемо кращими. Можна пропустити.
+      en: Could you tell us why? It helps us improve. You can skip it.
+    description:
+      uk: Причина скасування або «без причини», «не хочу казати».
+      en: The reason, or "no reason", "rather not say".
+
+completion: explicit_yes
+confirm:
+  question:
+    uk: Скасувати цей запис?
+    en: Cancel this booking?
+
+incompatible_with: [beauty_booking, reschedule_booking, group_booking]
+
+resume:
+  mode: within_hours
+  hours: 24
+
+cancel:
+  description:
+    uk: Клієнт передумав скасовувати і залишає запис.
+    en: The client changed their mind and keeps the booking.
+
+actions:
+  - on: completed
+    do: http_post
+    endpoint: results_api
+    requires_approval: true
+  - on: completed
+    do: message_client
+    params:
+      text:
+        uk: Запит на скасування прийнято. Будемо раді бачити вас наступного разу!
+        en: Your cancellation request is received. We will be glad to see you next time!

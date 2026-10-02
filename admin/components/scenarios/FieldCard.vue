@@ -65,8 +65,128 @@
         </div>
       </div>
 
+      <!-- date -->
+      <div v-if="field.type === 'date'" class="grid gap-4 md:grid-cols-2">
+        <label class="flex items-center gap-2 text-sm mt-6">
+          <input v-model="field.date.allow_past" type="checkbox" class="checkbox" :disabled="readonly" />
+          {{ t('scenarios.date_allow_past') }}
+        </label>
+        <div>
+          <label class="label">{{ t('scenarios.date_max_days') }}</label>
+          <input v-model="field.date.max_days_ahead" type="number" min="0" max="3650" class="input" :placeholder="t('scenarios.no_limit')" :readonly="readonly" />
+        </div>
+      </div>
+
+      <!-- number -->
+      <div v-if="field.type === 'number'" class="grid gap-4 md:grid-cols-3">
+        <div>
+          <label class="label">{{ t('scenarios.number_min') }}</label>
+          <input v-model="field.number.min" type="number" class="input" :placeholder="t('scenarios.no_limit')" :readonly="readonly" />
+        </div>
+        <div>
+          <label class="label">{{ t('scenarios.number_max') }}</label>
+          <input v-model="field.number.max" type="number" class="input" :placeholder="t('scenarios.no_limit')" :readonly="readonly" />
+        </div>
+        <label class="flex items-center gap-2 text-sm mt-6">
+          <input v-model="field.number.integer" type="checkbox" class="checkbox" :disabled="readonly" />
+          {{ t('scenarios.number_integer') }}
+        </label>
+      </div>
+
+      <!-- list -->
+      <div v-if="field.type === 'list'" class="space-y-3">
+        <div class="grid gap-4 md:grid-cols-2">
+          <div>
+            <label class="label">{{ t('scenarios.list_min') }}</label>
+            <input v-model.number="field.items.min_items" type="number" min="1" max="50" class="input" :readonly="readonly" />
+          </div>
+          <div>
+            <label class="label">{{ t('scenarios.list_max') }}</label>
+            <input v-model.number="field.items.max_items" type="number" min="1" max="50" class="input" :readonly="readonly" />
+          </div>
+        </div>
+        <div>
+          <label class="label">{{ t('scenarios.list_item_fields') }}</label>
+          <p class="hint -mt-1 mb-2">{{ t('scenarios.list_item_fields_hint') }}</p>
+          <div v-for="(x, i) in field.items.item_fields" :key="i" class="flex flex-wrap items-start gap-2 mb-2">
+            <input v-model.trim="x.key" class="input w-36 code" :placeholder="t('scenarios.option_key')" :readonly="readonly" />
+            <LocalizedInput v-model="x.label" class="flex-1 min-w-[12rem]" :languages="languages" :main="main" :readonly="readonly" />
+            <label class="flex items-center gap-1.5 text-sm mt-7">
+              <input v-model="x.required" type="checkbox" class="checkbox" :disabled="readonly" />
+              {{ t('scenarios.required') }}
+            </label>
+            <button v-if="!readonly" type="button" class="btn-icon btn-ghost text-rose-600 mt-6" :aria-label="t('common.delete')" @click="field.items.item_fields.splice(i, 1)">
+              <UiIcon name="trash" :size="16" />
+            </button>
+          </div>
+          <button v-if="!readonly" type="button" class="btn-ghost btn-sm" @click="field.items.item_fields.push({ key: `part_${field.items.item_fields.length + 1}`, label: {}, required: true })">
+            <UiIcon name="plus" :size="14" /> {{ t('scenarios.add_item_field') }}
+          </button>
+        </div>
+      </div>
+
+      <!-- attachment -->
+      <div v-if="field.type === 'attachment'" class="grid gap-4 md:grid-cols-[1fr_10rem]">
+        <div>
+          <label class="label">{{ t('scenarios.attachment_kinds') }}</label>
+          <div class="flex flex-wrap gap-3">
+            <label v-for="k in ATTACHMENT_KINDS" :key="k" class="flex items-center gap-1.5 text-sm">
+              <input type="checkbox" class="checkbox" :checked="field.attachment.kinds.includes(k)" :disabled="readonly" @change="toggleKind(k)" />
+              {{ t(`scenarios.attachment_kind.${k}`) }}
+            </label>
+          </div>
+        </div>
+        <div>
+          <label class="label">{{ t('scenarios.attachment_max') }}</label>
+          <input v-model.number="field.attachment.max_items" type="number" min="1" max="10" class="input" :readonly="readonly" />
+        </div>
+      </div>
+
+      <!-- receipt -->
+      <div v-if="field.type === 'receipt'" class="space-y-3">
+        <p class="hint">{{ t('scenarios.receipt_hint') }}</p>
+        <div class="grid gap-4 md:grid-cols-3">
+          <div>
+            <label class="label">{{ t('scenarios.receipt_amount') }}</label>
+            <input v-model="field.receipt.amount" type="number" min="0" step="0.01" class="input" :readonly="readonly" />
+          </div>
+          <div>
+            <label class="label">{{ t('scenarios.receipt_amount_field') }}</label>
+            <select v-model="field.receipt.amount_field" class="select" :disabled="readonly">
+              <option value="">—</option>
+              <option v-for="k in fieldsOf('catalog')" :key="k" :value="k">{{ k }}</option>
+            </select>
+          </div>
+          <div>
+            <label class="label">{{ t('scenarios.receipt_quantity_field') }}</label>
+            <select v-model="field.receipt.quantity_field" class="select" :disabled="readonly">
+              <option value="">—</option>
+              <option v-for="k in fieldsOf('number')" :key="k" :value="k">{{ k }}</option>
+            </select>
+          </div>
+          <div>
+            <label class="label">{{ t('scenarios.receipt_currency') }}</label>
+            <input v-model.trim="field.receipt.currency" class="input code uppercase" maxlength="3" placeholder="UAH" :readonly="readonly" />
+          </div>
+          <div>
+            <label class="label">{{ t('scenarios.receipt_max_age') }}</label>
+            <input v-model.number="field.receipt.max_age_days" type="number" min="0" max="365" class="input" :readonly="readonly" />
+          </div>
+          <div>
+            <label class="label">{{ t('scenarios.receipt_tolerance') }}</label>
+            <input v-model="field.receipt.tolerance" type="number" min="0" step="0.01" class="input" :readonly="readonly" />
+          </div>
+        </div>
+        <div>
+          <label class="label">{{ t('scenarios.receipt_recipients') }}</label>
+          <input v-model="recipientsText" class="input" :readonly="readonly" />
+          <p class="hint">{{ t('scenarios.receipt_recipients_hint') }}</p>
+        </div>
+      </div>
+
       <!-- filters -->
-      <div>
+      <p v-if="isFile" class="hint">{{ t('scenarios.file_no_filters') }}</p>
+      <div v-else>
         <label class="label">{{ t('scenarios.filters') }}</label>
         <p class="hint -mt-1 mb-2">{{ t('scenarios.filters_hint') }}</p>
         <div class="space-y-3">
@@ -123,13 +243,15 @@
 </template>
 
 <script setup lang="ts">
-import { FIELD_TYPES, KEY_RE } from '~/utils/scenario'
+import { ATTACHMENT_KINDS, ATTACHMENT_TYPES, FIELD_TYPES, KEY_RE } from '~/utils/scenario'
 
 const props = defineProps<{
   field: any
   index: number
   last: boolean
   allKeys: string[]
+  // all fields of the scenario (receipt: which field gives the price / the quantity)
+  allFields?: any[]
   languages: string[]
   main: string
   readonly?: boolean
@@ -148,7 +270,28 @@ const categoriesText = computed({
   },
 })
 
+// recipients as "a, b, c"
+const recipientsText = computed({
+  get: () => (props.field.receipt?.recipients || []).join(', '),
+  set: (v: string) => {
+    props.field.receipt.recipients = v.split(',').map((x) => x.trim()).filter(Boolean)
+  },
+})
+
+const isFile = computed(() => ATTACHMENT_TYPES.includes(props.field.type))
 const keyOk = computed(() => KEY_RE.test(props.field.key || ''))
+
+function fieldsOf(type: string): string[] {
+  return (props.allFields || []).filter((f) => f.type === type && f.key && f.key !== props.field.key).map((f) => f.key)
+}
+
+function toggleKind(k: string) {
+  const list = props.field.attachment.kinds as string[]
+  const i = list.indexOf(k)
+  if (i >= 0) {
+    if (list.length > 1) list.splice(i, 1)
+  } else list.push(k)
+}
 const others = computed(() => props.allKeys.filter((k) => k && k !== props.field.key))
 
 function toggleAfter(k: string) {

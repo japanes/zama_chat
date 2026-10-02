@@ -14,6 +14,8 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
+from app.core.ingest import attachment_note  # noqa: F401 — used by the webhook route
+
 SIGNATURE_HEADER = "X-Hub-Signature-256"
 
 
@@ -70,13 +72,6 @@ def attachment_list(raw: Any) -> list[dict[str, Any]]:
                 item[key] = payload[key]
         out.append(item)
     return out
-
-
-def attachment_note(attachments: list[dict[str, Any]]) -> str:
-    """Text for a message without words: the bot still sees that something came."""
-    # TODO(review): stage 6 reads images (receipts) and files; until then the bot only
-    # knows the type
-    return "[" + ", ".join(a.get("type", "file") for a in attachments) + "]"
 
 
 def _messaging_items(entry: dict[str, Any]) -> list[dict[str, Any]]:

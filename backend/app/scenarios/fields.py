@@ -1,8 +1,11 @@
 """Field states inside `scenario_runs.fields` and the rules on them (docs/04 §5).
 
   empty    — no answer yet;
-  partial  — an answer, but some filters failed (kept with the failed filter keys);
-  filled   — every filter passed.
+  partial  — an answer, but some filters failed (kept with the failed filter keys); a
+             typed field whose value code rejected has the failed check "@<issue>"
+             (scenarios/typed.py) and is not sent to Jev;
+  filled   — every filter passed;
+  review   — a receipt waits for an operator (the run is waiting meanwhile).
 
 `needs_recheck`: the answer came before its turn (ask_after not filled yet) or a field it
 depends on was corrected. It is checked again, with context, once ask_after is filled.
@@ -13,11 +16,12 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from typing import Any
 
-from app.scenarios.schema import FieldDef, ScenarioDef
+from app.scenarios.schema import FieldDef, FieldType, ScenarioDef
 
 EMPTY = "empty"
 PARTIAL = "partial"
 FILLED = "filled"
+REVIEW = "review"
 
 # the same field asked this many times in a row → stuck (seen in the admin, event
 # field_stuck); the bot keeps asking — there is no attempt limit
@@ -37,6 +41,11 @@ class FieldState:
     updated_at: str | None = None
     # type catalog: external_id of the chosen item (value = its title)
     ref: str | None = None
+    # typed fields (stage 6): the machine value — ISO date, E.164 phone, list items…
+    norm: Any = None
+    # typed fields: why code rejected the value (re-asked without Jev)
+    issue: str | None = None
+    issue_params: dict[str, Any] = field(default_factory=dict)
 
     @property
     def complete(self) -> bool:
@@ -66,14 +75,26 @@ def ask_after_ready(f: FieldDef, states: dict[str, FieldState]) -> bool:
     return all(states[ref].complete for ref in f.ask_after)
 
 
-def next_field(defn: ScenarioDef, states: dict[str, FieldState]) -> FieldDef | None:
+def next_field(
+    defn: ScenarioDef, states: dict[str, FieldState], *, confirmed: bool = True
+) -> FieldDef | None:
     """The first field, in definition order, that is not complete and whose ask_after
     fields are all complete. Partial fields and fields waiting for a recheck count as
-    not complete."""
+    not complete. A receipt in review is not asked; with `confirm` a receipt is asked only
+    after the client confirmed the rest (`confirmed`)."""
     for f in defn.fields:
-        if not states[f.key].complete and ask_after_ready(f, states):
-            return f
+        fs = states[f.key]
+        if fs.complete or fs.state == REVIEW or not ask_after_ready(f, states):
+            continue
+        if f.type == FieldType.RECEIPT and not confirmed:
+            continue
+        return f
     return None
+
+
+def complete_except_receipts(defn: ScenarioDef, states: dict[str, FieldState]) -> bool:
+    """Everything the client confirms is collected (a receipt comes after the «yes»)."""
+    return all(states[f.key].complete for f in defn.fields if f.type != FieldType.RECEIPT)
 
 
 def all_complete(states: dict[str, FieldState]) -> bool:
@@ -113,10 +134,16 @@ def set_answer(
     early: bool,
     message_ids: list[str],
     now: datetime,
+    norm: Any = None,
+    issue: str | None = None,
+    issue_params: dict[str, Any] | None = None,
 ) -> None:
     """A new answer for the field, before the filters. A partial answer is merged with
     the new words unless the client corrects it (`replace`)."""
     fs.value = value.strip() if replace or fs.state != PARTIAL else merge_value(fs.value, value)
+    fs.norm = norm
+    fs.issue = issue
+    fs.issue_params = dict(issue_params or {})
     fs.needs_recheck = early
     fs.message_ids = [*fs.message_ids, *(m for m in message_ids if m not in fs.message_ids)]
     fs.updated_at = now.isoformat()
@@ -125,6 +152,9 @@ def set_answer(
 def set_checked(fs: FieldState, failed: list[str], now: datetime) -> bool:
     """The filters' verdict. Returns True when the field became complete."""
     was_complete = fs.complete
+    if fs.issue:
+        # code rejected the value: it stays partial whatever the filters say
+        failed = [f"@{fs.issue}"]
     if failed:
         fs.state = PARTIAL
         fs.failed_filters = list(failed)
@@ -172,6 +202,21 @@ def register_ask(states: dict[str, FieldState], asking_before: str | None, key: 
         fs.stuck = True
         return True
     return False
+
+
+def reset(fs: FieldState, now: datetime) -> None:
+    """The field is asked again from scratch (an external event reopened it)."""
+    fs.state = EMPTY
+    fs.value = None
+    fs.norm = None
+    fs.ref = None
+    fs.issue = None
+    fs.issue_params = {}
+    fs.failed_filters = []
+    fs.needs_recheck = False
+    fs.reasks = 0
+    fs.stuck = False
+    fs.updated_at = now.isoformat()
 
 
 def answers(states: dict[str, FieldState], *, complete_only: bool = True) -> dict[str, str]:

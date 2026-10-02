@@ -16,7 +16,9 @@
       "missing": "Empty",
       "partial": "Partial",
       "recheck": "To recheck",
-      "stuck": "Stuck"
+      "stuck": "Stuck",
+      "review": "In review",
+      "normalized": "as data"
     },
     "fields": "Fields",
     "finished": "Finished",
@@ -35,7 +37,15 @@
     "started": "Started",
     "status": "Status",
     "sub": "What the bot collected in scenarios and where it was sent.",
-    "until": "To"
+    "until": "To",
+    "confirmed": "Confirmed by the client",
+    "waiting_for": "Waiting for",
+    "waiting": {
+      "event": "an event from an external system",
+      "receipt_review": "a person to check the receipt"
+    },
+    "external": "Last external event",
+    "external_data": "Event data"
   },
   "chat": {
     "asking": "asking: {field}",
@@ -126,6 +136,10 @@
     "session": "Test client",
     "session_hint": "A new name starts a new conversation; the same name continues the old one.",
     "sub": "Talk to the bot as a client and see how it decides.",
-    "thinking": "Thinking…"
+    "thinking": "Thinking…",
+    "attach": "Attach a file by its address",
+    "attachment_type": "File kind",
+    "attachment_url": "File address",
+    "attachment_hint": "A public https address of a photo or a receipt: the bot gets it as if the client sent it."
   }
 }

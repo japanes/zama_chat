@@ -1,0 +1,60 @@
+{
+  "receipts": {
+    "title": "Payment receipts",
+    "read": "On the receipt",
+    "expected": "Expected",
+    "max_age": "at most {n} days ago",
+    "decided": "Decided {at}",
+    "fact": {
+      "amount": "Amount",
+      "currency": "Currency",
+      "date": "Date",
+      "recipient": "Recipient",
+      "reference": "Number",
+      "purpose": "Purpose",
+      "status": "Status"
+    },
+    "status": {
+      "accepted": "Accepted",
+      "review": "In review",
+      "rejected": "Rejected"
+    }
+  },
+  "receipt_issue": {
+    "not_receipt": "This is not a payment receipt",
+    "unreadable": "The receipt cannot be read",
+    "not_image": "Not a picture ({content_type})",
+    "fetch_failed": "The file could not be downloaded ({reason})",
+    "vision_failed": "The vision model did not answer ({reason})",
+    "duplicate_image": "The same picture was already sent",
+    "duplicate_reference": "A receipt with number {reference} was already sent",
+    "amount_missing": "No amount on the receipt",
+    "amount_mismatch": "Amount {got}, expected {expected} {currency}",
+    "currency_mismatch": "Currency {got}, expected {expected}",
+    "date_missing": "No date on the receipt",
+    "date_in_future": "The date {date} is in the future",
+    "date_too_old": "Paid {date}, more than {max_days} days ago",
+    "recipient_missing": "No recipient on the receipt",
+    "recipient_mismatch": "Recipient {got}, expected {expected}",
+    "status_not_success": "Payment status: {status}"
+  },
+  "field_issue": {
+    "phone_invalid": "The phone number is not valid",
+    "email_invalid": "The email address is not valid",
+    "date_invalid": "The date is not clear",
+    "date_in_past": "The date has passed",
+    "date_too_far": "The date is more than {max} days ahead",
+    "time_invalid": "The time is not clear",
+    "number_invalid": "Not a number",
+    "number_not_integer": "Not a whole number",
+    "number_too_small": "Less than {min}",
+    "number_too_large": "More than {max}",
+    "list_too_few": "Fewer than {min} items",
+    "list_too_many": "More than {max} items",
+    "list_item_incomplete": "Item {n} misses: {fields}",
+    "attachment_kind": "Wrong kind of file, expected: {kinds}",
+    "receipt_unreadable": "The receipt cannot be read",
+    "receipt_not_receipt": "Not a payment receipt",
+    "receipt_rejected": "The receipt was rejected by a person"
+  }
+}

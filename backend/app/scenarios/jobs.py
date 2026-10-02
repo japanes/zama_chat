@@ -3,8 +3,9 @@
 - silence_check — the client has been silent for N minutes inside a scenario → the
   `on: silence` action (a partial JSON). Nothing is closed: the client may come back.
   The timer is moved by every turn (dedupe `silence:<run>:<action>`);
-- expire_run — `resume: within_hours` ran out → the run is abandoned, final JSON.
-  Moved by every turn (dedupe `expire:<run>`).
+- expire_run — `resume: within_hours` ran out (or `waiting.hours` for a run waiting for
+  an event) → the run is abandoned, final JSON. Moved by every turn (dedupe
+  `expire:<run>`).
 
 Both take the conversation lease first, like a turn: a timer never runs in the middle
 of a turn, and a turn that just ran is seen (last_client_at / last_activity_at).
@@ -34,7 +35,7 @@ from app.jobs.worker import JobContext, Retry
 from app.logging import get_logger
 from app.scenarios.events import Event
 from app.scenarios.schema import ActionEvent, ScenarioDef
-from app.scenarios.store import is_expired, load_definition
+from app.scenarios.store import expires_at, load_definition
 
 if TYPE_CHECKING:
     from app.services import Services
@@ -104,6 +105,8 @@ async def silence_check_job(ctx: JobContext) -> None:
         session: AsyncSession, conv: Conversation, run: ScenarioRun, defn: ScenarioDef
     ) -> None:
         now = services.clock.now()
+        if run.status == RunStatus.WAITING:
+            return  # collected, waiting for an event: the client owes nothing
         if index >= len(defn.actions) or defn.actions[index].on != ActionEvent.SILENCE:
             log.warning("silence.action_gone", run_id=str(run.id), index=index)
             return
@@ -137,17 +140,18 @@ async def expire_run_job(ctx: JobContext) -> None:
         session: AsyncSession, conv: Conversation, run: ScenarioRun, defn: ScenarioDef
     ) -> None:
         now = services.clock.now()
-        if not is_expired(defn, run.last_activity_at, now):
-            hours = defn.resume.hours
-            if defn.resume.mode == "within_hours" and hours:
-                await enqueue(
-                    session,
-                    "expire_run",
-                    {"run_id": str(run.id)},
-                    run_at=run.last_activity_at + timedelta(hours=hours),
-                    tenant_id=run.tenant_id,
-                    dedupe_key=f"expire:{run.id}",
-                )
+        at = expires_at(defn, run.last_activity_at, status=run.status, data=run.data)
+        if at is None:
+            return
+        if at > now:
+            await enqueue(
+                session,
+                "expire_run",
+                {"run_id": str(run.id)},
+                run_at=at,
+                tenant_id=run.tenant_id,
+                dedupe_key=f"expire:{run.id}",
+            )
             return
         await abandon(session, services, run, defn, now)
 

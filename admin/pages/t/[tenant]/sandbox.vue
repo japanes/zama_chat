@@ -50,7 +50,17 @@
             <ChatThread :messages="state?.messages || []" with-trace :preloaded="lastTurn" :open-turn="lastTurn?.turn?.id" />
           </UiState>
         </div>
+        <div v-if="attachOpen" class="border-t border-slate-200 dark:border-slate-700 px-3 pt-3 flex flex-wrap items-center gap-2">
+          <select v-model="attachType" class="select h-9 w-32" :aria-label="t('sandbox.attachment_type')">
+            <option v-for="k in ['image', 'file', 'video', 'audio']" :key="k" :value="k">{{ t(`scenarios.attachment_kind.${k}`) }}</option>
+          </select>
+          <input v-model.trim="attachUrl" type="url" class="input h-9 flex-1 min-w-[12rem]" placeholder="https://…" :aria-label="t('sandbox.attachment_url')" />
+          <p class="hint w-full">{{ t('sandbox.attachment_hint') }}</p>
+        </div>
         <form class="border-t border-slate-200 dark:border-slate-700 p-3 flex items-end gap-2" @submit.prevent="send">
+          <button type="button" class="btn-icon btn-ghost h-10" :class="attachOpen ? 'text-primary' : ''" :aria-label="t('sandbox.attach')" :title="t('sandbox.attach')" @click="attachOpen = !attachOpen">
+            <UiIcon name="paperclip" :size="16" />
+          </button>
           <textarea
             v-model="text"
             rows="2"
@@ -58,7 +68,7 @@
             :placeholder="t('sandbox.placeholder')"
             @keydown.enter.exact.prevent="send"
           />
-          <button type="submit" class="btn-primary h-10" :disabled="busy || !text.trim()">
+          <button type="submit" class="btn-primary h-10" :disabled="busy || !(text.trim() || attachment)">
             <UiIcon name="send" :size="16" />
             <span class="hidden sm:inline">{{ busy ? t('sandbox.thinking') : t('sandbox.send') }}</span>
           </button>
@@ -109,6 +119,11 @@ const models = ref<any[]>([])
 const model = ref('')
 const effort = ref<string | null>(null)
 const text = ref('')
+// a file by its address: receipts and photos without a real channel
+const attachOpen = ref(false)
+const attachType = ref('image')
+const attachUrl = ref('')
+const attachment = computed(() => (attachOpen.value && /^https?:\/\//.test(attachUrl.value) ? { type: attachType.value, url: attachUrl.value } : null))
 const busy = ref(false)
 const state = ref<any>(null)
 const stateLoading = ref(false)
@@ -144,7 +159,8 @@ async function loadState() {
 
 async function send() {
   const body = text.value.trim()
-  if (!body || busy.value) return
+  const files = attachment.value ? [attachment.value] : []
+  if ((!body && !files.length) || busy.value) return
   busy.value = true
   lastError.value = null
   try {
@@ -152,12 +168,15 @@ async function send() {
       method: 'POST',
       body: {
         ...scope(),
-        text: body,
+        text: body || null,
+        attachments: files,
         model: model.value || null,
         reasoning_effort: selectedModel.value?.supports_reasoning ? effort.value : null,
       },
     })
     text.value = ''
+    attachUrl.value = ''
+    attachOpen.value = false
     state.value = res.state
     lastTurn.value = res.turn
     handover.value = !!res.handover

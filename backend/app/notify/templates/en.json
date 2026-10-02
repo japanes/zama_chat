@@ -4,14 +4,18 @@
     "choose_reply": "A reply is waiting for an operator",
     "channel_error": "A channel needs attention",
     "scenario": "Scenario: {scenario}",
-    "test": "Test notification"
+    "test": "Test notification",
+    "approve_action": "An action waits for approval",
+    "review_receipt": "A payment receipt to check"
   },
   "body": {
     "handover": "🙋 {contact} asks to talk to a person.\nChannel: {channel}\nMessage: {text}\n\n{link}",
     "choose_reply": "💬 {contact} is waiting for a reply. The bot has prepared variants.\nChannel: {channel}\nMessage: {text}\n\n{link}",
     "channel_error": "⚠️ Channel {channel} needs attention: {error}\n\n{link}",
     "scenario": "📋 {scenario}: {event}\nClient: {contact}\nChannel: {channel}\n{fields}\n\n{link}",
-    "test": "✅ Test notification from Zama Chat: this notifier works."
+    "test": "✅ Test notification from Zama Chat: this notifier works.",
+    "approve_action": "✋ {scenario}: «{action}» on «{event}» waits for your approval.\nClient: {contact}\nChannel: {channel}\n{fields}\n\n{link}",
+    "review_receipt": "🧾 {contact} sent a payment receipt for «{scenario}». Please check it.\nChannel: {channel}\nNotes: {text}\n\n{link}"
   },
   "event": {
     "started": "started",
@@ -22,7 +26,8 @@
     "completed": "completed",
     "cancelled": "cancelled",
     "abandoned": "not finished",
-    "silence": "the client went silent"
+    "silence": "the client went silent",
+    "waiting": "passed on, waiting for an answer"
   },
   "no_text": "(no text)",
   "no_fields": "No answers yet.",

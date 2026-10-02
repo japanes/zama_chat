@@ -60,6 +60,8 @@ class TurnContext:
     trace: Trace = field(default_factory=Trace)
     # loaded by later stages (scenario runs, channel scenarios…)
     extra: dict[str, Any] = field(default_factory=dict)
+    # attachments of this turn's client messages: [{type, url, title?, message_id}]
+    attachments: list[dict[str, Any]] = field(default_factory=list)
 
 
 # applied inside the "write" transaction, conversation row locked by hold()

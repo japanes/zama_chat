@@ -22,7 +22,8 @@
       "mail_not_configured": "Надсилання пошти на цьому сервері не налаштовано",
       "no_access": "Цей обліковий запис не має доступу до адмінки. Зверніться до адміністратора.",
       "required": "Увійдіть, будь ласка",
-      "superadmin_required": "Це може лише суперадмін"
+      "superadmin_required": "Це може лише суперадмін",
+      "invalid_signature": "Підпис запиту неправильний"
     },
     "channel": {
       "http_not_found": "У тенанта немає HTTP-каналу",
@@ -104,7 +105,8 @@
       "not_found": "Результат не знайдено"
     },
     "sandbox": {
-      "model_unsuitable": "Модель {model} не може відповідати клієнтам"
+      "model_unsuitable": "Модель {model} не може відповідати клієнтам",
+      "text_required": "Напишіть повідомлення або додайте файл"
     },
     "scenario": {
       "action_endpoint_required": "Дія {index}: оберіть адресу",
@@ -136,7 +138,23 @@
       "yaml_invalid": "YAML не читається (рядок {line}): {error}",
       "action_notifier_required": "Дія {index} ({on}): оберіть канал сповіщень",
       "action_text_required": "Дія {index} ({on}): напишіть текст повідомлення",
-      "catalog_not_allowed": "Поле {field}: налаштування каталогу — лише для типу «позиція каталогу»"
+      "catalog_not_allowed": "Поле {field}: налаштування каталогу — лише для типу «позиція каталогу»",
+      "event_field_unknown": "Подія {event}: немає поля {field}",
+      "event_reopen_fields_not_allowed": "Подія {event}: поля для перепитування — лише для «Перепитати деякі поля»",
+      "event_reopen_fields_required": "Подія {event}: виберіть поля, які перепитати",
+      "events_not_allowed": "Зовнішні події та очікування — лише для «Підтверджує зовнішня система»",
+      "events_required": "Додайте хоча б одну зовнішню подію",
+      "field_setting_not_allowed": "Поле {field}: налаштування {setting} не для типу {type}",
+      "filters_not_allowed": "Поле {field}: у поля-файлу немає перевірок «так/ні»",
+      "incompatible_self": "Сценарій не може бути несумісним сам із собою",
+      "list_item_duplicate": "Поле {field}: дві частини пункту мають однаковий ключ",
+      "list_range_invalid": "Поле {field}: мінімум пунктів більший за максимум",
+      "number_range_invalid": "Поле {field}: мінімум більший за максимум",
+      "receipt_amount_field_invalid": "Поле {field}: {ref} має бути полем каталогу",
+      "receipt_amount_missing": "Поле {field}: сума не задана, код її не перевірятиме",
+      "receipt_currency_required": "Поле {field}: для фіксованої суми потрібна валюта",
+      "receipt_field_required": "«Перевірено квитанцію» потребує поля-квитанції",
+      "receipt_quantity_field_invalid": "Поле {field}: {ref} має бути числовим полем"
     },
     "tenant": {
       "language_duplicate": "Мову вказано двічі",
@@ -147,7 +165,10 @@
       "silence_minutes_invalid": "Неправильний час тиші: {value}",
       "slug_invalid": "Коротке ім'я: малі латинські літери, цифри й дефіс, 3–64 символи",
       "slug_taken": "Коротке ім'я {slug} уже зайняте",
-      "unknown_answer_invalid": "Невідоме значення «{value}»"
+      "unknown_answer_invalid": "Невідоме значення «{value}»",
+      "phone_region_invalid": "Країна телефонів — дві великі літери, наприклад UA (зараз {value})",
+      "receipt_review_invalid": "Невідомий режим перевірки квитанцій {value}",
+      "receipt_threshold_invalid": "Поріг суми для {currency} неправильний: три великі літери й невід'ємна сума"
     },
     "turn": {
       "failed": "Бот не зміг відповісти: {error}",
@@ -210,6 +231,15 @@
     "search": {
       "vectors_off": "Пошук за змістом на сервері вимкнено (немає QDRANT_URL)",
       "embed_unassigned": "На роль «embed» не призначено модель"
+    },
+    "event": {
+      "run_not_waiting": "Результат не чекає подію (статус {status})",
+      "too_large": "Подія завелика (не більше {max} байт)",
+      "unknown": "Невідома подія {event}; сценарій знає: {known}"
+    },
+    "receipt": {
+      "decided": "Щодо квитанції вже ухвалено рішення",
+      "not_found": "Квитанцію не знайдено"
     }
   }
 }

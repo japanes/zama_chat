@@ -147,6 +147,7 @@ def open_run(
     asking: str | None = None,
     started_at: datetime = T0,
     last_activity_at: datetime | None = None,
+    data: dict[str, Any] | None = None,
 ) -> OpenRun:
     return OpenRun(
         id=uuid.uuid4(),
@@ -157,6 +158,7 @@ def open_run(
         delivery_seq=0,
         started_at=started_at,
         last_activity_at=last_activity_at or started_at,
+        data=dict(data or {}),
     )
 
 
