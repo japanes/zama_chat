@@ -66,13 +66,14 @@ async def full_pipeline(services: "Services", ctx: TurnContext) -> TurnPlan:
         decided = await route(services, ctx, rw.text)
         reply = await respond_step.respond(services, ctx, prompts, decided, rw.text, reply_language)
         return TurnPlan(
-            reply_text=reply.text,
+            reply_text=reply.text or None,
             rewritten=rw.text,
             client_language=client_language,
             reply_language=reply_language,
             route=decided.to_dict(),
             handover=decided.wants_human,
             reply_meta={"prompt_key": reply.prompt_key, "prompt_version": reply.prompt_version},
+            variants=reply.variants,
         )
 
     # scenario questions and texts are in the language of the rewritten text
@@ -103,12 +104,13 @@ async def full_pipeline(services: "Services", ctx: TurnContext) -> TurnPlan:
         k: scenarios.summary[k] for k in ("stop", "start", "started", "focus")
     }
     return TurnPlan(
-        reply_text=reply.text,
+        reply_text=reply.text or None,
         rewritten=rw.text,
         client_language=client_language,
         reply_language=reply_language,
         route=route_info,
         handover=decided.wants_human,
         reply_meta={"prompt_key": reply.prompt_key, "prompt_version": reply.prompt_version},
+        variants=reply.variants,
         writes=[scenarios.write] if scenarios.write is not None else [],
     )

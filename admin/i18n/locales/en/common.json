@@ -65,7 +65,9 @@
       "access": "Access",
       "models": "AI models",
       "system": "System"
-    }
+    },
+    "operator": "Operator",
+    "notifiers": "Notifications"
   },
   "auth": {
     "another_email": "Use another email",
@@ -169,7 +171,17 @@
       "tenant_create": "Tenant created",
       "tenant_update": "Tenant changed",
       "user_create": "User created",
-      "user_update": "User changed"
+      "user_update": "User changed",
+      "channel_instagram_connect": "Instagram account connected",
+      "channel_instagram_disconnect": "Instagram account disconnected",
+      "operator_task_resolve": "Operator task closed",
+      "conversation_operator_message": "Operator wrote to the client",
+      "conversation_handover": "Conversation taken over",
+      "conversation_release": "Conversation given back to the bot",
+      "conversation_update": "Conversation changed",
+      "notifier_create": "Notification channel added",
+      "notifier_update": "Notification channel changed",
+      "notifier_delete": "Notification channel deleted"
     }
   },
   "users": {

@@ -12,6 +12,14 @@ from app.db.models.conversations import (
 from app.db.models.decisions import Decision, DecisionProvider, DecisionReason, DecisionType
 from app.db.models.jobs import Job, JobStatus
 from app.db.models.llm import ROLES_NEED_JSON_SCHEMA, LlmCall, LlmModel, LlmRole, ModelRole
+from app.db.models.operator import (
+    NOTIFY_EVENTS,
+    Notifier,
+    NotifierKind,
+    OperatorTask,
+    TaskKind,
+    TaskStatus,
+)
 from app.db.models.prompts import Prompt
 from app.db.models.results import Delivery, DeliveryStatus, DevSinkItem, Endpoint
 from app.db.models.scenarios import (
@@ -33,6 +41,7 @@ from app.db.models.users import (
 )
 
 __all__ = [
+    "NOTIFY_EVENTS",
     "OPEN_STATUSES",
     "ROLES_NEED_JSON_SCHEMA",
     "ROLE_RANK",
@@ -63,11 +72,16 @@ __all__ = [
     "Message",
     "MessageRole",
     "ModelRole",
+    "Notifier",
+    "NotifierKind",
+    "OperatorTask",
     "Prompt",
     "RunStatus",
     "Scenario",
     "ScenarioRun",
     "SendStatus",
+    "TaskKind",
+    "TaskStatus",
     "Tenant",
     "Turn",
     "TurnStatus",

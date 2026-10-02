@@ -27,11 +27,13 @@ from app.api.admin.common import (
 )
 from app.api.admin.deps import TenantAdmin, TenantOperator
 from app.api.deps import ServicesDep
+from app.channels.instagram.window import window_closes_at
 from app.core.ingest import save_client_message
 from app.core.turn import run_turn
 from app.db.models import (
     OPEN_STATUSES,
     Channel,
+    ChannelKind,
     Contact,
     Conversation,
     Decision,
@@ -39,13 +41,17 @@ from app.db.models import (
     Endpoint,
     LlmCall,
     Message,
+    MessageRole,
+    OperatorTask,
     Scenario,
     ScenarioRun,
+    TaskStatus,
     Turn,
 )
 from app.errors import AppError, NotFound
 from app.llm.registry import get_model
 from app.llm.service import Overrides
+from app.operator.tasks import task_dict
 from app.results.delivery import resend
 from app.results.service import collected
 from app.scenarios.schema import parse_definition
@@ -55,6 +61,7 @@ router = APIRouter(prefix="/v1/admin/tenants/{tenant_id}", tags=["admin-activity
 
 PageDep = Annotated[Page, Depends(page_params)]
 SANDBOX_PREFIX = "sandbox:"
+MESSAGE_META_KEYS = ("task_id", "variant", "edited", "source", "user_id", "send_error_detail")
 
 
 def _collected(definition: dict[str, Any] | None, fields: dict[str, Any]) -> dict[str, Any]:
@@ -86,6 +93,8 @@ def message_dict(m: Message) -> dict[str, Any]:
         "send_error": m.send_error,
         "created_at": iso(m.created_at),
         "sent_at": iso(m.sent_at),
+        # operator messages: task / variant / edited / source (instagram_app)
+        "meta": {k: v for k, v in (m.meta or {}).items() if k in MESSAGE_META_KEYS},
     }
 
 
@@ -428,8 +437,24 @@ async def conversation_detail(session, conv: Conversation, *, limit: int = 500) 
             .order_by(ScenarioRun.started_at.desc())
         )
     ).all()
+    tasks = (
+        await session.execute(
+            select(OperatorTask)
+            .where(
+                OperatorTask.conversation_id == conv.id,
+                OperatorTask.status == TaskStatus.OPEN,
+            )
+            .order_by(OperatorTask.created_at)
+        )
+    ).scalars()
+    closes = (
+        window_closes_at(conv.last_client_at)
+        if channel is not None and channel.kind == ChannelKind.INSTAGRAM
+        else None
+    )
     return {
-        "conversation": conversation_dict(conv),
+        "conversation": {**conversation_dict(conv), "window_closes_at": iso(closes)},
+        "tasks": [task_dict(t) for t in tasks],
         "contact": contact_dict(contact),
         "channel": channel_dict(channel) if channel else None,
         "messages": [message_dict(m) for m in reversed(messages)],
@@ -446,7 +471,16 @@ async def get_conversation(
         conv = await tenant_row(
             session, Conversation, conversation_id, access.tenant_id, "conversation.not_found"
         )
-        return await conversation_detail(session, conv)
+        detail = await conversation_detail(session, conv)
+        channel = detail["channel"]
+        adapter = services.channel_adapter(channel["kind"]) if channel else None
+        # whether an operator may write to the client now (Instagram: the reply window)
+        detail["operator_can_write"] = bool(
+            adapter is not None
+            and not conv.sandbox
+            and adapter.can_send(conv, MessageRole.OPERATOR, services.clock.now())
+        )
+        return detail
 
 
 async def turn_detail(session, turn: Turn) -> dict[str, Any]:

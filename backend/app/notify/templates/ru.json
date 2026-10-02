@@ -1,0 +1,40 @@
+{
+  "subject": {
+    "handover": "Клиент просит человека",
+    "choose_reply": "Ответ ждёт оператора",
+    "channel_error": "Канал требует внимания",
+    "scenario": "Сценарий: {scenario}",
+    "test": "Тестовое уведомление"
+  },
+  "body": {
+    "handover": "🙋 {contact} просит поговорить с человеком.\nКанал: {channel}\nСообщение: {text}\n\n{link}",
+    "choose_reply": "💬 {contact} ждёт ответа. Бот подготовил варианты.\nКанал: {channel}\nСообщение: {text}\n\n{link}",
+    "channel_error": "⚠️ Канал {channel} требует внимания: {error}\n\n{link}",
+    "scenario": "📋 {scenario}: {event}\nКлиент: {contact}\nКанал: {channel}\n{fields}\n\n{link}",
+    "test": "✅ Тестовое уведомление от Zama Chat: этот получатель работает."
+  },
+  "event": {
+    "started": "начался",
+    "field_filled": "собран ответ",
+    "field_stuck": "бот не может получить ответ",
+    "all_fields": "все ответы собраны",
+    "confirmed": "подтверждено",
+    "completed": "завершён",
+    "cancelled": "отменён",
+    "abandoned": "не завершён",
+    "silence": "клиент замолчал"
+  },
+  "no_text": "(без текста)",
+  "no_fields": "Ответов пока нет.",
+  "error": {
+    "instagram": {
+      "token_invalid": "Instagram не принимает токен: подключите аккаунт заново",
+      "no_token": "у канала нет токена: подключите аккаунт заново",
+      "token_expiring": "токен Instagram не удалось продлить, скоро он закончится: подключите аккаунт заново",
+      "token_expired": "токен Instagram закончился: подключите аккаунт заново"
+    },
+    "config": {
+      "secret_undecryptable": "сохранённый токен не удаётся расшифровать (сменился SECRET_KEY?): подключите аккаунт заново"
+    }
+  }
+}

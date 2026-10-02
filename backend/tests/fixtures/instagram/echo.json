@@ -1,0 +1,21 @@
+{
+  "object": "instagram",
+  "entry": [
+    {
+      "time": 1790942460000,
+      "id": "17841400000000001",
+      "messaging": [
+        {
+          "sender": { "id": "17841400000000001" },
+          "recipient": { "id": "990000000000001" },
+          "timestamp": 1790942460000,
+          "message": {
+            "mid": "aWdfZAG1faXRlbToxOklHTWVzc2FnZAUlEOjE3ODQxNDAwMDAwMDAwMDAxOjM0MDI4MjM2Njg0MTcxMDMwMTI0NDI1OTk5MTQ4NjA2MDI=",
+            "text": "Добрий день! Манікюр коштує 600 грн.",
+            "is_echo": true
+          }
+        }
+      ]
+    }
+  ]
+}

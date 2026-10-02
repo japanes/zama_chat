@@ -41,6 +41,7 @@ from app.db.models import (
     ApiKey,
     AuditLog,
     Channel,
+    ChannelKind,
     ChannelStatus,
     Endpoint,
     Membership,
@@ -49,13 +50,14 @@ from app.db.models import (
     UserRole,
 )
 from app.errors import AppError, Conflict, NotFound
+from app.operator.variants import MAX_VARIANTS, MIN_VARIANTS
 
 router = APIRouter(prefix="/v1/admin", tags=["admin-tenants"])
 
 PageDep = Annotated[Page, Depends(page_params)]
 
 # channel settings that are not tenant overrides
-CHANNEL_OWN_SETTINGS = ("operator_mode", "merge_pause_s", "merge_max_wait_s")
+CHANNEL_OWN_SETTINGS = ("operator_mode", "operator_variants", "merge_pause_s", "merge_max_wait_s")
 
 
 def tenant_dict(t: Tenant, role: str | None = None) -> dict[str, Any]:
@@ -207,6 +209,13 @@ def _check_channel_settings(tenant: Tenant, data: dict[str, Any]) -> dict[str, A
             raise AppError("channel.setting_invalid", {"key": key, "value": value})
     if "operator_mode" in data and not isinstance(data["operator_mode"], bool):
         raise AppError("channel.setting_invalid", {"key": "operator_mode"})
+    variants = data.get("operator_variants")
+    if variants is not None and (
+        isinstance(variants, bool)
+        or not isinstance(variants, int)
+        or not MIN_VARIANTS <= variants <= MAX_VARIANTS
+    ):
+        raise AppError("channel.setting_invalid", {"key": "operator_variants", "value": variants})
     effective_settings(tenant.settings, data).validate_rules()
     return {k: v for k, v in data.items() if v not in (None, "", [], {})}
 
@@ -221,6 +230,10 @@ async def patch_channel(
         changes: dict[str, Any] = {}
         if body.title is not None:
             channel.title = changes["title"] = body.title
+        no_token = channel.kind == ChannelKind.INSTAGRAM and channel.token_enc is None
+        if body.disabled is False and no_token:
+            # a disconnected account comes back only through connecting it again
+            raise Conflict("instagram.no_token")
         if body.disabled is not None:
             channel.status = ChannelStatus.DISABLED if body.disabled else ChannelStatus.CONNECTED
             changes["status"] = channel.status

@@ -2,12 +2,15 @@
 
 import uuid
 
-from app.channels.base import PermanentSendError
+from app.channels.base import ChannelAuthError, PermanentSendError
+from app.channels.health import set_channel_status
+from app.channels.instagram.jobs import ig_echo_job, ig_profile_job, refresh_ig_token_job
 from app.core.turn import run_turn
-from app.db.models import Channel, Contact, Conversation, Message, SendStatus
+from app.db.models import Channel, ChannelStatus, Contact, Conversation, Message, SendStatus
 from app.errors import Conflict
 from app.jobs.worker import Fail, Handler, JobContext, Retry
 from app.logging import get_logger
+from app.notify.service import notify_job
 from app.results.delivery import deliver_job
 from app.scenarios.jobs import expire_run_job, silence_check_job
 from app.services import Services
@@ -45,18 +48,33 @@ async def send_message_job(ctx: JobContext) -> None:
 
     adapter = services.channel_adapter(channel.kind)
     if adapter is None:
-        await _set_status(services, message_id, SendStatus.FAILED, f"no adapter for {channel.kind}")
+        await _set_status(
+            services, message_id, SendStatus.FAILED, "channel.no_adapter", detail=channel.kind
+        )
         raise Fail(f"no channel adapter for {channel.kind!r}")
     try:
-        result = await adapter.send(channel, contact, message)
+        result = await adapter.send(channel, contact, message, conv)
+    except ChannelAuthError as exc:
+        # the token is dead: every message of the channel will fail the same way
+        await _set_status(services, message_id, SendStatus.FAILED, exc.code, detail=str(exc))
+        await set_channel_status(services, channel.id, ChannelStatus.ERROR, exc.code)
+        log.warning("send.auth_error", message_id=str(message_id), code=exc.code)
+        return
     except PermanentSendError as exc:
-        await _set_status(services, message_id, SendStatus.FAILED, str(exc))
-        log.warning("send.permanent_error", message_id=str(message_id), error=str(exc))
+        await _set_status(services, message_id, SendStatus.FAILED, exc.code, detail=str(exc))
+        log.warning(
+            "send.permanent_error", message_id=str(message_id), code=exc.code, error=str(exc)
+        )
         return
     except Exception as exc:
         if ctx.is_last_attempt:
+            # send_error is a code the admin translates; the details stay in meta
             await _set_status(
-                services, message_id, SendStatus.FAILED, f"{type(exc).__name__}: {exc}"
+                services,
+                message_id,
+                SendStatus.FAILED,
+                "send.failed",
+                detail=f"{type(exc).__name__}: {exc}",
             )
         raise
     await _set_status(
@@ -77,6 +95,7 @@ async def _set_status(
     *,
     external_id: str | None = None,
     meta: dict | None = None,
+    detail: str | None = None,
 ) -> None:
     async with services.sm() as session, session.begin():
         message = await session.get(Message, message_id, with_for_update=True)
@@ -84,6 +103,8 @@ async def _set_status(
             return
         message.send_status = status
         message.send_error = error[:1000] if error else None
+        if detail:
+            message.meta = {**(message.meta or {}), "send_error_detail": detail[:1000]}
         if status == SendStatus.SENT:
             message.sent_at = services.clock.now()
             if external_id:
@@ -98,4 +119,8 @@ HANDLERS: dict[str, Handler] = {
     "deliver": deliver_job,
     "silence_check": silence_check_job,
     "expire_run": expire_run_job,
+    "notify": notify_job,
+    "ig_echo": ig_echo_job,
+    "ig_profile": ig_profile_job,
+    "refresh_ig_token": refresh_ig_token_job,
 }

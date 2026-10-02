@@ -14,11 +14,18 @@
       </div>
     </div>
 
-    <div class="grid gap-4 md:grid-cols-3">
-      <label class="flex items-center gap-2 text-sm">
-        <input v-model="form.operator_mode" type="checkbox" class="checkbox" :disabled="!canEdit" />
-        {{ t('channels.operator_mode') }}
-      </label>
+    <div class="grid gap-4 md:grid-cols-4">
+      <div class="space-y-2">
+        <label class="flex items-center gap-2 text-sm">
+          <input v-model="form.operator_mode" type="checkbox" class="checkbox" :disabled="!canEdit" />
+          {{ t('channels.operator_mode') }}
+        </label>
+        <p class="hint">{{ t('channels.operator_mode_hint') }}</p>
+      </div>
+      <div>
+        <label class="label">{{ t('channels.operator_variants') }}</label>
+        <input v-model.number="form.operator_variants" type="number" min="2" max="5" class="input" placeholder="3" :readonly="!canEdit" />
+      </div>
       <div>
         <label class="label">{{ t('channels.merge_pause') }}</label>
         <input v-model.number="form.merge_pause_s" type="number" min="0" max="600" class="input" :placeholder="t('scenarios.default')" :readonly="!canEdit" />
@@ -89,6 +96,7 @@ watch(
     ownLanguages.value = !!(s.languages && s.languages.length)
     form.value = {
       operator_mode: !!s.operator_mode,
+      operator_variants: s.operator_variants ?? '',
       merge_pause_s: s.merge_pause_s ?? '',
       merge_max_wait_s: s.merge_max_wait_s ?? '',
       languages: s.languages?.length ? [...s.languages] : [...tenantLanguages.value],
@@ -108,6 +116,7 @@ async function save() {
   // empty values are dropped by the server: the tenant value is used
   const settings: Record<string, any> = {
     operator_mode: f.operator_mode,
+    operator_variants: f.operator_variants === '' ? null : f.operator_variants,
     merge_pause_s: f.merge_pause_s === '' ? null : f.merge_pause_s,
     merge_max_wait_s: f.merge_max_wait_s === '' ? null : f.merge_max_wait_s,
     bot_name: f.bot_name || null,

@@ -48,7 +48,9 @@
     "sub": "Where clients write to the bot, and which scenarios work there.",
     "tenant_languages": "Tenant languages: {languages}",
     "title": "Name",
-    "token_expires": "Token valid until {at}"
+    "token_expires": "Token valid until {at}",
+    "operator_mode_hint": "The bot does not answer by itself: it suggests reply variants, a person picks one.",
+    "operator_variants": "Reply variants (2-5)"
   },
   "prompts": {
     "activate": "Make active",

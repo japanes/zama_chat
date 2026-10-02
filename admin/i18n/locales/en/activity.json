@@ -66,7 +66,14 @@
     "sub": "All conversations with clients and how the bot made each reply.",
     "turn": "Bot turn",
     "turns": "Bot turns",
-    "username": "Username"
+    "username": "Username",
+    "from_app": "from the Instagram app",
+    "from_action": "scenario action",
+    "variant": "variant {n}",
+    "edited": "edited",
+    "window": "Reply window",
+    "window_until": "open until {at}",
+    "window_closed": "closed: the client wrote more than 24 hours ago"
   },
   "trace": {
     "answer": "Answer",

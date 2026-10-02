@@ -148,3 +148,62 @@ def test_keys_cannot_contain_a_double_underscore():
     data["fields"][0]["key"] = "my__niche"
     with pytest.raises(AppError):
         parse_definition(data)
+
+
+# --- stage 4 actions ----------------------------------------------------------------------
+
+
+def _with_action(action: dict) -> dict:
+    data = interview_data()
+    data["actions"] = [action]
+    return data
+
+
+@pytest.mark.parametrize(
+    ("action", "code"),
+    [
+        ({"on": "completed", "do": "notify_telegram"}, "scenario.action_notifier_required"),
+        (
+            {"on": "completed", "do": "notify_email", "params": {"notifier": "Bad Name"}},
+            "scenario.action_notifier_required",
+        ),
+        ({"on": "completed", "do": "message_client"}, "scenario.action_text_required"),
+        (
+            {"on": "completed", "do": "message_client", "params": {"text": "  "}},
+            "scenario.action_text_required",
+        ),
+        (
+            {"on": "completed", "do": "message_client", "params": {"text": {"uk": ""}}},
+            "scenario.action_text_required",
+        ),
+        ({"on": "completed", "do": "send_fax"}, "scenario.action_unknown"),
+    ],
+)
+def test_bad_stage4_actions(action, code):
+    assert _code(_with_action(action)) == code
+
+
+def test_good_stage4_actions():
+    data = interview_data()
+    data["actions"] = [
+        {"on": "completed", "do": "notify_telegram", "params": {"notifier": "team"}},
+        {"on": "field_stuck", "do": "notify_email", "params": {"notifier": "sales-1"}},
+        {"on": "field_stuck", "do": "handover"},
+        {
+            "on": "completed",
+            "do": "message_client",
+            "params": {"text": {"uk": "Дякуємо!", "en": "Thank you!"}},
+        },
+    ]
+    assert check_definition(parse_definition(data), ["uk", "en"]) == []
+
+
+def test_message_client_text_missing_a_language_is_a_warning():
+    action = {"on": "completed", "do": "message_client", "params": {"text": "Дякуємо!"}}
+    warnings = check_definition(parse_definition(_with_action(action)), ["uk", "en"])
+    assert warnings == [
+        {
+            "code": "scenario.text_missing_language",
+            "params": {"path": "actions.0.text", "language": "en"},
+        }
+    ]

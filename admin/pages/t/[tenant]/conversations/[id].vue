@@ -14,6 +14,18 @@
             <span v-if="data.conversation.sandbox" class="badge-amber">{{ t('nav.sandbox') }}</span>
             <span v-if="data.conversation.handover" class="badge-red">{{ t('chat.handover') }}</span>
             <span v-if="data.conversation.operator_mode" class="badge-violet">{{ t('chat.operator_mode') }}</span>
+            <template v-if="!data.conversation.sandbox">
+              <button v-if="data.conversation.handover" type="button" class="btn-secondary btn-sm" :disabled="busy" @click="act('release')">
+                {{ t('operator.release') }}
+              </button>
+              <button v-else type="button" class="btn-secondary btn-sm" :disabled="busy" @click="act('handover')">
+                {{ t('operator.take_over') }}
+              </button>
+              <label class="flex items-center gap-2 text-sm">
+                <input type="checkbox" class="checkbox" :checked="data.conversation.operator_mode" :disabled="busy" @change="setOperatorMode(($event.target as HTMLInputElement).checked)" />
+                {{ t('chat.operator_mode') }}
+              </label>
+            </template>
             <button type="button" class="btn-secondary btn-sm" :disabled="loading" @click="load">
               <UiIcon name="refresh" :size="14" /> {{ t('common.refresh') }}
             </button>
@@ -21,8 +33,33 @@
         </div>
 
         <div class="grid gap-5 lg:grid-cols-3">
-          <div class="lg:col-span-2 card card-body">
-            <ChatThread :messages="data.messages" with-trace />
+          <div class="lg:col-span-2 space-y-5">
+            <TaskCard
+              v-for="task in data.tasks || []"
+              :key="task.id"
+              :task="task"
+              can-act
+              @resolved="load"
+            />
+
+            <div class="card card-body">
+              <ChatThread :messages="data.messages" with-trace />
+            </div>
+
+            <!-- the operator writes to the client directly -->
+            <form v-if="!data.conversation.sandbox" class="card card-body space-y-2" @submit.prevent="send">
+              <label class="label">{{ t('operator.write') }}</label>
+              <textarea v-model="reply" rows="3" class="textarea" :disabled="!data.operator_can_write" :placeholder="t('operator.reply_placeholder')" />
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <p class="hint">
+                  <template v-if="!data.operator_can_write">{{ t('operator.cannot_write') }}</template>
+                  <template v-else-if="!data.conversation.handover">{{ t('operator.write_hint') }}</template>
+                </p>
+                <button type="submit" class="btn-primary btn-sm" :disabled="busy || !reply.trim() || !data.operator_can_write">
+                  <UiIcon name="send" :size="14" /> {{ t('operator.send') }}
+                </button>
+              </div>
+            </form>
           </div>
 
           <div class="space-y-5">
@@ -68,6 +105,11 @@
               <Row v-if="data.contact?.username" :label="t('chat.username')">{{ data.contact.username }}</Row>
               <Row :label="t('chat.last_client')">{{ f.dateTime(data.conversation.last_client_at) }}</Row>
               <Row :label="t('chat.last_bot')">{{ f.dateTime(data.conversation.last_bot_at) }}</Row>
+              <Row v-if="data.conversation.window_closes_at" :label="t('chat.window')">
+                <span :class="windowOpen ? '' : 'text-rose-600'">
+                  {{ windowOpen ? t('chat.window_until', { at: f.dateTime(data.conversation.window_closes_at) }) : t('chat.window_closed') }}
+                </span>
+              </Row>
               <Row :label="t('chat.created')">{{ f.dateTime(data.conversation.created_at) }}</Row>
             </div>
           </div>
@@ -88,19 +130,57 @@ const api = useApi()
 const f = useFormat()
 const route = useRoute()
 const { base, path } = useTenant()
+const { busy, run } = useAction()
 const openTurn = ref<string | null>(null)
+const reply = ref('')
+const POLL_MS = 5000
 
-const { data, loading, error, load } = useLoader(() =>
-  api<any>(path(`/conversations/${route.params.id}`)),
-)
+const convPath = computed(() => path(`/conversations/${route.params.id}`))
+const { data, loading, error, load } = useLoader(() => api<any>(convPath.value))
 const contactName = computed(() => {
   const c = data.value?.contact
   return c?.name || c?.username || c?.external_id || '—'
+})
+const windowOpen = computed(() => {
+  const at = data.value?.conversation?.window_closes_at
+  return !at || new Date(at).getTime() > Date.now()
 })
 usePage(() => [
   { label: t('nav.conversations'), to: `${base.value}/conversations` },
   { label: contactName.value },
 ])
 
-onMounted(load)
+async function send() {
+  const res = await run(
+    () => api(`${convPath.value}/messages`, { method: 'POST', body: { text: reply.value.trim() } }),
+    t('operator.sent'),
+  )
+  if (res) {
+    reply.value = ''
+    load()
+  }
+}
+
+async function act(action: 'handover' | 'release') {
+  const res = await run(() => api(`${convPath.value}/${action}`, { method: 'POST' }), t('common.saved'))
+  if (res) load()
+}
+
+async function setOperatorMode(on: boolean) {
+  const res = await run(() => api(convPath.value, { method: 'PATCH', body: { operator_mode: on } }), t('common.saved'))
+  load()
+  return res
+}
+
+// a live conversation: refresh quietly while the tab is visible
+let timer: ReturnType<typeof setInterval> | null = null
+onMounted(() => {
+  load()
+  timer = setInterval(() => {
+    if (!document.hidden && !loading.value && !busy.value) load()
+  }, POLL_MS)
+})
+onBeforeUnmount(() => {
+  if (timer) clearInterval(timer)
+})
 </script>

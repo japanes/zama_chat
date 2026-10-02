@@ -146,13 +146,27 @@
             <option v-for="e in ACTION_EVENTS" :key="e" :value="e">{{ t(`scenarios.event.${e}`) }}</option>
           </select>
         </div>
-        <div class="w-36">
+        <div class="w-44">
           <label class="label">{{ t('scenarios.action_do') }}</label>
           <select v-model="a.do" class="select" :disabled="readonly">
             <option v-for="d in ACTIONS" :key="d" :value="d">{{ t(`scenarios.action.${d}`) }}</option>
           </select>
         </div>
-        <div class="w-44">
+        <div v-if="NOTIFY_ACTIONS.includes(a.do)" class="w-44">
+          <label class="label">{{ t('scenarios.notifier') }}</label>
+          <select v-if="notifierChoices(a).length" v-model="a.params.notifier" class="select" :disabled="readonly">
+            <option value="">—</option>
+            <option v-for="n in notifierChoices(a)" :key="n" :value="n">{{ n }}</option>
+          </select>
+          <input v-else v-model.trim="a.params.notifier" class="input code" :readonly="readonly" />
+        </div>
+        <div v-if="a.do === 'message_client'" class="w-full order-last">
+          <label class="label">{{ t('scenarios.message_text') }}</label>
+          <LocalizedInput v-model="a.params.text" :languages="languages" :main="def.language" multiline :readonly="readonly" />
+          <p class="hint">{{ t('scenarios.message_text_hint') }}</p>
+        </div>
+        <p v-if="a.do === 'handover'" class="hint self-center">{{ t('scenarios.handover_hint') }}</p>
+        <div v-if="a.do === 'http_post'" class="w-44">
           <label class="label">{{ t('scenarios.endpoint') }}</label>
           <select v-if="endpoints.length" v-model="a.endpoint" class="select" :disabled="readonly">
             <option value="">—</option>
@@ -171,7 +185,7 @@
             <option v-for="k in fieldKeys" :key="k" :value="k">{{ k }}</option>
           </select>
         </div>
-        <div class="w-32">
+        <div v-if="a.do === 'http_post'" class="w-32">
           <label class="label">{{ t('scenarios.action_status') }}</label>
           <input v-model.trim="a.status" class="input code" :placeholder="t('scenarios.default')" :readonly="readonly" />
         </div>
@@ -179,7 +193,7 @@
           <UiIcon name="trash" :size="16" />
         </button>
       </div>
-      <button v-if="!readonly" type="button" class="btn-ghost btn-sm" @click="def.actions.push({ on: 'completed', do: 'http_post', endpoint: endpoints[0] || '' })">
+      <button v-if="!readonly" type="button" class="btn-ghost btn-sm" @click="def.actions.push({ on: 'completed', do: 'http_post', endpoint: endpoints[0] || '', params: {} })">
         <UiIcon name="plus" :size="14" /> {{ t('scenarios.add_action') }}
       </button>
     </section>
@@ -187,12 +201,14 @@
 </template>
 
 <script setup lang="ts">
-import { ACTIONS, ACTION_EVENTS, COMPLETIONS, KEY_RE, newField, startExamples, startTotal } from '~/utils/scenario'
+import { ACTIONS, ACTION_EVENTS, COMPLETIONS, KEY_RE, NOTIFY_ACTIONS, newField, startExamples, startTotal } from '~/utils/scenario'
 
 const props = defineProps<{
   def: any
   languages: string[]
   endpoints: string[]
+  // [{name, kind}] of the tenant's notifiers
+  notifiers?: { name: string; kind: string }[]
   isNew?: boolean
   readonly?: boolean
 }>()
@@ -241,5 +257,13 @@ function removeField(i: number) {
 }
 function endpointChoices(current?: string) {
   return current && !props.endpoints.includes(current) ? [...props.endpoints, current] : props.endpoints
+}
+
+
+function notifierChoices(a: any): string[] {
+  const kind = a.do === 'notify_email' ? 'email' : 'telegram'
+  const names = (props.notifiers || []).filter((n) => n.kind === kind).map((n) => n.name)
+  const current = a.params?.notifier
+  return current && !names.includes(current) ? [...names, current] : names
 }
 </script>

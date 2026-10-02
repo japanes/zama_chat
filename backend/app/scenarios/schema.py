@@ -264,9 +264,27 @@ def _texts(defn: ScenarioDef) -> Iterator[tuple[str, str | dict[str, str]]]:
                     yield f"fields.{f.key}.filters.{flt.key}.{name}", value
     if defn.cancel.description is not None:
         yield "cancel.description", defn.cancel.description
+    for i, action in enumerate(defn.actions):
+        if action.do == "message_client" and action.params.get("text"):
+            yield f"actions.{i}.text", action.params["text"]
 
 
-KNOWN_ACTIONS = ("http_post",)
+KNOWN_ACTIONS = ("http_post", "notify_telegram", "notify_email", "message_client", "handover")
+NOTIFIER_NAME_RE = re.compile(r"^[a-z0-9_][a-z0-9_-]{0,99}$")
+
+
+def _check_action(i: int, action: Action) -> None:
+    if action.do == "http_post" and not action.endpoint:
+        raise AppError("scenario.action_endpoint_required", {"index": i, "on": action.on})
+    if action.do in ("notify_telegram", "notify_email"):
+        name = action.params.get("notifier")
+        if not isinstance(name, str) or not NOTIFIER_NAME_RE.match(name):
+            raise AppError("scenario.action_notifier_required", {"index": i, "on": action.on})
+    if action.do == "message_client":
+        try:
+            _check_text(action.params.get("text") or "")
+        except (ValueError, AttributeError, TypeError):
+            raise AppError("scenario.action_text_required", {"index": i, "on": action.on}) from None
 
 
 def check_definition(
@@ -315,8 +333,7 @@ def check_definition(
     for i, action in enumerate(defn.actions):
         if action.do not in actions:
             raise AppError("scenario.action_unknown", {"index": i, "do": action.do})
-        if action.do == "http_post" and not action.endpoint:
-            raise AppError("scenario.action_endpoint_required", {"index": i, "on": action.on})
+        _check_action(i, action)
         if action.field is not None and action.field not in keys:
             raise AppError("scenario.action_field_unknown", {"index": i, "field": action.field})
         if action.after_minutes is not None and action.on != ActionEvent.SILENCE:

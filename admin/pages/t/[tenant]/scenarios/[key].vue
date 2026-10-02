@@ -47,6 +47,7 @@
               :def="def"
               :languages="languages"
               :endpoints="endpoints"
+              :notifiers="notifiers"
               :is-new="isNew"
               :readonly="!canEdit"
             />
@@ -144,6 +145,7 @@ const def = ref<any>(null)
 const languages = ref<string[]>([])
 const versions = ref<any[]>([])
 const endpoints = ref<string[]>([])
+const notifiers = ref<{ name: string; kind: string }[]>([])
 const viewing = ref<number | null>(null)
 const mode = ref<Mode>('form')
 const source = ref('')
@@ -316,6 +318,11 @@ onMounted(async () => {
       endpoints.value = (await api<{ items: any[] }>(path('/endpoints'))).items.filter((e) => e.is_active).map((e) => e.name)
     } catch {
       endpoints.value = []
+    }
+    try {
+      notifiers.value = (await api<{ items: any[] }>(path('/notifiers'))).items.map((n) => ({ name: n.name, kind: n.kind }))
+    } catch {
+      notifiers.value = []
     }
   }
 })

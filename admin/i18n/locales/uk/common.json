@@ -65,7 +65,9 @@
       "access": "Доступ",
       "models": "AI-моделі",
       "system": "Система"
-    }
+    },
+    "operator": "Оператор",
+    "notifiers": "Сповіщення"
   },
   "auth": {
     "another_email": "Інша пошта",
@@ -169,7 +171,17 @@
       "tenant_create": "Тенанта створено",
       "tenant_update": "Тенанта змінено",
       "user_create": "Користувача створено",
-      "user_update": "Користувача змінено"
+      "user_update": "Користувача змінено",
+      "channel_instagram_connect": "Підключено акаунт Instagram",
+      "channel_instagram_disconnect": "Відключено акаунт Instagram",
+      "operator_task_resolve": "Закрито завдання оператора",
+      "conversation_operator_message": "Оператор написав клієнту",
+      "conversation_handover": "Діалог передано людині",
+      "conversation_release": "Діалог повернуто боту",
+      "conversation_update": "Діалог змінено",
+      "notifier_create": "Додано канал сповіщень",
+      "notifier_update": "Змінено канал сповіщень",
+      "notifier_delete": "Видалено канал сповіщень"
     }
   },
   "users": {

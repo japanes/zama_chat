@@ -90,6 +90,7 @@ const groups = computed(() => {
     const activity: Item[] = [
       { key: 'results', to: `${b}/results`, icon: 'results' },
       { key: 'conversations', to: `${b}/conversations`, icon: 'chat' },
+      { key: 'operator', to: `${b}/operator`, icon: 'inbox' },
     ]
     if (can('admin')) activity.push({ key: 'sandbox', to: `${b}/sandbox`, icon: 'sandbox' })
     out.push({ key: 'activity', items: activity })
@@ -99,6 +100,7 @@ const groups = computed(() => {
       { key: 'channels', to: `${b}/channels`, icon: 'channels' },
     ]
     if (can('admin')) {
+      bot.push({ key: 'notifiers', to: `${b}/notifiers`, icon: 'bell' })
       bot.push({ key: 'prompts', to: `${b}/prompts`, icon: 'prompts' })
       bot.push({ key: 'settings', to: `${b}/settings`, icon: 'settings' })
     }

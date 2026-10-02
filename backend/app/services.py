@@ -13,6 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from app.admin.mailer import make_mailer
 from app.channels.base import ChannelAdapter
 from app.channels.http import HttpChannel
+from app.channels.instagram.channel import InstagramChannel
+from app.channels.instagram.client import InstagramClient
 from app.core.clock import Clock, SystemClock
 from app.crypto import Crypto
 from app.db.models import ChannelKind
@@ -60,6 +62,8 @@ class Services:
         api_key = settings.ai_gateway_api_key.get_secret_value()
         backend = backend or OpenAIGatewayBackend(settings.ai_gateway_url, api_key)
         llm = LLMService(sm, backend, clock, retry_delay_s=llm_retry_delay_s)
+        crypto = Crypto(settings.secret_key.get_secret_value())
+        instagram = InstagramClient(http, settings)
         services = cls(
             settings=settings,
             clock=clock,
@@ -69,9 +73,14 @@ class Services:
             backend=backend,
             llm=llm,
             catalog=GatewayCatalog(http, settings.ai_gateway_url, api_key),
-            crypto=Crypto(settings.secret_key.get_secret_value()),
-            channels={ChannelKind.HTTP: HttpChannel()},
+            crypto=crypto,
+            channels={
+                ChannelKind.HTTP: HttpChannel(),
+                ChannelKind.INSTAGRAM: InstagramChannel(instagram, crypto, clock, settings),
+            },
         )
+        # Graph API client: account connection, token refresh (channels/instagram)
+        services.extra["instagram"] = instagram
         # Jev answers route / filter questions; unsure answers and Jev failures go to the
         # LLM role `decide` (docs/04 §5 «Jev»)
         services.extra["decider"] = JevDecider(

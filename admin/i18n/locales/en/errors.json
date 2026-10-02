@@ -29,7 +29,11 @@
       "not_found": "Channel not found",
       "scenario_duplicate": "A scenario is listed twice: {keys}",
       "setting_invalid": "Wrong value of the setting {key}",
-      "settings_unknown": "Unknown settings: {keys}. Allowed: {allowed}"
+      "settings_unknown": "Unknown settings: {keys}. Allowed: {allowed}",
+      "account_taken": "The account {username} is already connected to another workspace",
+      "kind_mismatch": "This action is not for a channel of kind {kind}",
+      "no_adapter": "The server cannot send to this kind of channel",
+      "disabled": "The channel is switched off"
     },
     "config": {
       "secret_key_missing": "The server has no SECRET_KEY, so secrets cannot be saved",
@@ -37,7 +41,9 @@
     },
     "conversation": {
       "busy": "The bot is still answering the previous message in this conversation. Try again in a few seconds.",
-      "not_found": "Conversation not found"
+      "not_found": "Conversation not found",
+      "sandbox": "This is a sandbox conversation: nothing is sent to anyone",
+      "window_closed": "The client wrote too long ago: the channel does not allow writing now"
     },
     "decisions": {
       "bad_output": "The model gave an unexpected answer to the question {key}",
@@ -91,7 +97,8 @@
     },
     "request": {
       "contact_or_conversation_required": "Give either a contact or a conversation ID",
-      "invalid": "Check the fields: {fields}"
+      "invalid": "Check the fields: {fields}",
+      "bad_json": "The request body is not valid JSON"
     },
     "result": {
       "not_found": "Result not found"
@@ -126,7 +133,9 @@
       "threshold_too_high": "The threshold {threshold} is above the sum of weights {max}: the scenario would never start",
       "version_invalid": "Version {version} does not pass the checks any more (maybe the tenant languages changed)",
       "version_not_found": "The scenario {key} has no version {version}",
-      "yaml_invalid": "YAML cannot be read (line {line}): {error}"
+      "yaml_invalid": "YAML cannot be read (line {line}): {error}",
+      "action_notifier_required": "Action {index} ({on}): choose a notification channel",
+      "action_text_required": "Action {index} ({on}): write the message text"
     },
     "tenant": {
       "language_duplicate": "A language is listed twice",
@@ -149,6 +158,40 @@
       "inactive": "The user {email} is blocked",
       "locale_invalid": "Unknown interface language: {locale}",
       "not_found": "User not found"
+    },
+    "instagram": {
+      "not_configured": "Instagram is not set up on this server (META_APP_ID, META_APP_SECRET)",
+      "bad_signature": "Wrong webhook signature",
+      "bad_verify_token": "Wrong webhook verify token",
+      "no_token": "The account has no token: connect it again",
+      "token_invalid": "Instagram does not accept the token. Connect the account again.",
+      "token_expired": "The Instagram token has expired. Connect the account again.",
+      "token_expiring": "The Instagram token could not be renewed and expires soon. Connect the account again.",
+      "api_error": "Instagram answered with an error: {detail}",
+      "cancelled": "Instagram login was cancelled",
+      "bad_state": "The Instagram login took too long or was opened in another tab. Start again.",
+      "window_closed": "Not sent: more than 24 hours since the last client message",
+      "rejected": "Instagram did not accept the message"
+    },
+    "notifier": {
+      "name_taken": "The name {name} is already used",
+      "not_found": "Notification channel not found",
+      "target_invalid": "Wrong recipient: {value}",
+      "targets_required": "Add at least one recipient",
+      "token_required": "A Telegram bot token is needed",
+      "too_many_targets": "Too many recipients: at most {max}"
+    },
+    "operator_task": {
+      "action_invalid": "This task cannot be closed this way ({action})",
+      "closed": "The task is already closed",
+      "not_found": "Task not found",
+      "outdated": "The client wrote again and the variants changed. Look at the new ones.",
+      "text_required": "Pick a variant or write the text",
+      "variant_invalid": "There is no such variant"
+    },
+    "send": {
+      "empty": "Empty message: nothing to send",
+      "failed": "Could not send after several attempts"
     }
   }
 }

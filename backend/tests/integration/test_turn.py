@@ -45,7 +45,10 @@ class FakeAdapter:
         self.sent: list[tuple[str, str]] = []
         self.error: Exception | None = None
 
-    async def send(self, channel, contact, message) -> SendResult:
+    def can_send(self, conversation, role, now) -> bool:
+        return True
+
+    async def send(self, channel, contact, message, conversation) -> SendResult:
         if self.error is not None:
             raise self.error
         self.sent.append((contact.external_id, message.text))
@@ -237,7 +240,7 @@ async def test_sent_message_is_not_sent_twice(services):
 
 async def test_permanent_send_error_marks_message_failed(services):
     setup = await _setup(services)
-    setup.adapter.error = PermanentSendError("window closed")
+    setup.adapter.error = PermanentSendError("window closed", "instagram.window_closed")
     conv_id, _ = await _say(services, setup, "hi")
     outcome = await run_turn(
         services, conv_id, owner="t", pipeline=Scripted(TurnPlan(reply_text="hello"))
@@ -247,7 +250,9 @@ async def test_permanent_send_error_marks_message_failed(services):
 
     reply = await _message(services, outcome.reply_message_id)
     assert reply.send_status == SendStatus.FAILED
-    assert reply.send_error == "window closed"
+    # a code the admin translates; the text stays in meta
+    assert reply.send_error == "instagram.window_closed"
+    assert reply.meta["send_error_detail"] == "window closed"
     # no point retrying: the job itself is done
     assert [j.status for j in await _jobs(services)] == [JobStatus.DONE]
 
@@ -275,7 +280,8 @@ async def test_send_error_is_retried_and_fails_on_last_attempt(services, clock):
     await worker.run_due()
     reply = await _message(services, outcome.reply_message_id)
     assert reply.send_status == SendStatus.FAILED
-    assert "RuntimeError: network down" in (reply.send_error or "")
+    assert reply.send_error == "send.failed"
+    assert reply.meta["send_error_detail"] == "RuntimeError: network down"
     (job,) = await _jobs(services)
     assert job.status == JobStatus.FAILED
 

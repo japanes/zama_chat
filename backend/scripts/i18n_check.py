@@ -4,6 +4,8 @@
 2. Every error / warning code the backend can return has a text in `errors.json` of
    every locale (the backend sends codes with params, the admin builds the text).
 3. Every email language (`backend/app/admin/mail/*.json`) has the same keys.
+4. Every notification language (`backend/app/notify/templates/*.json`) has the same keys,
+   and the same {placeholders} in each text.
 
 Exit code 1 with a list of what is missing. Codes are found in the source: the first
 string argument of AppError / NotFound / Forbidden / Unauthorized / Conflict, the value of
@@ -20,6 +22,8 @@ ROOT = Path(__file__).resolve().parents[2]
 BACKEND_APP = ROOT / "backend" / "app"
 LOCALES = ROOT / "admin" / "i18n" / "locales"
 MAIL = BACKEND_APP / "admin" / "mail"
+NOTIFY = BACKEND_APP / "notify" / "templates"
+PLACEHOLDER = re.compile(r"\{(\w+)\}")
 
 CODE = r'"([a-z_]+\.[a-z_]+(?:\.[a-z_]+)*)"'
 PATTERNS = [
@@ -43,6 +47,32 @@ def flatten(data: dict, prefix: str = "") -> set[str]:
         else:
             keys.add(path)
     return keys
+
+
+def leaves(data: dict, prefix: str = "") -> dict[str, str]:
+    out: dict[str, str] = {}
+    for key, value in data.items():
+        path = f"{prefix}.{key}" if prefix else key
+        if isinstance(value, dict):
+            out.update(leaves(value, path))
+        else:
+            out[path] = str(value)
+    return out
+
+
+def check_same(folder: Path, label: str, problems: list[str], *, placeholders: bool) -> int:
+    texts = {p.stem: leaves(json.loads(p.read_text("utf-8"))) for p in folder.glob("*.json")}
+    union = set().union(*(set(t) for t in texts.values())) if texts else set()
+    for lang, data in sorted(texts.items()):
+        for key in sorted(union - set(data)):
+            problems.append(f"{label}/{lang}: missing {key}")
+    if placeholders and "en" in texts:
+        for lang, data in sorted(texts.items()):
+            for key, text in data.items():
+                want = set(PLACEHOLDER.findall(texts["en"].get(key, "")))
+                if key in texts["en"] and set(PLACEHOLDER.findall(text)) != want:
+                    problems.append(f"{label}/{lang}: placeholders of {key} differ from en")
+    return len(texts)
 
 
 def backend_codes() -> set[str]:
@@ -86,17 +116,17 @@ def main() -> int:
             if f"errors.{code}" not in keys:
                 problems.append(f"admin/{lang}: no text for backend code {code}")
 
-    mails = {p.stem: flatten(json.loads(p.read_text("utf-8"))) for p in MAIL.glob("*.json")}
-    mail_union = set().union(*mails.values()) if mails else set()
-    for lang, keys in sorted(mails.items()):
-        for key in sorted(mail_union - keys):
-            problems.append(f"mail/{lang}: missing {key}")
+    mails = check_same(MAIL, "mail", problems, placeholders=False)
+    notify = check_same(NOTIFY, "notify", problems, placeholders=True)
 
     if problems:
         print("\n".join(problems))
         print(f"\n{len(problems)} problem(s)")
         return 1
-    print(f"ok: {len(all_keys)} admin locales, {len(backend_codes())} codes, {len(mails)} mails")
+    print(
+        f"ok: {len(all_keys)} admin locales, {len(backend_codes())} codes, "
+        f"{mails} mail languages, {notify} notification languages"
+    )
     return 0
 
 

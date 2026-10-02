@@ -12,7 +12,17 @@ from sqlalchemy import select
 from app.api.deps import ApiClientDep, ServicesDep
 from app.core.ingest import save_client_message
 from app.core.turn import run_turn
-from app.db.models import Contact, Conversation, Message, MessageRole, SendStatus, Turn
+from app.db.models import (
+    Contact,
+    Conversation,
+    Message,
+    MessageRole,
+    OperatorTask,
+    SendStatus,
+    TaskKind,
+    TaskStatus,
+    Turn,
+)
 from app.errors import AppError, NotFound
 from app.services import Services
 
@@ -37,7 +47,10 @@ class MessageOut(BaseModel):
     turn_id: uuid.UUID | None
     message_id: uuid.UUID | None  # id of the bot reply
     reply: str | None
+    # the conversation is handed over to a person: the bot does not answer
     handover: bool = False
+    # operator mode: an operator picks the reply; read it later from the history
+    waiting_operator: bool = False
 
 
 @router.post("/messages", response_model=MessageOut)
@@ -73,6 +86,7 @@ async def post_message(body: MessageIn, client: ApiClientDep, services: Services
             message_id=outcome.reply_message_id,
             reply=outcome.reply_text,
             handover=outcome.handover,
+            waiting_operator=outcome.waiting_operator,
         )
     return await _stored_reply(services, ingested.conversation_id, ingested.message_id)
 
@@ -98,12 +112,22 @@ async def _stored_reply(
                 )
             )
         ).scalar_one_or_none()
+        waiting = (
+            await session.execute(
+                select(OperatorTask.id).where(
+                    OperatorTask.turn_id == turn.id,
+                    OperatorTask.kind == TaskKind.CHOOSE_REPLY,
+                    OperatorTask.status == TaskStatus.OPEN,
+                )
+            )
+        ).first() is not None
     return MessageOut(
         conversation_id=conversation_id,
         turn_id=turn.id,
         message_id=reply.id if reply else None,
         reply=reply.text if reply else None,
         handover=bool(conv and conv.handover),
+        waiting_operator=waiting,
     )
 
 

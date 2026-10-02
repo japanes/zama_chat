@@ -1,0 +1,69 @@
+{
+  "object": "instagram",
+  "entry": [
+    {
+      "time": 1790942500000,
+      "id": "17841400000000001",
+      "messaging": [
+        {
+          "sender": { "id": "990000000000002" },
+          "recipient": { "id": "17841400000000001" },
+          "timestamp": 1790942500000,
+          "message": {
+            "mid": "mid.image.1",
+            "attachments": [
+              { "type": "image", "payload": { "url": "https://lookaside.fbsbx.com/ig_messaging_cdn/?asset_id=1" } }
+            ]
+          }
+        },
+        {
+          "sender": { "id": "990000000000002" },
+          "recipient": { "id": "17841400000000001" },
+          "timestamp": 1790942501000,
+          "message": {
+            "mid": "mid.reply.1",
+            "text": "Так, на п'ятницю",
+            "reply_to": { "mid": "mid.bot.question" },
+            "quick_reply": { "payload": "FRIDAY" }
+          }
+        },
+        {
+          "sender": { "id": "990000000000002" },
+          "recipient": { "id": "17841400000000001" },
+          "timestamp": 1790942502000,
+          "postback": { "mid": "mid.postback.1", "title": "Записатися", "payload": "BOOK" }
+        },
+        {
+          "sender": { "id": "990000000000002" },
+          "recipient": { "id": "17841400000000001" },
+          "timestamp": 1790942503000,
+          "read": { "mid": "mid.bot.question" }
+        },
+        {
+          "sender": { "id": "990000000000002" },
+          "recipient": { "id": "17841400000000001" },
+          "timestamp": 1790942504000,
+          "reaction": { "mid": "mid.bot.question", "action": "react", "reaction": "love", "emoji": "❤" }
+        },
+        {
+          "sender": { "id": "990000000000002" },
+          "recipient": { "id": "17841400000000001" },
+          "timestamp": 1790942505000,
+          "message": { "mid": "mid.deleted.1", "is_deleted": true }
+        }
+      ]
+    },
+    {
+      "time": 1790942506000,
+      "id": "17841400000000009",
+      "messaging": [
+        {
+          "sender": { "id": "990000000000003" },
+          "recipient": { "id": "17841400000000009" },
+          "timestamp": 1790942506000,
+          "message": { "mid": "mid.other.account", "text": "Hello" }
+        }
+      ]
+    }
+  ]
+}

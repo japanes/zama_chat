@@ -7,6 +7,13 @@
          `messages` (+ send_message job for asynchronous channels, outbox); turn totals;
          plan writes; state_version + 1; lease released.
 
+Operator side (stage 4):
+- operator mode: the plan has reply variants instead of a reply; they go to the open
+  choose_reply task of the conversation (a new message rebuilds them);
+- the client asked for a human: the conversation is handed over, a handover task is
+  opened and the team notified; while it is handed over, turns do not think at all —
+  messages are only marked processed (the operator sees them in the task).
+
 New client messages that arrived while an asynchronous channel turn was thinking make
 the reply stale: it is dropped and the turn runs again with everything (at most
 `turn_restart_limit` times in a row). HTTP turns take only their own message.
@@ -44,6 +51,9 @@ from app.errors import AppError
 from app.jobs.queue import enqueue
 from app.llm.service import Overrides
 from app.logging import get_logger
+from app.notify.service import conversation_values, notify_event
+from app.operator import tasks as operator_tasks
+from app.operator.variants import variant_count
 from app.services import Services
 
 log = get_logger(__name__)
@@ -57,6 +67,8 @@ class TurnOutcome:
     reply_text: str | None
     reply_message_id: uuid.UUID | None
     handover: bool = False
+    # operator mode: the reply waits for an operator (variants in an operator task)
+    waiting_operator: bool = False
 
 
 def default_pipeline() -> Pipeline:
@@ -133,14 +145,19 @@ async def _one_pass(
         return None
     bound = log.bind(turn_id=str(ctx.turn_id), conversation_id=str(conversation_id))
     try:
-        async with lease.keep_alive(
-            services.sm,
-            conversation_id,
-            owner,
-            services.clock,
-            seconds=services.settings.lease_seconds,
-        ):
-            plan = await pipeline(services, ctx)
+        if ctx.handover and not ctx.sandbox:
+            # handed over to a person: the bot stays quiet
+            ctx.trace.note("handover", {"quiet": True})
+            plan = TurnPlan(reply_text=None)
+        else:
+            async with lease.keep_alive(
+                services.sm,
+                conversation_id,
+                owner,
+                services.clock,
+                seconds=services.settings.lease_seconds,
+            ):
+                plan = await pipeline(services, ctx)
         return await _write(
             services, ctx, plan, owner=owner, started=started, allow_restart=allow_restart
         )
@@ -225,6 +242,7 @@ async def _take(
             now=now,
             sandbox=sandbox,
             overrides=overrides,
+            operator_variants=variant_count(channel.settings or {}),
             trace=Trace(),
         )
 
@@ -277,7 +295,28 @@ async def _write(
             return TurnOutcome(turn.id, conv.id, TurnStatus.SUPERSEDED, None, None)
 
         reply_id: uuid.UUID | None = None
-        if plan.reply_text:
+        waiting_operator = False
+        if plan.variants is not None and not ctx.sandbox:
+            if await _answered_by_operator(session, ctx):
+                # an operator answered while the variants were being written: not needed
+                ctx.trace.note("variants_dropped", {"reason": "operator_answered"})
+            else:
+                waiting_operator = True
+                _task, created = await operator_tasks.upsert_choose_reply(
+                    session,
+                    conv,
+                    turn_id=turn.id,
+                    variants=plan.variants,
+                    input_text=ctx.input_text,
+                    meta={
+                        "reply_language": plan.reply_language or ctx.reply_language,
+                        **plan.reply_meta,
+                    },
+                    now=now,
+                )
+                if created:
+                    await _notify(services, session, conv, "choose_reply", ctx.input_text, now)
+        elif plan.reply_text:
             reply = Message(
                 tenant_id=ctx.tenant_id,
                 channel_id=ctx.channel_id,
@@ -314,6 +353,17 @@ async def _write(
         if plan.handover and not conv.handover:
             conv.handover = True
             conv.handover_at = now
+            if not ctx.sandbox:
+                _task, created = await operator_tasks.open_handover(
+                    session, conv, turn_id=turn.id, text=ctx.input_text, now=now
+                )
+                if created:
+                    await _notify(services, session, conv, "handover", ctx.input_text, now)
+        elif conv.handover and ctx.handover and not ctx.sandbox:
+            # a quiet turn: the operator sees the latest words in the task
+            await operator_tasks.open_handover(
+                session, conv, turn_id=turn.id, text=ctx.input_text, now=now
+            )
         # the conversation stays handed over until an operator gives it back
         handover = conv.handover
         if plan.state is not None:
@@ -327,8 +377,45 @@ async def _write(
         lease.release_in(conv)
 
     return TurnOutcome(
-        turn.id, ctx.conversation_id, TurnStatus.DONE, plan.reply_text, reply_id, handover
+        turn.id,
+        ctx.conversation_id,
+        TurnStatus.DONE,
+        None if waiting_operator else plan.reply_text,
+        reply_id,
+        handover,
+        waiting_operator,
     )
+
+
+async def _answered_by_operator(session: AsyncSession, ctx: TurnContext) -> bool:
+    """A person wrote to the client after the newest message this turn answers."""
+    newest = (
+        select(func.max(Message.created_at))
+        .where(Message.id.in_(ctx.pending_ids))
+        .scalar_subquery()
+    )
+    found = await session.execute(
+        select(Message.id)
+        .where(
+            Message.conversation_id == ctx.conversation_id,
+            Message.role == MessageRole.OPERATOR,
+            Message.created_at > newest,
+        )
+        .limit(1)
+    )
+    return found.first() is not None
+
+
+async def _notify(
+    services: Services,
+    session: AsyncSession,
+    conv: Conversation,
+    event: str,
+    text: str,
+    now: datetime,
+) -> None:
+    values = await conversation_values(session, services, conv, text=text)
+    await notify_event(session, tenant_id=conv.tenant_id, event=event, values=values, now=now)
 
 
 async def _has_new_messages(session: AsyncSession, conversation_id: uuid.UUID) -> bool:

@@ -1,0 +1,40 @@
+{
+  "subject": {
+    "handover": "A client asks for a human",
+    "choose_reply": "A reply is waiting for an operator",
+    "channel_error": "A channel needs attention",
+    "scenario": "Scenario: {scenario}",
+    "test": "Test notification"
+  },
+  "body": {
+    "handover": "🙋 {contact} asks to talk to a person.\nChannel: {channel}\nMessage: {text}\n\n{link}",
+    "choose_reply": "💬 {contact} is waiting for a reply. The bot has prepared variants.\nChannel: {channel}\nMessage: {text}\n\n{link}",
+    "channel_error": "⚠️ Channel {channel} needs attention: {error}\n\n{link}",
+    "scenario": "📋 {scenario}: {event}\nClient: {contact}\nChannel: {channel}\n{fields}\n\n{link}",
+    "test": "✅ Test notification from Zama Chat: this notifier works."
+  },
+  "event": {
+    "started": "started",
+    "field_filled": "an answer was collected",
+    "field_stuck": "the bot cannot get an answer",
+    "all_fields": "all answers collected",
+    "confirmed": "confirmed",
+    "completed": "completed",
+    "cancelled": "cancelled",
+    "abandoned": "not finished",
+    "silence": "the client went silent"
+  },
+  "no_text": "(no text)",
+  "no_fields": "No answers yet.",
+  "error": {
+    "instagram": {
+      "token_invalid": "Instagram does not accept the token: connect the account again",
+      "no_token": "the channel has no token: connect the account again",
+      "token_expiring": "the Instagram token could not be renewed and will expire soon: connect the account again",
+      "token_expired": "the Instagram token has expired: connect the account again"
+    },
+    "config": {
+      "secret_undecryptable": "the saved token cannot be decrypted (SECRET_KEY changed?): connect the account again"
+    }
+  }
+}

@@ -16,7 +16,8 @@ export const ACTION_EVENTS = [
   'abandoned',
   'silence',
 ] as const
-export const ACTIONS = ['http_post'] as const
+export const ACTIONS = ['http_post', 'notify_telegram', 'notify_email', 'message_client', 'handover'] as const
+export const NOTIFY_ACTIONS = ['notify_telegram', 'notify_email']
 export const KEY_RE = /^[a-z][a-z0-9]*(_[a-z0-9]+)*$/
 
 export function newField(n: number): any {
@@ -54,6 +55,17 @@ function text(value: unknown): LText | undefined {
 function compact<T extends Record<string, any>>(obj: T): T {
   for (const k of Object.keys(obj)) if (obj[k] === undefined || obj[k] === null || obj[k] === '') delete obj[k]
   return obj
+}
+
+// params of an action: only the ones its handler reads (others are kept for the JSON mode)
+function actionParams(a: any): any {
+  const p: Record<string, any> = { ...(a.params || {}) }
+  if (NOTIFY_ACTIONS.includes(a.do)) p.notifier = (p.notifier || '').trim() || undefined
+  else delete p.notifier
+  if (a.do === 'message_client') p.text = text(p.text)
+  else delete p.text
+  const out = compact(p)
+  return Object.keys(out).length ? out : undefined
 }
 
 export function cleanDefinition(d: any): any {
@@ -97,11 +109,11 @@ export function cleanDefinition(d: any): any {
       compact({
         on: a.on,
         do: a.do || 'http_post',
-        endpoint: a.endpoint || undefined,
+        endpoint: a.do === 'http_post' || !a.do ? a.endpoint || undefined : undefined,
         after_minutes: a.on === 'silence' && a.after_minutes !== '' && a.after_minutes != null ? Number(a.after_minutes) : undefined,
         status: a.status || undefined,
         field: ['field_filled', 'field_stuck'].includes(a.on) && a.field ? a.field : undefined,
-        params: a.params && Object.keys(a.params).length ? a.params : undefined,
+        params: actionParams(a),
       }),
     ),
   })
@@ -124,7 +136,10 @@ export function toForm(d: any): any {
   out.resume ||= { mode: 'always' }
   out.cancel ||= {}
   out.actions ||= []
-  for (const a of out.actions) a.do ||= 'http_post'
+  for (const a of out.actions) {
+    a.do ||= 'http_post'
+    a.params ||= {}
+  }
   return out
 }
 

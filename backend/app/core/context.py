@@ -55,6 +55,8 @@ class TurnContext:
     now: datetime
     sandbox: bool = False
     overrides: Overrides | None = None
+    # operator mode: how many reply variants to prepare (channel setting)
+    operator_variants: int = 3
     trace: Trace = field(default_factory=Trace)
     # loaded by later stages (scenario runs, channel scenarios…)
     extra: dict[str, Any] = field(default_factory=dict)
@@ -75,6 +77,8 @@ class TurnPlan:
     state: dict[str, Any] | None = None  # new conversations.state (None = unchanged)
     reply_meta: dict[str, Any] = field(default_factory=dict)
     writes: list[WriteFn] = field(default_factory=list)
+    # operator mode: reply variants for the operator instead of a reply to the client
+    variants: list[str] | None = None
 
 
 Pipeline = Callable[["Services", TurnContext], Awaitable[TurnPlan]]

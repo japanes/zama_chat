@@ -13,8 +13,11 @@
           </div>
           <div class="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] opacity-70">
             <span v-if="m.role === 'operator'">{{ t('chat.role.operator') }} ·</span>
+            <span v-if="m.meta?.source === 'instagram_app'">{{ t('chat.from_app') }} ·</span>
+            <span v-else-if="m.meta?.source === 'action'">{{ t('chat.from_action') }} ·</span>
+            <span v-if="m.meta?.variant !== undefined && m.meta?.variant !== null">{{ t('chat.variant', { n: Number(m.meta.variant) + 1 }) }}{{ m.meta.edited ? `, ${t('chat.edited')}` : '' }} ·</span>
             <span>{{ f.time(m.created_at) }}</span>
-            <StatusBadge v-if="m.role === 'bot' && m.send_status && m.send_status !== 'sent'" kind="send" :value="m.send_status" />
+            <StatusBadge v-if="m.role !== 'client' && m.send_status && m.send_status !== 'sent'" kind="send" :value="m.send_status" />
             <button
               v-if="m.turn_id && m.role !== 'client' && withTrace"
               type="button"
@@ -24,7 +27,7 @@
               {{ open.has(m.turn_id) ? t('chat.hide_trace') : t('chat.show_trace') }}
             </button>
           </div>
-          <p v-if="m.send_error" class="mt-1 text-xs text-rose-600 break-words">{{ m.send_error }}</p>
+          <p v-if="m.send_error" class="mt-1 text-xs text-rose-600 break-words">{{ codeText({ code: m.send_error }) }}</p>
         </div>
       </div>
       <div v-if="m.turn_id && open.has(m.turn_id) && m.role !== 'client'" class="mt-2">
@@ -39,6 +42,7 @@
 const props = defineProps<{ messages: any[]; withTrace?: boolean; preloaded?: any; openTurn?: string | null }>()
 const { t } = useI18n()
 const f = useFormat()
+const { codeText } = useErrorText()
 const open = reactive(new Set<string>())
 
 watch(

@@ -1,7 +1,11 @@
 {
   "scenarios": {
     "action": {
-      "http_post": "Send JSON to an endpoint"
+      "http_post": "Send JSON to an endpoint",
+      "notify_telegram": "Notify in Telegram",
+      "notify_email": "Notify by email",
+      "message_client": "Write to the client",
+      "handover": "Hand over to a person"
     },
     "action_do": "Do",
     "action_field": "Field",
@@ -129,6 +133,10 @@
     "viewing_v": "viewing v{v}",
     "warnings": "Saved, but check:",
     "weight": "Weight",
-    "yaml_hint": "The same scenario as YAML. Changes here show up in the form."
+    "yaml_hint": "The same scenario as YAML. Changes here show up in the form.",
+    "notifier": "Notification channel",
+    "message_text": "Message text",
+    "message_text_hint": "Sent as is, in the reply language of the conversation. In Instagram only within 24 hours of the last client message.",
+    "handover_hint": "The bot goes quiet in this conversation, the operator gets a task."
   }
 }

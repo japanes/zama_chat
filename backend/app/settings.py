@@ -66,13 +66,24 @@ class Settings(BaseSettings):
     magic_link_minutes: int = 15
     cookie_secure: bool = False
 
-    # Instagram (stage 4)
+    # Instagram (stage 4): one Meta app for the whole system. For "Instagram API with
+    # Instagram Login" these are the Instagram app id / secret from the app dashboard.
     meta_app_id: str = ""
     meta_app_secret: SecretStr = SecretStr("")
     ig_webhook_verify_token: SecretStr = SecretStr("")
     ig_graph_url: str = "https://graph.instagram.com/v23.0"
     ig_oauth_url: str = "https://www.instagram.com/oauth/authorize"
     ig_token_url: str = "https://api.instagram.com/oauth/access_token"
+    # TODO(review): the HUMAN_AGENT tag lets an operator answer up to 7 days after the
+    # client's last message; Meta gives it only after a separate permission review
+    ig_human_agent_tag: bool = False
+    ig_timeout_s: float = 20.0
+    # echo of an outgoing message is handled this much later, so the mid of our own
+    # reply is saved first (the send job writes it after Graph API answers)
+    ig_echo_delay_s: float = 5.0
+
+    # Notifications (stage 4)
+    telegram_api_url: str = "https://api.telegram.org"
 
     # Search (stage 5)
     elasticsearch_url: str = "http://localhost:9201"
