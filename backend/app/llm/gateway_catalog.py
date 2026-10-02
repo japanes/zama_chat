@@ -32,6 +32,22 @@ class CatalogModel:
     zdr: str | None = None
     description: str = ""
 
+    def model_fields(self) -> dict[str, Any]:
+        """What an llm_models row takes from the catalog (the admin may edit it)."""
+        return {
+            "label": self.label,
+            "kind": "embedding" if self.kind == "embedding" else "language",
+            "price_input": self.price_input,
+            "price_cached_input": self.price_cached_input,
+            "price_output": self.price_output,
+            "context_window": self.context_window,
+            "max_output": self.max_output,
+            "supports_json_schema": self.supports_json_schema,
+            "supports_reasoning": self.supports_reasoning,
+            "supports_vision": self.supports_vision,
+            "reasoning_efforts": self.reasoning_efforts,
+        }
+
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
         for key in ("price_input", "price_cached_input", "price_output"):

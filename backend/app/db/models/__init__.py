@@ -22,11 +22,23 @@ from app.db.models.scenarios import (
     ScenarioRun,
 )
 from app.db.models.tenants import ApiKey, Channel, ChannelKind, ChannelStatus, Tenant
+from app.db.models.users import (
+    ROLE_RANK,
+    AdminSession,
+    AuditLog,
+    LoginToken,
+    Membership,
+    User,
+    UserRole,
+)
 
 __all__ = [
     "OPEN_STATUSES",
     "ROLES_NEED_JSON_SCHEMA",
+    "ROLE_RANK",
+    "AdminSession",
     "ApiKey",
+    "AuditLog",
     "Channel",
     "ChannelKind",
     "ChannelScenario",
@@ -46,6 +58,8 @@ __all__ = [
     "LlmCall",
     "LlmModel",
     "LlmRole",
+    "LoginToken",
+    "Membership",
     "Message",
     "MessageRole",
     "ModelRole",
@@ -57,4 +71,6 @@ __all__ = [
     "Tenant",
     "Turn",
     "TurnStatus",
+    "User",
+    "UserRole",
 ]

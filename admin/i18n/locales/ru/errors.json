@@ -1,0 +1,154 @@
+{
+  "errors": {
+    "client": {
+      "network": "Нет связи с сервером. Проверьте интернет и попробуйте ещё раз.",
+      "http": "Сервер ответил ошибкой ({status}). Попробуйте позже."
+    },
+    "api_key": {
+      "not_found": "API-ключ не найден"
+    },
+    "auth": {
+      "bad_token": "Ссылка для входа неверна или уже использована. Запросите новую.",
+      "email_invalid": "Это не похоже на адрес почты",
+      "forbidden": "Недостаточно прав: нужна роль «{need}»",
+      "google_cancelled": "Вход через Google отменён",
+      "google_email_unverified": "Google не подтвердил этот адрес почты",
+      "google_failed": "Не удалось войти через Google. Попробуйте ещё раз или войдите по ссылке.",
+      "google_not_configured": "Вход через Google на этом сервере не настроен",
+      "google_state": "Вход длился слишком долго или открыт в другой вкладке. Начните заново.",
+      "invalid_api_key": "Неверный или отозванный API-ключ",
+      "link_expired": "Срок действия ссылки истёк. Запросите новую.",
+      "mail_failed": "Не удалось отправить письмо. Попробуйте позже.",
+      "mail_not_configured": "Отправка почты на этом сервере не настроена",
+      "no_access": "У этой учётной записи нет доступа к админке. Обратитесь к администратору.",
+      "required": "Пожалуйста, войдите",
+      "superadmin_required": "Это может только суперадмин"
+    },
+    "channel": {
+      "http_not_found": "У тенанта нет HTTP-канала",
+      "not_found": "Канал не найден",
+      "scenario_duplicate": "Сценарий указан дважды: {keys}",
+      "setting_invalid": "Неверное значение настройки {key}",
+      "settings_unknown": "Неизвестные настройки: {keys}. Разрешены: {allowed}"
+    },
+    "config": {
+      "secret_key_missing": "На сервере нет SECRET_KEY, поэтому секреты нельзя сохранить",
+      "secret_undecryptable": "Сохранённый секрет не расшифровывается: видимо, сменился SECRET_KEY"
+    },
+    "conversation": {
+      "busy": "Бот ещё отвечает на предыдущее сообщение в этом диалоге. Попробуйте через несколько секунд.",
+      "not_found": "Диалог не найден"
+    },
+    "decisions": {
+      "bad_output": "Модель дала неожиданный ответ на вопрос {key}",
+      "state_too_long": "Слишком много текста для вопроса {key}: {tokens} токенов, максимум {max}",
+      "too_many_options": "Слишком много вариантов в {key}: {count}, максимум {max}",
+      "too_many_steps": "Слишком много ступеней в {key}: {count}, максимум {max}",
+      "unavailable": "Не удалось получить ответы на: {keys}"
+    },
+    "delivery": {
+      "cannot_resend": "Эту отправку нельзя повторить",
+      "not_found": "Отправка не найдена"
+    },
+    "endpoint": {
+      "name_taken": "Название {name} уже занято",
+      "not_found": "Адрес не найден"
+    },
+    "lease": {
+      "lost": "Диалог перехватил другой процесс; ответ не сохранён. Попробуйте ещё раз."
+    },
+    "llm": {
+      "model_inactive": "Модель {model} на роли {role} выключена",
+      "role_not_assigned": "Для роли {role} не назначена модель. Назначьте её на странице «Роли моделей».",
+      "unavailable": "Модель для роли {role} не ответила ({error})"
+    },
+    "member": {
+      "last_owner": "У тенанта должен остаться хотя бы один владелец",
+      "not_found": "Участник не найден"
+    },
+    "models": {
+      "catalog_unavailable": "Каталог Gateway недоступен ({error}). Добавьте модель вручную или попробуйте позже.",
+      "check_empty": "Модель ответила пустым результатом",
+      "check_failed": "Модель не ответила: {message}",
+      "exists": "Модель {name} уже добавлена",
+      "in_use": "Модель {model} стоит на ролях: {roles}. Сначала смените роли.",
+      "inactive": "Модель {model} выключена",
+      "json_schema_required": "Роли {role} нужна модель со схемой JSON; {model} её не поддерживает",
+      "kind_mismatch": "Модель {model} не подходит для роли {role} (текстовая или эмбеддинги)",
+      "not_found": "Модель не найдена",
+      "not_in_catalog": "В каталоге Gateway нет {name}",
+      "reasoning_effort_invalid": "У модели {model} нет уровня размышления {effort}. Можно: {allowed}",
+      "reasoning_unsupported": "У модели {model} нет уровней размышления",
+      "vision_required": "Роли {role} нужна модель, которая читает изображения; {model} не умеет"
+    },
+    "prompt": {
+      "invalid_json": "Промпт {key} должен быть правильным JSON: {error}",
+      "key_invalid": "Неверный ключ промпта: {key}",
+      "not_found": "Промпт {key} не найден",
+      "placeholder_unknown": "Неизвестная подстановка %{name}%",
+      "unknown_key": "Промпта {key} не существует",
+      "version_not_found": "У промпта {key} нет версии {version}"
+    },
+    "request": {
+      "contact_or_conversation_required": "Укажите контакт или ID диалога",
+      "invalid": "Проверьте поля: {fields}"
+    },
+    "result": {
+      "not_found": "Результат не найден"
+    },
+    "sandbox": {
+      "model_unsuitable": "Модель {model} не может отвечать клиентам"
+    },
+    "scenario": {
+      "action_endpoint_required": "Действие {index}: выберите адрес",
+      "action_field_unknown": "Действие {index}: нет поля {field}",
+      "action_unknown": "Действие {index}: неизвестное действие {do}",
+      "after_minutes_not_silence": "Действие {index}: «через, минут» работает только с «клиент молчит»",
+      "ask_after_cycle": "«Спрашивать после» ходит по кругу: {fields}",
+      "ask_after_unknown": "Поле {field}: «спрашивать после» указывает на несуществующее поле {ref}",
+      "choice_options_missing": "Поле {field}: добавьте варианты для выбора",
+      "completion_not_supported": "Режим завершения {mode} пока недоступен",
+      "field_duplicate": "Ключи полей повторяются: {fields}",
+      "file_invalid": "Файл {path}: {error}",
+      "filter_duplicate": "Поле {field}: ключи проверок повторяются",
+      "invalid": "В сценарии ошибки: {errors}",
+      "language_invalid": "Неверный код языка: {language}",
+      "main_language_not_in_tenant": "Основного языка {language} нет среди языков тенанта ({languages})",
+      "not_active": "У сценария {key} нет активной версии",
+      "not_found": "Сценарий не найден",
+      "options_not_allowed": "Поле {field}: варианты только для типа «выбор»",
+      "resume_hours_required": "Укажите число часов для «продолжать только в течение N часов»",
+      "source_missing": "Отправьте сценарий формой, YAML или JSON",
+      "start_field_unknown": "Запуск: нет поля {field}",
+      "start_question_duplicate": "Признаки запуска повторяются: {questions}",
+      "text_missing_language": "Нет текста на языке {language}: {path}",
+      "threshold_required": "Признаков запуска несколько, поэтому задайте порог",
+      "threshold_too_high": "Порог {threshold} больше суммы весов {max}: сценарий никогда не запустится",
+      "version_invalid": "Версия {version} уже не проходит проверки (возможно, сменились языки тенанта)",
+      "version_not_found": "У сценария {key} нет версии {version}",
+      "yaml_invalid": "YAML не читается (строка {line}): {error}"
+    },
+    "tenant": {
+      "language_duplicate": "Язык указан дважды",
+      "language_invalid": "Неверный код языка: {language}",
+      "languages_empty": "Добавьте хотя бы один язык",
+      "not_found": "Тенант не найден",
+      "reply_language_unknown": "Правило {source} → {target}: языка {target} нет в списке",
+      "silence_minutes_invalid": "Неверное время тишины: {value}",
+      "slug_invalid": "Короткое имя: строчные латинские буквы, цифры и дефис, 3–64 символа",
+      "slug_taken": "Короткое имя {slug} уже занято"
+    },
+    "turn": {
+      "failed": "Бот не смог ответить: {error}",
+      "not_finished": "Предыдущий ответ в этом диалоге ещё не завершён",
+      "not_found": "Ход не найден"
+    },
+    "user": {
+      "cannot_demote_self": "Нельзя снять права суперадмина или заблокировать самого себя",
+      "exists": "Пользователь с почтой {email} уже есть",
+      "inactive": "Пользователь {email} заблокирован",
+      "locale_invalid": "Неизвестный язык интерфейса: {locale}",
+      "not_found": "Пользователь не найден"
+    }
+  }
+}

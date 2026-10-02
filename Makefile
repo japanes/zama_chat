@@ -3,7 +3,7 @@ BACKEND = cd backend &&
 UV = uv run
 TENANT ?= demo
 
-.PHONY: up up-search down migrate revision api worker test test-db lint fmt seed seed-scenarios jev-probe eval i18n-check admin
+.PHONY: up up-search down migrate revision api worker test test-db lint fmt seed seed-scenarios jev-probe eval i18n-check admin admin-build
 
 up:            ## start PostgreSQL
 	docker compose up -d postgres
@@ -58,3 +58,6 @@ i18n-check:    ## same keys in every admin locale + every backend error code tra
 
 admin:         ## run the admin (http://localhost:3120)
 	cd admin && npm run dev
+
+admin-build:   ## production build of the admin -> admin/.output
+	cd admin && npm run build

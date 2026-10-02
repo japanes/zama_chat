@@ -14,12 +14,13 @@ import typer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import API_KEY_PREFIX
+from app.admin.tenants import create_tenant as create_tenant_row
+from app.admin.tenants import issue_api_key
 from app.core.tenant_settings import TenantSettings
-from app.crypto import new_token, sha256_hex
-from app.db.models import ApiKey, Channel, ChannelKind, LlmModel, LlmRole, ModelRole, Tenant
+from app.crypto import new_token
+from app.db.models import LlmModel, LlmRole, ModelRole, Tenant
 from app.errors import AppError
-from app.llm.registry import assign_role, get_model
+from app.llm.registry import assign_role, get_model, roles_for_model
 from app.logging import setup_logging
 from app.services import Services
 from app.settings import get_settings
@@ -85,21 +86,42 @@ def create_tenant(
     )
 
     async def go(services: Services) -> None:
-        settings.validate_rules()
         async with services.sm() as session, session.begin():
-            exists = (
-                await session.execute(select(Tenant.id).where(Tenant.slug == slug))
-            ).scalar_one_or_none()
-            if exists is not None:
-                raise AppError("tenant.slug_taken", {"slug": slug})
-            tenant = Tenant(slug=slug, title=title, settings=settings.model_dump(mode="json"))
-            session.add(tenant)
-            await session.flush()
-            channel = Channel(tenant_id=tenant.id, kind=ChannelKind.HTTP, title="HTTP API")
-            session.add(channel)
-            await session.flush()
+            tenant, channel = await create_tenant_row(
+                session, slug=slug, title=title, settings=settings
+            )
         typer.echo(f"tenant {slug}: {tenant.id}")
         typer.echo(f"http channel: {channel.id}")
+
+    _run(go)
+
+
+@app.command("create-user")
+def create_user(
+    email: str,
+    superadmin: Annotated[bool, typer.Option(help="manages models, tenants, users")] = False,
+    tenant: Annotated[str | None, typer.Option(help="tenant slug to add the user to")] = None,
+    role: Annotated[str, typer.Option(help="owner | admin | operator")] = "owner",
+    name: str = "",
+) -> None:
+    """Create an admin user (or update an existing one). Sign-in: email link or Google."""
+    from app.admin.auth import normalize_email
+    from app.admin.tenants import ensure_user, set_membership
+    from app.db.models import UserRole
+
+    async def go(services: Services) -> None:
+        address = normalize_email(email)
+        async with services.sm() as session, session.begin():
+            user, created = await ensure_user(session, address, name=name or None)
+            if superadmin:
+                user.is_superadmin = True
+            user.is_active = True
+            if tenant:
+                t = await _tenant(session, tenant)
+                await set_membership(session, user_id=user.id, tenant_id=t.id, role=UserRole(role))
+        state = "created" if created else "updated"
+        extra = " superadmin" if user.is_superadmin else ""
+        typer.echo(f"user {address} {state}{extra}" + (f", {role} of {tenant}" if tenant else ""))
 
     _run(go)
 
@@ -117,23 +139,11 @@ def create_api_key(
     async def go(services: Services) -> None:
         async with services.sm() as session, session.begin():
             t = await _tenant(session, tenant)
-            query = select(Channel).where(
-                Channel.tenant_id == t.id, Channel.kind == ChannelKind.HTTP
-            )
-            if channel:
-                query = query.where(Channel.id == uuid.UUID(channel))
-            ch = (await session.execute(query.order_by(Channel.created_at))).scalars().first()
-            if ch is None:
-                raise AppError("channel.not_found", {"tenant": tenant})
-            key = API_KEY_PREFIX + new_token(32)
-            session.add(
-                ApiKey(
-                    tenant_id=t.id,
-                    channel_id=ch.id,
-                    title=title,
-                    key_hash=sha256_hex(key),
-                    prefix=key[:10],
-                )
+            _, key = await issue_api_key(
+                session,
+                tenant_id=t.id,
+                channel_id=uuid.UUID(channel) if channel else None,
+                title=title,
             )
         typer.echo(key)
         typer.secho("save it now: the key is not stored and cannot be shown again", err=True)
@@ -245,13 +255,24 @@ def create_endpoint(
 # --- models ---------------------------------------------------------------------------
 
 
+def _price(value: str) -> Decimal:
+    try:
+        price = Decimal(value)
+    except ArithmeticError as exc:
+        raise typer.BadParameter(f"not a number: {value}") from exc
+    if price < 0 or not price.is_finite():
+        raise typer.BadParameter(f"bad price: {value}")
+    return price
+
+
 @models_app.command("add")
 def models_add(
     name: Annotated[str, typer.Argument(help="Gateway id, e.g. openai/gpt-6-luna")],
     from_gateway: Annotated[bool, typer.Option(help="fill prices from the Gateway")] = False,
     label: str = "",
-    price_input: Annotated[Decimal | None, typer.Option(help="USD per 1M tokens")] = None,
-    price_output: Annotated[Decimal | None, typer.Option(help="USD per 1M tokens")] = None,
+    # str, not Decimal: typer has no Decimal type
+    price_input: Annotated[str | None, typer.Option(help="USD per 1M tokens")] = None,
+    price_output: Annotated[str | None, typer.Option(help="USD per 1M tokens")] = None,
     kind: str = "language",
 ) -> None:
     """Add (or update) a model. Prices are USD per 1M tokens."""
@@ -260,23 +281,13 @@ def models_add(
         data: dict[str, Any] = {"name": name, "label": label or name, "kind": kind}
         if from_gateway:
             entry = await services.catalog.get(name)
-            data.update(
-                label=label or entry.label,
-                kind=entry.kind if entry.kind == "embedding" else "language",
-                price_input=entry.price_input,
-                price_cached_input=entry.price_cached_input,
-                price_output=entry.price_output,
-                context_window=entry.context_window,
-                max_output=entry.max_output,
-                supports_json_schema=entry.supports_json_schema,
-                supports_reasoning=entry.supports_reasoning,
-                supports_vision=entry.supports_vision,
-                reasoning_efforts=entry.reasoning_efforts,
-            )
+            data.update(entry.model_fields())
+            if label:
+                data["label"] = label
         if price_input is not None:
-            data["price_input"] = price_input
+            data["price_input"] = _price(price_input)
         if price_output is not None:
-            data["price_output"] = price_output
+            data["price_output"] = _price(price_output)
         async with services.sm() as session, session.begin():
             model = (
                 await session.execute(select(LlmModel).where(LlmModel.name == name))
@@ -294,18 +305,6 @@ def models_add(
         )
 
     _run(go)
-
-
-def _roles_for(model: LlmModel) -> list[LlmRole]:
-    """Roles '*' expands to: every role the model can serve."""
-    if model.kind == "embedding":
-        return [LlmRole.EMBED]
-    roles = [LlmRole.REPLY]
-    if model.supports_json_schema:
-        roles += [LlmRole.REWRITE, LlmRole.EXTRACT, LlmRole.DECIDE]
-    if model.supports_vision:
-        roles.append(LlmRole.VISION)
-    return roles
 
 
 @models_app.command("assign")
@@ -326,7 +325,7 @@ def models_assign(
             m = await get_model(session, model)
             fb = await get_model(session, fallback) if fallback else None
             tenant_id = (await _tenant(session, tenant)).id if tenant else None
-            roles = _roles_for(m) if role == "*" else [LlmRole(role)]
+            roles = roles_for_model(m) if role == "*" else [LlmRole(role)]
             for r in roles:
                 await assign_role(
                     session,

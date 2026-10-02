@@ -60,6 +60,9 @@ class Conversation(IdMixin, TimestampsMixin, Base):
     lease_owner: Mapped[str | None] = mapped_column(String(100))
     lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     state_version: Mapped[int] = mapped_column(Integer, default=0)
+    # a conversation of the admin sandbox: answered in the request, nothing is sent
+    # outside, hidden from the conversation list by default
+    sandbox: Mapped[bool] = mapped_column(default=False, server_default="false")
 
 
 class MessageRole(StrEnum):

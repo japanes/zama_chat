@@ -1,0 +1,154 @@
+{
+  "errors": {
+    "client": {
+      "network": "No connection to the server. Check the internet and try again.",
+      "http": "The server answered with an error ({status}). Try again later."
+    },
+    "api_key": {
+      "not_found": "API key not found"
+    },
+    "auth": {
+      "bad_token": "The sign-in link is wrong or already used. Request a new one.",
+      "email_invalid": "This does not look like an email address",
+      "forbidden": "Not enough rights: you need the role “{need}”",
+      "google_cancelled": "Google sign-in was cancelled",
+      "google_email_unverified": "Google has not confirmed this email address",
+      "google_failed": "Google sign-in failed. Try again or use an email link.",
+      "google_not_configured": "Google sign-in is not set up on this server",
+      "google_state": "The sign-in took too long or was opened in another tab. Start again.",
+      "invalid_api_key": "Wrong or revoked API key",
+      "link_expired": "The sign-in link has expired. Request a new one.",
+      "mail_failed": "Could not send the email. Try again later.",
+      "mail_not_configured": "Sending email is not set up on this server",
+      "no_access": "This account has no access to the admin panel. Ask an administrator.",
+      "required": "Please sign in",
+      "superadmin_required": "Only a superadmin can do this"
+    },
+    "channel": {
+      "http_not_found": "The tenant has no HTTP channel",
+      "not_found": "Channel not found",
+      "scenario_duplicate": "A scenario is listed twice: {keys}",
+      "setting_invalid": "Wrong value of the setting {key}",
+      "settings_unknown": "Unknown settings: {keys}. Allowed: {allowed}"
+    },
+    "config": {
+      "secret_key_missing": "The server has no SECRET_KEY, so secrets cannot be saved",
+      "secret_undecryptable": "A saved secret cannot be decrypted: SECRET_KEY has probably changed"
+    },
+    "conversation": {
+      "busy": "The bot is still answering the previous message in this conversation. Try again in a few seconds.",
+      "not_found": "Conversation not found"
+    },
+    "decisions": {
+      "bad_output": "The model gave an unexpected answer to the question {key}",
+      "state_too_long": "Too much text for the question {key}: {tokens} tokens, at most {max}",
+      "too_many_options": "Too many options in {key}: {count}, at most {max}",
+      "too_many_steps": "Too many steps in {key}: {count}, at most {max}",
+      "unavailable": "Could not get answers to: {keys}"
+    },
+    "delivery": {
+      "cannot_resend": "This delivery cannot be sent again",
+      "not_found": "Delivery not found"
+    },
+    "endpoint": {
+      "name_taken": "The name {name} is already taken",
+      "not_found": "Endpoint not found"
+    },
+    "lease": {
+      "lost": "The conversation was taken by another process; the answer was not saved. Try again."
+    },
+    "llm": {
+      "model_inactive": "The model {model} on the role {role} is switched off",
+      "role_not_assigned": "No model is set for the role {role}. Set it on the Model roles page.",
+      "unavailable": "The model for the role {role} did not answer ({error})"
+    },
+    "member": {
+      "last_owner": "The tenant must keep at least one owner",
+      "not_found": "Member not found"
+    },
+    "models": {
+      "catalog_unavailable": "The Gateway catalog is not available ({error}). Add the model manually or try later.",
+      "check_empty": "The model answered with an empty result",
+      "check_failed": "The model did not answer: {message}",
+      "exists": "The model {name} is already added",
+      "in_use": "The model {model} is set on roles: {roles}. Change the roles first.",
+      "inactive": "The model {model} is switched off",
+      "json_schema_required": "The role {role} needs a model with JSON schema support; {model} has none",
+      "kind_mismatch": "The model {model} does not fit the role {role} (text model vs embeddings)",
+      "not_found": "Model not found",
+      "not_in_catalog": "There is no {name} in the Gateway catalog",
+      "reasoning_effort_invalid": "The model {model} has no reasoning level {effort}. Allowed: {allowed}",
+      "reasoning_unsupported": "The model {model} has no reasoning levels",
+      "vision_required": "The role {role} needs a model that reads images; {model} cannot"
+    },
+    "prompt": {
+      "invalid_json": "The prompt {key} must be valid JSON: {error}",
+      "key_invalid": "Wrong prompt key: {key}",
+      "not_found": "Prompt {key} not found",
+      "placeholder_unknown": "Unknown placeholder %{name}%",
+      "unknown_key": "There is no prompt {key}",
+      "version_not_found": "Prompt {key} has no version {version}"
+    },
+    "request": {
+      "contact_or_conversation_required": "Give either a contact or a conversation ID",
+      "invalid": "Check the fields: {fields}"
+    },
+    "result": {
+      "not_found": "Result not found"
+    },
+    "sandbox": {
+      "model_unsuitable": "The model {model} cannot reply to clients"
+    },
+    "scenario": {
+      "action_endpoint_required": "Action {index}: choose an endpoint",
+      "action_field_unknown": "Action {index}: there is no field {field}",
+      "action_unknown": "Action {index}: unknown action {do}",
+      "after_minutes_not_silence": "Action {index}: “after, minutes” works only with “client is silent”",
+      "ask_after_cycle": "“Ask after” goes in a circle: {fields}",
+      "ask_after_unknown": "Field {field}: “ask after” points to a missing field {ref}",
+      "choice_options_missing": "Field {field}: add options to choose from",
+      "completion_not_supported": "The finish mode {mode} is not available yet",
+      "field_duplicate": "Field keys repeat: {fields}",
+      "file_invalid": "File {path}: {error}",
+      "filter_duplicate": "Field {field}: check keys repeat",
+      "invalid": "The scenario has errors: {errors}",
+      "language_invalid": "Wrong language code: {language}",
+      "main_language_not_in_tenant": "The main language {language} is not among the tenant languages ({languages})",
+      "not_active": "The scenario {key} has no active version",
+      "not_found": "Scenario not found",
+      "options_not_allowed": "Field {field}: options are only for the “choice” type",
+      "resume_hours_required": "Set the number of hours for “continue only within N hours”",
+      "source_missing": "Send the scenario as a form, YAML or JSON",
+      "start_field_unknown": "Start: there is no field {field}",
+      "start_question_duplicate": "Start signs repeat: {questions}",
+      "text_missing_language": "No text in {language}: {path}",
+      "threshold_required": "There are several start signs, so set a threshold",
+      "threshold_too_high": "The threshold {threshold} is above the sum of weights {max}: the scenario would never start",
+      "version_invalid": "Version {version} does not pass the checks any more (maybe the tenant languages changed)",
+      "version_not_found": "The scenario {key} has no version {version}",
+      "yaml_invalid": "YAML cannot be read (line {line}): {error}"
+    },
+    "tenant": {
+      "language_duplicate": "A language is listed twice",
+      "language_invalid": "Wrong language code: {language}",
+      "languages_empty": "Add at least one language",
+      "not_found": "Tenant not found",
+      "reply_language_unknown": "Rule {source} → {target}: the language {target} is not in the list",
+      "silence_minutes_invalid": "Wrong silence time: {value}",
+      "slug_invalid": "Short name: lowercase Latin letters, digits and dashes, 3–64 characters",
+      "slug_taken": "The short name {slug} is already taken"
+    },
+    "turn": {
+      "failed": "The bot could not answer: {error}",
+      "not_finished": "The previous answer in this conversation is not finished yet",
+      "not_found": "Turn not found"
+    },
+    "user": {
+      "cannot_demote_self": "You cannot remove your own superadmin rights or block yourself",
+      "exists": "A user with the email {email} already exists",
+      "inactive": "The user {email} is blocked",
+      "locale_invalid": "Unknown interface language: {locale}",
+      "not_found": "User not found"
+    }
+  }
+}

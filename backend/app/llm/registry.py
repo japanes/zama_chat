@@ -167,3 +167,15 @@ async def assign_role(
     row.fallback_model_id = fallback.id if fallback is not None else None
     await session.flush()
     return row
+
+
+def roles_for_model(model: LlmModel) -> list[LlmRole]:
+    """Every role the model can serve ('*' in `zama models assign`)."""
+    if model.kind == "embedding":
+        return [LlmRole.EMBED]
+    roles = [LlmRole.REPLY]
+    if model.supports_json_schema:
+        roles += [LlmRole.REWRITE, LlmRole.EXTRACT, LlmRole.DECIDE]
+    if model.supports_vision:
+        roles.append(LlmRole.VISION)
+    return roles

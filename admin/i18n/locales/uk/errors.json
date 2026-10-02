@@ -1,0 +1,154 @@
+{
+  "errors": {
+    "client": {
+      "network": "Немає зв'язку із сервером. Перевірте інтернет і спробуйте ще раз.",
+      "http": "Сервер відповів помилкою ({status}). Спробуйте пізніше."
+    },
+    "api_key": {
+      "not_found": "API-ключ не знайдено"
+    },
+    "auth": {
+      "bad_token": "Посилання для входу неправильне або вже використане. Запросіть нове.",
+      "email_invalid": "Це не схоже на адресу пошти",
+      "forbidden": "Недостатньо прав: потрібна роль «{need}»",
+      "google_cancelled": "Вхід через Google скасовано",
+      "google_email_unverified": "Google не підтвердив цю адресу пошти",
+      "google_failed": "Не вдалося увійти через Google. Спробуйте ще раз або увійдіть за посиланням.",
+      "google_not_configured": "Вхід через Google на цьому сервері не налаштовано",
+      "google_state": "Вхід тривав задовго або відкритий в іншій вкладці. Почніть знову.",
+      "invalid_api_key": "Неправильний або відкликаний API-ключ",
+      "link_expired": "Термін дії посилання минув. Запросіть нове.",
+      "mail_failed": "Не вдалося надіслати лист. Спробуйте пізніше.",
+      "mail_not_configured": "Надсилання пошти на цьому сервері не налаштовано",
+      "no_access": "Цей обліковий запис не має доступу до адмінки. Зверніться до адміністратора.",
+      "required": "Увійдіть, будь ласка",
+      "superadmin_required": "Це може лише суперадмін"
+    },
+    "channel": {
+      "http_not_found": "У тенанта немає HTTP-каналу",
+      "not_found": "Канал не знайдено",
+      "scenario_duplicate": "Сценарій указано двічі: {keys}",
+      "setting_invalid": "Неправильне значення налаштування {key}",
+      "settings_unknown": "Невідомі налаштування: {keys}. Дозволено: {allowed}"
+    },
+    "config": {
+      "secret_key_missing": "На сервері немає SECRET_KEY, тому секрети не можна зберегти",
+      "secret_undecryptable": "Збережений секрет не розшифровується: мабуть, змінився SECRET_KEY"
+    },
+    "conversation": {
+      "busy": "Бот ще відповідає на попереднє повідомлення в цьому діалозі. Спробуйте за кілька секунд.",
+      "not_found": "Діалог не знайдено"
+    },
+    "decisions": {
+      "bad_output": "Модель дала несподівану відповідь на питання {key}",
+      "state_too_long": "Забагато тексту для питання {key}: {tokens} токенів, максимум {max}",
+      "too_many_options": "Забагато варіантів у {key}: {count}, максимум {max}",
+      "too_many_steps": "Забагато ступенів у {key}: {count}, максимум {max}",
+      "unavailable": "Не вдалося отримати відповіді на: {keys}"
+    },
+    "delivery": {
+      "cannot_resend": "Це надсилання не можна повторити",
+      "not_found": "Надсилання не знайдено"
+    },
+    "endpoint": {
+      "name_taken": "Назва {name} уже зайнята",
+      "not_found": "Адресу не знайдено"
+    },
+    "lease": {
+      "lost": "Діалог перехопив інший процес; відповідь не збережено. Спробуйте ще раз."
+    },
+    "llm": {
+      "model_inactive": "Модель {model} на ролі {role} вимкнена",
+      "role_not_assigned": "Для ролі {role} не призначено модель. Призначте її на сторінці «Ролі моделей».",
+      "unavailable": "Модель для ролі {role} не відповіла ({error})"
+    },
+    "member": {
+      "last_owner": "У тенанта має залишитися хоча б один власник",
+      "not_found": "Учасника не знайдено"
+    },
+    "models": {
+      "catalog_unavailable": "Каталог Gateway недоступний ({error}). Додайте модель вручну або спробуйте пізніше.",
+      "check_empty": "Модель відповіла порожнім результатом",
+      "check_failed": "Модель не відповіла: {message}",
+      "exists": "Модель {name} уже додано",
+      "in_use": "Модель {model} стоїть на ролях: {roles}. Спершу змініть ролі.",
+      "inactive": "Модель {model} вимкнена",
+      "json_schema_required": "Ролі {role} потрібна модель зі схемою JSON; {model} її не підтримує",
+      "kind_mismatch": "Модель {model} не підходить для ролі {role} (текстова чи ембединги)",
+      "not_found": "Модель не знайдено",
+      "not_in_catalog": "У каталозі Gateway немає {name}",
+      "reasoning_effort_invalid": "У моделі {model} немає рівня міркування {effort}. Можна: {allowed}",
+      "reasoning_unsupported": "Модель {model} не має рівнів міркування",
+      "vision_required": "Ролі {role} потрібна модель, що читає зображення; {model} не вміє"
+    },
+    "prompt": {
+      "invalid_json": "Промпт {key} має бути правильним JSON: {error}",
+      "key_invalid": "Неправильний ключ промпта: {key}",
+      "not_found": "Промпт {key} не знайдено",
+      "placeholder_unknown": "Невідома підстановка %{name}%",
+      "unknown_key": "Промпта {key} не існує",
+      "version_not_found": "У промпта {key} немає версії {version}"
+    },
+    "request": {
+      "contact_or_conversation_required": "Вкажіть контакт або ID діалогу",
+      "invalid": "Перевірте поля: {fields}"
+    },
+    "result": {
+      "not_found": "Результат не знайдено"
+    },
+    "sandbox": {
+      "model_unsuitable": "Модель {model} не може відповідати клієнтам"
+    },
+    "scenario": {
+      "action_endpoint_required": "Дія {index}: оберіть адресу",
+      "action_field_unknown": "Дія {index}: немає поля {field}",
+      "action_unknown": "Дія {index}: невідома дія {do}",
+      "after_minutes_not_silence": "Дія {index}: «через, хвилин» працює лише з «клієнт мовчить»",
+      "ask_after_cycle": "«Питати після» ходить по колу: {fields}",
+      "ask_after_unknown": "Поле {field}: «питати після» вказує на відсутнє поле {ref}",
+      "choice_options_missing": "Поле {field}: додайте варіанти для вибору",
+      "completion_not_supported": "Режим завершення {mode} поки недоступний",
+      "field_duplicate": "Ключі полів повторюються: {fields}",
+      "file_invalid": "Файл {path}: {error}",
+      "filter_duplicate": "Поле {field}: ключі перевірок повторюються",
+      "invalid": "У сценарії помилки: {errors}",
+      "language_invalid": "Неправильний код мови: {language}",
+      "main_language_not_in_tenant": "Основної мови {language} немає серед мов тенанта ({languages})",
+      "not_active": "У сценарію {key} немає активної версії",
+      "not_found": "Сценарій не знайдено",
+      "options_not_allowed": "Поле {field}: варіанти лише для типу «вибір»",
+      "resume_hours_required": "Вкажіть кількість годин для «продовжувати лише протягом N годин»",
+      "source_missing": "Надішліть сценарій формою, YAML або JSON",
+      "start_field_unknown": "Запуск: немає поля {field}",
+      "start_question_duplicate": "Ознаки запуску повторюються: {questions}",
+      "text_missing_language": "Немає тексту мовою {language}: {path}",
+      "threshold_required": "Ознак запуску кілька, тож задайте поріг",
+      "threshold_too_high": "Поріг {threshold} більший за суму ваг {max}: сценарій ніколи не запуститься",
+      "version_invalid": "Версія {version} уже не проходить перевірки (можливо, змінилися мови тенанта)",
+      "version_not_found": "У сценарію {key} немає версії {version}",
+      "yaml_invalid": "YAML не читається (рядок {line}): {error}"
+    },
+    "tenant": {
+      "language_duplicate": "Мову вказано двічі",
+      "language_invalid": "Неправильний код мови: {language}",
+      "languages_empty": "Додайте хоча б одну мову",
+      "not_found": "Тенанта не знайдено",
+      "reply_language_unknown": "Правило {source} → {target}: мови {target} немає у списку",
+      "silence_minutes_invalid": "Неправильний час тиші: {value}",
+      "slug_invalid": "Коротке ім'я: малі латинські літери, цифри й дефіс, 3–64 символи",
+      "slug_taken": "Коротке ім'я {slug} уже зайняте"
+    },
+    "turn": {
+      "failed": "Бот не зміг відповісти: {error}",
+      "not_finished": "Попередня відповідь у цьому діалозі ще не завершена",
+      "not_found": "Хід не знайдено"
+    },
+    "user": {
+      "cannot_demote_self": "Не можна зняти права суперадміна або заблокувати самого себе",
+      "exists": "Користувач із поштою {email} уже є",
+      "inactive": "Користувача {email} заблоковано",
+      "locale_invalid": "Невідома мова інтерфейсу: {locale}",
+      "not_found": "Користувача не знайдено"
+    }
+  }
+}

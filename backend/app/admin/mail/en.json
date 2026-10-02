@@ -1,0 +1,10 @@
+{
+  "magic_link": {
+    "subject": "Sign in to Zama Chat",
+    "heading": "Sign in to Zama Chat",
+    "body": "Press the button to sign in. The link works once and for {minutes} minutes.",
+    "button": "Sign in",
+    "fallback": "If the button does not work, open this link:",
+    "ignore": "If you did not ask to sign in, just ignore this email."
+  }
+}

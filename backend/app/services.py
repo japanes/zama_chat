@@ -10,6 +10,7 @@ from typing import Any
 import httpx
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
+from app.admin.mailer import make_mailer
 from app.channels.base import ChannelAdapter
 from app.channels.http import HttpChannel
 from app.core.clock import Clock, SystemClock
@@ -76,6 +77,8 @@ class Services:
         services.extra["decider"] = JevDecider(
             http, settings, fallback=LLMDecider(llm), policy=DecisionPolicy()
         )
+        # admin sign-in emails; None without SMTP_HOST (dev: MAGIC_LINK_DEV_ECHO)
+        services.extra["mailer"] = make_mailer(settings)
         return services
 
     def channel_adapter(self, kind: str) -> ChannelAdapter | None:

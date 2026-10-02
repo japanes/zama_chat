@@ -1,0 +1,200 @@
+/* The factory dashboard look: slate surfaces, brand gradient on primary buttons,
+   rounded cards. Shared building blocks live here so pages stay plain markup. */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    @apply antialiased;
+  }
+  body {
+    @apply bg-slate-50 text-slate-800 font-body dark:bg-slate-950 dark:text-slate-200;
+  }
+  h1,
+  h2,
+  h3 {
+    @apply font-heading;
+  }
+}
+
+@layer components {
+  /* --- page --- */
+  .page-title {
+    @apply text-2xl font-bold font-heading text-slate-900 dark:text-white;
+  }
+  .page-sub {
+    @apply mt-1 text-sm text-slate-500 dark:text-slate-400;
+  }
+  .muted {
+    @apply text-slate-500 dark:text-slate-400;
+  }
+  .hint {
+    @apply mt-1 text-xs text-slate-500 dark:text-slate-400;
+  }
+  .code {
+    @apply font-mono;
+  }
+  .pre {
+    @apply font-mono text-xs whitespace-pre-wrap break-words rounded-input bg-slate-100 dark:bg-slate-900 p-3 overflow-x-auto;
+  }
+
+  /* --- cards --- */
+  .card {
+    @apply rounded-card bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-card;
+  }
+  .card-hover {
+    @apply transition-shadow hover:shadow-card-hover;
+  }
+  .card-body {
+    @apply p-5;
+  }
+  .card-title {
+    @apply text-base font-semibold font-heading text-slate-900 dark:text-white;
+  }
+
+  /* --- buttons --- */
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 h-9 px-4 rounded-button text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap;
+  }
+  .btn-primary {
+    @apply btn text-white bg-primary;
+    background-image: linear-gradient(to right, #ec6ead, #3494e6);
+  }
+  .btn-primary:not(:disabled):hover {
+    filter: brightness(0.95);
+  }
+  .btn-secondary {
+    @apply btn border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700;
+  }
+  .btn-ghost {
+    @apply btn text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700;
+  }
+  .btn-danger {
+    @apply btn text-white bg-rose-600 hover:bg-rose-700;
+  }
+  .btn-sm {
+    @apply h-8 px-3 text-xs;
+  }
+  .btn-icon {
+    @apply px-0 w-9;
+  }
+  .btn-icon.btn-sm {
+    @apply w-8;
+  }
+
+  /* --- forms --- */
+  .label {
+    @apply block mb-1 text-sm font-medium text-slate-700 dark:text-slate-300;
+  }
+  .input,
+  .select,
+  .textarea {
+    @apply block w-full rounded-input border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary disabled:opacity-60 read-only:bg-slate-50 dark:read-only:bg-slate-800;
+  }
+  .input,
+  .select {
+    @apply h-9;
+  }
+  .textarea {
+    @apply py-2 leading-relaxed;
+  }
+  .checkbox {
+    @apply h-4 w-4 rounded border-slate-300 dark:border-slate-600 text-primary accent-primary focus:ring-primary/40;
+  }
+
+  /* on / off switch: <label class="switch"><input type="checkbox"><span /></label> */
+  .switch {
+    @apply relative inline-flex h-5 w-9 shrink-0 cursor-pointer;
+  }
+  .switch input {
+    @apply sr-only;
+  }
+  .switch span {
+    @apply absolute inset-0 rounded-full bg-slate-300 dark:bg-slate-600 transition-colors;
+  }
+  .switch span::after {
+    content: '';
+    @apply absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform;
+  }
+  .switch input:checked + span {
+    @apply bg-primary;
+  }
+  .switch input:checked + span::after {
+    @apply translate-x-4;
+  }
+  .switch input:disabled + span {
+    @apply opacity-50 cursor-not-allowed;
+  }
+  .switch input:focus-visible + span {
+    @apply ring-2 ring-primary/50;
+  }
+
+  /* --- tabs --- */
+  .tabs {
+    @apply flex gap-1 border-b border-slate-200 dark:border-slate-700 overflow-x-auto;
+  }
+  .tab {
+    @apply -mb-px px-3 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 whitespace-nowrap;
+  }
+  .tab-active {
+    @apply border-primary text-primary dark:text-primary-light;
+  }
+
+  /* --- tables --- */
+  .table {
+    @apply w-full text-sm;
+  }
+  .table th {
+    @apply px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-700 whitespace-nowrap;
+  }
+  .table td {
+    @apply px-4 py-3 align-top border-b border-slate-100 dark:border-slate-700/60;
+  }
+  .table tbody tr:last-child td {
+    @apply border-b-0;
+  }
+  .table-hover tbody tr {
+    @apply cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/30;
+  }
+
+  /* --- badges --- */
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-badge px-2 py-0.5 text-xs font-medium whitespace-nowrap;
+  }
+  .badge-gray {
+    @apply badge bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-200;
+  }
+  .badge-blue {
+    @apply badge bg-sky-100 text-sky-800 dark:bg-sky-500/15 dark:text-sky-300;
+  }
+  .badge-green {
+    @apply badge bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300;
+  }
+  .badge-amber {
+    @apply badge bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300;
+  }
+  .badge-red {
+    @apply badge bg-rose-100 text-rose-800 dark:bg-rose-500/15 dark:text-rose-300;
+  }
+  .badge-violet {
+    @apply badge bg-violet-100 text-violet-800 dark:bg-violet-500/15 dark:text-violet-300;
+  }
+
+  /* --- alerts --- */
+  .alert {
+    @apply rounded-input border px-4 py-3 text-sm;
+  }
+  .alert-blue {
+    @apply alert border-sky-200 bg-sky-50 text-sky-900 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-200;
+  }
+  .alert-green {
+    @apply alert border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200;
+  }
+  .alert-amber {
+    @apply alert border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200;
+  }
+  .alert-red {
+    @apply alert border-rose-200 bg-rose-50 text-rose-900 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200;
+  }
+}
