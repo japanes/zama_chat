@@ -1,0 +1,32 @@
+name: The client asks for a human together with another request
+tenant:
+  settings:
+    languages: [uk]
+decide:
+  service_type: none
+  wants_human: false
+turns:
+  - client: Ти бот?
+    rewrite: {question: [Ти бот?], language: uk}
+    decide: {service_type: not_a_bot}
+    reply: Я віртуальний помічник салону.
+    expect:
+      prompt: service_not_a_bot
+      handover: false
+
+  - client: покличте менеджера, хочу записатись
+    rewrite: {question: [Покличте менеджера, хочу записатися], language: uk}
+    decide: {wants_human: true}
+    reply: Зараз передам ваше питання менеджеру.
+    expect:
+      prompt: user_prompt
+      route: {wants_human: true, service_type: none}
+      handover: true
+
+  # the conversation stays handed over even when the next message does not ask again
+  - client: а коли він відповість?
+    rewrite: {question: [Коли відповість менеджер?], language: uk}
+    reply: Менеджер відповість найближчим часом.
+    expect:
+      route: {wants_human: false}
+      handover: true

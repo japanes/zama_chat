@@ -30,6 +30,8 @@ from app.db.models import (
     Channel,
     Contact,
     Conversation,
+    Decision,
+    DecisionProvider,
     LlmCall,
     Message,
     MessageRole,
@@ -312,6 +314,8 @@ async def _write(
         if plan.handover and not conv.handover:
             conv.handover = True
             conv.handover_at = now
+        # the conversation stays handed over until an operator gives it back
+        handover = conv.handover
         if plan.state is not None:
             conv.state = plan.state
         conv.state_version += 1
@@ -323,7 +327,7 @@ async def _write(
         lease.release_in(conv)
 
     return TurnOutcome(
-        turn.id, ctx.conversation_id, TurnStatus.DONE, plan.reply_text, reply_id, plan.handover
+        turn.id, ctx.conversation_id, TurnStatus.DONE, plan.reply_text, reply_id, handover
     )
 
 
@@ -397,7 +401,7 @@ async def _finish_turn(
 
 
 async def _turn_totals(session: AsyncSession, turn_id: uuid.UUID) -> tuple[int, int, Decimal]:
-    """Sum of everything paid for in this turn: LLM calls (+ Jev decisions, stage 1)."""
+    """Sum of everything paid for in this turn: LLM calls + Jev decisions."""
     row = (
         await session.execute(
             select(
@@ -408,13 +412,26 @@ async def _turn_totals(session: AsyncSession, turn_id: uuid.UUID) -> tuple[int, 
         )
     ).one()
     tokens_in, tokens_out, cost = int(row[0]), int(row[1]), Decimal(row[2])
+    # Jev answers are paid separately; LLM-decider rows are already in llm_calls
+    jev = (
+        await session.execute(
+            select(
+                func.coalesce(func.sum(Decision.tokens_in), 0),
+                func.coalesce(func.sum(Decision.tokens_out), 0),
+                func.coalesce(func.sum(Decision.cost), 0),
+            ).where(Decision.turn_id == turn_id, Decision.provider == DecisionProvider.JEV)
+        )
+    ).one()
+    tokens_in += int(jev[0])
+    tokens_out += int(jev[1])
+    cost += Decimal(jev[2])
     for extra in TURN_COST_SOURCES:
         t_in, t_out, c = await extra(session, turn_id)
         tokens_in, tokens_out, cost = tokens_in + t_in, tokens_out + t_out, cost + c
     return tokens_in, tokens_out, cost
 
 
-# other tables with per-turn costs register here (decisions — stage 1)
+# other tables with per-turn costs register here (search, vision…)
 CostSource = Callable[[AsyncSession, uuid.UUID], Awaitable[tuple[int, int, Decimal]]]
 TURN_COST_SOURCES: list[CostSource] = []
 

@@ -141,6 +141,28 @@ def create_api_key(
     _run(go)
 
 
+@app.command("seed-prompts")
+def seed_prompts_cmd(
+    directory: Annotated[
+        str | None, typer.Option(help="legacy prompts folder (default: docs/legacy-prompts)")
+    ] = None,
+) -> None:
+    """Load the shared prompts from docs/legacy-prompts. A new version is added only for
+    prompts whose text changed."""
+    from pathlib import Path
+
+    from app.prompts.seed import LEGACY_DIR, seed_prompts
+
+    async def go(services: Services) -> None:
+        async with services.sm() as session, session.begin():
+            result = await seed_prompts(session, Path(directory) if directory else LEGACY_DIR)
+        for key in result.created:
+            typer.echo(f"new version  {key}")
+        typer.echo(f"{len(result.created)} updated, {len(result.unchanged)} unchanged")
+
+    _run(go)
+
+
 # --- models ---------------------------------------------------------------------------
 
 

@@ -25,7 +25,13 @@ from app.db.base import Base
 from app.db.session import make_engine, make_sessionmaker
 from app.main import create_app
 from app.services import Services
-from app.settings import Settings
+from app.settings import PROJECT_ROOT, Settings
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    # tmp_path lives in the project's tmp/, never in the system /tmp
+    if not config.option.basetemp:
+        config.option.basetemp = str(PROJECT_ROOT / "tmp" / "pytest")
 
 
 class FakeChatBackend:

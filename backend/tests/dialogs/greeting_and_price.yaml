@@ -1,0 +1,36 @@
+name: Greeting, a price question, goodbye
+tenant:
+  settings:
+    languages: [uk, en]
+    reply_language: {uk: uk, ru: uk, "*": en}
+decide:
+  service_type: none
+  wants_human: false
+turns:
+  - client: Привіт!
+    rewrite: {question: [Привіт], language: uk}
+    decide: {service_type: greeting_only}
+    reply: Вітаю! Чим можу допомогти?
+    expect:
+      reply: Вітаю! Чим можу допомогти?
+      prompt: service_greeting_only
+      route: {service_type: greeting_only, wants_human: false}
+      client_language: uk
+      reply_language: uk
+
+  - client: а скільки манік?
+    rewrite: {question: [Скільки коштує манікюр?], language: uk}
+    reply: Манікюр коштує 500 грн.
+    expect:
+      reply: Манікюр коштує 500 грн.
+      prompt: user_prompt
+      route: {service_type: none}
+      rewritten: Скільки коштує манікюр?
+
+  - client: Дякую, до побачення!
+    rewrite: {question: [Дякую, до побачення], language: uk}
+    decide: {service_type: goodbye_only}
+    reply: Гарного дня!
+    expect:
+      prompt: service_goodbye_only
+      route: {service_type: goodbye_only}

@@ -16,6 +16,9 @@ from app.core.clock import Clock, SystemClock
 from app.crypto import Crypto
 from app.db.models import ChannelKind
 from app.db.session import make_engine, make_sessionmaker
+from app.decisions.jev_decider import JevDecider
+from app.decisions.llm_decider import LLMDecider
+from app.decisions.policy import DecisionPolicy
 from app.llm.gateway_catalog import GatewayCatalog
 from app.llm.openai_client import ChatBackend, OpenAIGatewayBackend
 from app.llm.service import LLMService
@@ -34,7 +37,7 @@ class Services:
     catalog: GatewayCatalog
     crypto: Crypto
     channels: dict[str, ChannelAdapter] = field(default_factory=dict)
-    # filled by later stages (decider, search…); kept loose to avoid import cycles
+    # decider (Jev), pipeline override in tests, later search…; loose to avoid cycles
     extra: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -55,18 +58,25 @@ class Services:
         http = http or httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=10.0))
         api_key = settings.ai_gateway_api_key.get_secret_value()
         backend = backend or OpenAIGatewayBackend(settings.ai_gateway_url, api_key)
-        return cls(
+        llm = LLMService(sm, backend, clock, retry_delay_s=llm_retry_delay_s)
+        services = cls(
             settings=settings,
             clock=clock,
             engine=engine,
             sm=sm,
             http=http,
             backend=backend,
-            llm=LLMService(sm, backend, clock, retry_delay_s=llm_retry_delay_s),
+            llm=llm,
             catalog=GatewayCatalog(http, settings.ai_gateway_url, api_key),
             crypto=Crypto(settings.secret_key.get_secret_value()),
             channels={ChannelKind.HTTP: HttpChannel()},
         )
+        # Jev answers route / filter questions; unsure answers and Jev failures go to the
+        # LLM role `decide` (docs/04 §5 «Jev»)
+        services.extra["decider"] = JevDecider(
+            http, settings, fallback=LLMDecider(llm), policy=DecisionPolicy()
+        )
+        return services
 
     def channel_adapter(self, kind: str) -> ChannelAdapter | None:
         return self.channels.get(kind)

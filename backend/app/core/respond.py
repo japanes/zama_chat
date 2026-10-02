@@ -1,0 +1,171 @@
+"""Step 5 — respond: the reply text from the reply LLM role.
+
+Two kinds of answers (stage 1):
+- normal: legacy `system_prompt` (%COMPANY_TITLE%…) + history + legacy `user_prompt` JSON
+  with `user_question` = the rewritten text, `answer_language`, `client_description` =
+  the tenant's business description, `context` = [] (search arrives in stage 5);
+- service (greeting / goodbye / "are you a bot" / ethical violation): the prompt
+  `service_<type>` (legacy scripts 2–5) as the system message + history + the client's text.
+
+From stage 2 the reply is built from a RespondPlan (answer + next scenario question).
+"""
+
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
+
+from app.core.context import TurnContext
+from app.core.language import language_name
+from app.core.rewrite import answer_language_line
+from app.core.routing import SERVICE_TYPES, Route
+from app.db.models import LlmRole, MessageRole
+from app.logging import get_logger
+from app.prompts.render import render_json, render_text, to_text
+from app.prompts.store import PromptText
+
+if TYPE_CHECKING:
+    from app.services import Services
+
+log = get_logger(__name__)
+
+SYSTEM_KEY = "system_prompt"
+USER_KEY = "user_prompt"
+SERVICE_KEYS = {t: f"service_{t}" for t in SERVICE_TYPES if t != "none"}
+PROMPT_KEYS = (SYSTEM_KEY, USER_KEY, *SERVICE_KEYS.values())
+
+# TODO(review): wording of the note added when the client asks for a human. The real
+# handover (the bot goes quiet, an operator task) comes in stage 4.
+HANDOVER_RULE = (
+    "The client asked to talk to a real person. Say briefly that a manager will reply in "
+    "this chat soon. If the message also has a question you can answer, answer it too"
+)
+
+
+@dataclass(frozen=True)
+class Reply:
+    text: str
+    prompt_key: str
+    prompt_version: int
+    llm_call_id: str
+    model: str
+
+
+def prompt_values(ctx: TurnContext, reply_language: str, question: str = "") -> dict[str, str]:
+    """%PLACEHOLDER% values shared by the legacy prompts."""
+    s = ctx.settings
+    return {
+        "COMPANY_TITLE": s.company_title or ctx.tenant_title,
+        "BOT_NAME": s.bot_name or "",
+        "LANGUAGE": language_name(reply_language),
+        "QUESTION": question,
+    }
+
+
+def history_messages(ctx: TurnContext) -> list[dict[str, Any]]:
+    """Earlier messages as chat turns: client → user, bot / operator → assistant."""
+    out: list[dict[str, Any]] = []
+    for item in ctx.history:
+        if item.role == MessageRole.SYSTEM:
+            continue
+        role = "user" if item.role == MessageRole.CLIENT else "assistant"
+        out.append({"role": role, "content": item.text})
+    return out
+
+
+def answer_messages(
+    ctx: TurnContext,
+    system: PromptText,
+    user: PromptText,
+    rewritten: str,
+    reply_language: str,
+    *,
+    wants_human: bool = False,
+    context: list[Any] | None = None,
+) -> list[dict[str, Any]]:
+    values = prompt_values(ctx, reply_language, rewritten)
+    data = render_json(
+        user.body,
+        {
+            "user_question": rewritten,
+            "answer_language": answer_language_line(reply_language),
+            "client_description": ctx.settings.business_description,
+            "context": context or [],
+        },
+        values,
+        key=user.key,
+    )
+    if wants_human:
+        data["handover_note"] = HANDOVER_RULE
+    return [
+        {"role": "system", "content": render_text(system.body, values)},
+        *history_messages(ctx),
+        {"role": "user", "content": to_text(data)},
+    ]
+
+
+def service_messages(
+    ctx: TurnContext, prompt: PromptText, rewritten: str, reply_language: str
+) -> list[dict[str, Any]]:
+    values = prompt_values(ctx, reply_language, rewritten)
+    return [
+        {"role": "system", "content": render_text(prompt.body, values)},
+        *history_messages(ctx),
+        {"role": "user", "content": ctx.input_text},
+    ]
+
+
+def pick_prompt(
+    route: Route, prompts: dict[str, PromptText]
+) -> tuple[PromptText, bool]:  # (prompt, is_service)
+    if route.is_service:
+        key = SERVICE_KEYS.get(route.service_type)
+        prompt = prompts.get(key) if key else None
+        if prompt is not None:
+            return prompt, True
+        # the tenant has no prompt for this service type: answer as usual
+        log.warning("respond.service_prompt_missing", service_type=route.service_type)
+    return prompts[SYSTEM_KEY], False
+
+
+async def respond(
+    services: "Services",
+    ctx: TurnContext,
+    prompts: dict[str, PromptText],
+    route: Route,
+    rewritten: str,
+    reply_language: str,
+) -> Reply:
+    prompt, is_service = pick_prompt(route, prompts)
+    if is_service:
+        messages = service_messages(ctx, prompt, rewritten, reply_language)
+    else:
+        messages = answer_messages(
+            ctx,
+            prompts[SYSTEM_KEY],
+            prompts[USER_KEY],
+            rewritten,
+            reply_language,
+            wants_human=route.wants_human,
+        )
+    # the user prompt carries the turn-specific part; its version is the one to log
+    logged = prompt if is_service else prompts[USER_KEY]
+    with ctx.trace.step(
+        "respond", prompt_key=logged.key, prompt_version=logged.version, service=is_service
+    ) as step:
+        result = await services.llm.complete(
+            LlmRole.REPLY,
+            messages,
+            tenant_id=ctx.tenant_id,
+            turn_id=ctx.turn_id,
+            prompt_key=logged.key,
+            prompt_version=logged.version,
+            overrides=ctx.overrides,
+        )
+        step["llm_call_id"] = str(result.call_id)
+        step["model"] = result.model
+    return Reply(
+        text=result.text.strip(),
+        prompt_key=logged.key,
+        prompt_version=logged.version,
+        llm_call_id=str(result.call_id),
+        model=result.model,
+    )

@@ -9,8 +9,10 @@ from app.db.models.conversations import (
     Turn,
     TurnStatus,
 )
+from app.db.models.decisions import Decision, DecisionProvider, DecisionReason, DecisionType
 from app.db.models.jobs import Job, JobStatus
 from app.db.models.llm import ROLES_NEED_JSON_SCHEMA, LlmCall, LlmModel, LlmRole, ModelRole
+from app.db.models.prompts import Prompt
 from app.db.models.tenants import ApiKey, Channel, ChannelKind, ChannelStatus, Tenant
 
 __all__ = [
@@ -21,6 +23,10 @@ __all__ = [
     "ChannelStatus",
     "Contact",
     "Conversation",
+    "Decision",
+    "DecisionProvider",
+    "DecisionReason",
+    "DecisionType",
     "Job",
     "JobStatus",
     "LlmCall",
@@ -29,6 +35,7 @@ __all__ = [
     "Message",
     "MessageRole",
     "ModelRole",
+    "Prompt",
     "SendStatus",
     "Tenant",
     "Turn",

@@ -1,0 +1,30 @@
+name: The client writes in Russian, the bot answers in Ukrainian; "ок" keeps the language
+tenant:
+  settings:
+    languages: [uk, en]
+    reply_language: {uk: uk, ru: uk, "*": en}
+decide:
+  service_type: none
+  wants_human: false
+turns:
+  - client: Здравствуйте, сколько стоит маникюр?
+    rewrite: {question: [Скільки коштує манікюр?], language: ru}
+    reply: Манікюр коштує 500 грн.
+    expect:
+      client_language: ru
+      reply_language: uk
+      rewritten: Скільки коштує манікюр?
+
+  - client: ок
+    rewrite: {question: [Ок], language: en}
+    reply: Чим ще можу допомогти?
+    expect:
+      client_language: ru
+      reply_language: uk
+
+  - client: Und wie lange dauert das?
+    rewrite: {question: [Скільки триває манікюр?], language: de}
+    reply: A manicure takes about an hour.
+    expect:
+      client_language: de
+      reply_language: en
