@@ -54,7 +54,7 @@ turns:
   - client: Жінки 25-40, які працюють в офісі
     rewrite: {question: ["Мої клієнти — жінки 25-40, які працюють в офісі"], language: uk}
     decide: {field:offer_interview.audience: true}
-    extract: {offer_interview__audience: Жінки 25-40, які працюють в офісі}
+    extract: {offer_interview__audience: "Жінки 25-40, які працюють в офісі"}
     reply: Зрозуміло. Що саме ви продаєте?
     expect:
       scenario: {key: offer_interview, asking: main_offer}

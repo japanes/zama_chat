@@ -260,7 +260,7 @@ def _price(value: str) -> Decimal:
         price = Decimal(value)
     except ArithmeticError as exc:
         raise typer.BadParameter(f"not a number: {value}") from exc
-    if price < 0 or not price.is_finite():
+    if not price.is_finite() or price < 0:
         raise typer.BadParameter(f"bad price: {value}")
     return price
 

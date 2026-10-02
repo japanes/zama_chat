@@ -23,10 +23,9 @@ turns:
       route: {wants_human: true, service_type: none}
       handover: true
 
-  # the conversation stays handed over even when the next message does not ask again
+  # handed over: the bot stays quiet until an operator gives the conversation back,
+  # no model is asked
   - client: а коли він відповість?
-    rewrite: {question: ["Коли відповість менеджер?"], language: uk}
-    reply: Менеджер відповість найближчим часом.
     expect:
-      route: {wants_human: false}
+      quiet: true
       handover: true

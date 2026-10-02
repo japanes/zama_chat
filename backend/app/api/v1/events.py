@@ -165,7 +165,7 @@ async def _apply(session, services, conv, body: EventIn, now: datetime) -> dict[
         now,
         meta={"event": body.event, "event_id": body.event_id},
     )
-    log.info("event.applied", run_id=str(run.id), event=body.event, status=run.status)
+    log.info("event.applied", run_id=str(run.id), result_event=body.event, status=run.status)
     return _out(run)
 
 

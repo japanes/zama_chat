@@ -35,6 +35,9 @@ def create_app(services: Services | None = None) -> FastAPI:
                 await app.state.services.close()
 
     app = FastAPI(title="zama_chat", version="0.1.0", lifespan=lifespan)
+    if services is not None:
+        # test clients (httpx.ASGITransport) do not run the lifespan
+        app.state.services = services
 
     @app.exception_handler(AppError)
     async def app_error(_: Request, exc: AppError) -> JSONResponse:

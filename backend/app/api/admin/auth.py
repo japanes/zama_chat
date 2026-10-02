@@ -15,6 +15,7 @@ from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
+from app.admin.access import AdminUser
 from app.admin.auth import (
     SESSION_COOKIE,
     STATE_COOKIE,
@@ -216,4 +217,5 @@ async def update_me(body: MeIn, user: AdminDep, services: ServicesDep) -> dict[s
             row.name = (body.name or "").strip() or None
         if body.locale is not None:
             row.locale = body.locale
-    return {"ok": True}
+        updated = await AdminUser.load(session, row)
+    return {"user": updated.to_dict()}

@@ -55,7 +55,7 @@ def test_the_booking_files_exclude_each_other():
     defs = {k: prepare(read_file(SCENARIOS_DIR / f"{k}.yaml"), ["uk", "en"])[0] for k in keys}
     assert set(defs["beauty_booking"].incompatible_with) == set(keys) - {"beauty_booking"}
     order, _ = prepare(read_file(SCENARIOS_DIR / "prepaid_order.yaml"), ["uk", "en"])
-    payment = order.field("payment")
+    payment = order.field("receipt")
     assert payment.type == FieldType.RECEIPT
     assert (payment.receipt.amount_field, payment.receipt.quantity_field) == ("product", "quantity")
 

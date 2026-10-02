@@ -47,7 +47,7 @@ turns:
     wait_minutes: 120
     rewrite: {question: ["Мої клієнти — пари, які одружуються"], language: uk}
     decide: {field:offer_interview.audience: true}
-    extract: {offer_interview__audience: Пари, які одружуються}
+    extract: {offer_interview__audience: "Пари, які одружуються"}
     reply: Що саме ви продаєте?
     expect:
       scenario: {key: offer_interview, asking: main_offer}
@@ -71,7 +71,7 @@ turns:
   - client: Віддаю 300 фото вже за тиждень, а не за два місяці
     rewrite: {question: ["Я віддаю 300 фото за тиждень, а не за два місяці"], language: uk}
     decide: {field:offer_interview.positioning: true}
-    extract: {offer_interview__positioning: Віддаю 300 фото вже за тиждень, а не за два місяці}
+    extract: {offer_interview__positioning: "Віддаю 300 фото вже за тиждень, а не за два місяці"}
     reply: Дякую, все записала!
     expect:
       scenario: {key: offer_interview, status: completed}

@@ -42,6 +42,8 @@ def test_collected_splits_fields_partial_and_missing():
         "fields": {"niche": "торти"},
         "partial": {"offer": "щось", "positioning": "дешевше"},
         "missing": ["offer", "positioning"],
+        "refs": {},
+        "normalized": {},
     }
 
 
@@ -50,6 +52,8 @@ def test_collected_of_nothing():
         "fields": {},
         "partial": {},
         "missing": ["niche", "offer", "positioning"],
+        "refs": {},
+        "normalized": {},
     }
 
 

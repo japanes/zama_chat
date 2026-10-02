@@ -92,7 +92,10 @@ async def queue_delivery(
         # the scenario refers to an endpoint the tenant has not set up: not the client's
         # problem, the turn goes on
         log.warning(
-            "delivery.endpoint_missing", run_id=str(run.id), endpoint=endpoint_name, event=event
+            "delivery.endpoint_missing",
+            run_id=str(run.id),
+            endpoint=endpoint_name,
+            result_event=event,
         )
         return None
     run.delivery_seq = (run.delivery_seq or 0) + 1
@@ -153,7 +156,7 @@ async def queue_delivery(
         delivery_id=str(delivery_id),
         run_id=str(run.id),
         seq=run.delivery_seq,
-        event=event,
+        result_event=event,
         cancelled=[str(i) for i in older],
     )
     return delivery

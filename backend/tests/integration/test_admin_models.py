@@ -304,9 +304,11 @@ async def test_tenant_admin_cannot_change_the_shared_role(client, services):
 # --- costs --------------------------------------------------------------------------------
 
 
-async def test_costs_by_model_and_role(client, services, root, fake_llm, clock):
-    # call rows get the DB time; "today" is counted from the clock
+async def test_costs_by_model_and_role(client, services, fake_llm, clock):
+    # call rows get the DB time; "today" is counted from the clock. The session is opened
+    # after the clock jump, or it would be expired.
     clock.set(datetime.now(UTC))
+    root = await admin_headers(services, "root@example.com", superadmin=True)
     bundle = await make_tenant(services.sm)
     await make_model(services.sm, "openai/a", roles=(LlmRole.REPLY,))
     fake_llm.default = chat_reply("hi", cost=0.002)

@@ -23,7 +23,8 @@ SERVICE = {
 
 
 def _data(field: dict) -> dict:
-    return interview_data(fields=[field], start={"questions": [{"key": "go", "ask": "Go?"}]})
+    go = {"key": "go", "ask": {"uk": "Йдемо?", "en": "Go?"}}
+    return interview_data(fields=[field], start={"questions": [go]})
 
 
 # --- schema -----------------------------------------------------------------------------

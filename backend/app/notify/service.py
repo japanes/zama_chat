@@ -101,11 +101,13 @@ def _quote(text: str | None) -> str:
 
 
 def contact_label(contact: Contact | None) -> str:
+    """«Olha (@olha)»: the name the team calls the client by and the handle to find them."""
     if contact is None:
         return "?"
-    if contact.username:
-        return f"@{contact.username}"
-    return contact.name or contact.external_id
+    handle = f"@{contact.username}" if contact.username else None
+    if contact.name and handle:
+        return f"{contact.name} ({handle})"
+    return contact.name or handle or contact.external_id
 
 
 async def conversation_values(

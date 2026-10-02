@@ -17,7 +17,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import and_, case, delete, func, select
+from sqlalchemy import and_, case, delete, func, literal_column, select
 from sqlalchemy.orm import aliased
 
 from app.admin.access import AdminUser, audit
@@ -49,13 +49,24 @@ BUCKETS = 20  # confidence steps of 0.05
 MAX_RULES = 200
 Days = Annotated[int, Query(ge=1, le=90)]
 
-# `cand:12` → `cand:*`: one group for the numbered candidate questions
-GROUP = func.regexp_replace(Decision.key, ":[0-9]+$", ":*")
+# The constants are inlined into the SQL text, not sent as parameters: Postgres matches
+# a selected expression with the GROUP BY one by its text, and $1 is not $5.
+_NUMBERED = literal_column("':[0-9]+$'")
+_ANY = literal_column("':*'")
+
+
+def _group(key: Any) -> Any:
+    """`cand:12` → `cand:*`: one group for the numbered candidate questions."""
+    return func.regexp_replace(key, _NUMBERED, _ANY)
+
+
+GROUP = _group(Decision.key)
 
 
 def _bucket(column: Any) -> Any:
     """1..BUCKETS; confidence 1.0 goes to the last one."""
-    return func.least(func.width_bucket(column, 0.0, 1.0, BUCKETS), BUCKETS)
+    n = literal_column(str(BUCKETS))
+    return func.least(func.width_bucket(column, literal_column("0.0"), literal_column("1.0"), n), n)
 
 
 def _count(*cond: Any) -> Any:
@@ -92,7 +103,7 @@ async def decision_stats(access: TenantAdmin, services: ServicesDep, days: Days 
     scope = [Decision.tenant_id == access.tenant_id, Decision.created_at >= since]
     j = aliased(Decision)
     m = aliased(Decision)
-    j_group = func.regexp_replace(j.key, ":[0-9]+$", ":*")
+    j_group = _group(j.key)
     async with services.sm() as session:
         groups = (
             await session.execute(
@@ -266,7 +277,7 @@ async def disagreements(
     since = services.clock.now() - timedelta(days=days)
     j = aliased(Decision)
     m = aliased(Decision)
-    j_group = func.regexp_replace(j.key, ":[0-9]+$", ":*")
+    j_group = _group(j.key)
     same = j.answer["value"] == m.answer["value"]
     async with services.sm() as session:
         rows = (

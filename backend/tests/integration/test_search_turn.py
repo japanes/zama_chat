@@ -415,6 +415,8 @@ async def test_catalog_field_lists_the_options_and_takes_the_second(
         "хочу записатися",
         "Хочу записатися",
         rules=SCENARIO_RULES,
+        # a run started in this turn looks for all its fields in the message
+        extract={"booking__service": None, "booking__name": None},
     )
     step = json.loads(fake_llm.requests[-1]["messages"][-1]["content"])["scenario_step"]
     options = step["ask_next"]["options"]

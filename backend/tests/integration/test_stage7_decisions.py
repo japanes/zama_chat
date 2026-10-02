@@ -243,6 +243,7 @@ async def test_unsure_route_answer_sends_the_turn_to_an_operator(
 async def test_unsure_filter_means_ask_again(services, tenant):
     """check_filters: an unsure filter is a failed one (the client is asked again)."""
     from app.scenarios.checks import CheckItem, check_filters
+    from app.scenarios.fields import load_states
     from tests.scenario_helpers import interview_data, make_def
     from tests.turn_ctx import make_ctx
 
@@ -253,7 +254,8 @@ async def test_unsure_filter_means_ask_again(services, tenant):
         {"*": True}, unsure={f"filter:*.{field.key}.{flt}": BelowAction.ASK_CLIENT}
     )
     ctx = make_ctx(tenant_id=tenant.tenant_id, turn_id=None)  # no turn row: decisions log it
-    failed = await check_filters(services, ctx, [CheckItem(defn, field, "відповідь", {})], "uk")
+    item = CheckItem(defn, field, "відповідь", load_states(defn, None))
+    failed = await check_filters(services, ctx, [item], "uk")
     assert flt in failed[(defn.key, field.key)]
 
 

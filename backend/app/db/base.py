@@ -26,6 +26,9 @@ def new_id() -> uuid.UUID:
 class Base(DeclarativeBase):
     metadata = MetaData(naming_convention=NAMING)
     type_annotation_map: ClassVar[dict[Any, Any]] = {dict[str, Any]: JSONB, list[Any]: JSONB}
+    # server-side values (created_at, updated_at) come back with RETURNING at once: with
+    # asyncio a later lazy load of an expired column fails (MissingGreenlet)
+    __mapper_args__: ClassVar[dict[str, Any]] = {"eager_defaults": True}
 
 
 class IdMixin:

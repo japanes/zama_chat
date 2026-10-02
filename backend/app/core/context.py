@@ -86,7 +86,7 @@ WriteFn = Callable[[AsyncSession, Conversation, Turn], Awaitable[None]]
 
 @dataclass
 class TurnPlan:
-    reply_text: str | None
+    reply_text: str | None = None  # None with variants: nothing goes to the client
     rewritten: str | None = None
     client_language: str | None = None
     reply_language: str | None = None

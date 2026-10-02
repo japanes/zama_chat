@@ -13,6 +13,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import Select, delete, func, or_, select, update
+from sqlalchemy.dialects.postgresql import distinct_on
 
 from app.admin.access import audit
 from app.api.admin.common import (
@@ -220,7 +221,7 @@ async def list_results(
             await session.execute(
                 select(Delivery.run_id, Delivery.status, Delivery.event, Delivery.created_at)
                 .where(Delivery.run_id.in_(run_ids))
-                .distinct(Delivery.run_id)
+                .ext(distinct_on(Delivery.run_id))
                 .order_by(Delivery.run_id, Delivery.created_at.desc())
             )
         ).all()
@@ -378,7 +379,7 @@ async def list_conversations(
             await session.execute(
                 select(Message)
                 .where(Message.conversation_id.in_(ids))
-                .distinct(Message.conversation_id)
+                .ext(distinct_on(Message.conversation_id))
                 .order_by(Message.conversation_id, Message.created_at.desc())
             )
         ).scalars()

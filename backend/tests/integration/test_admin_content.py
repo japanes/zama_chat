@@ -170,10 +170,10 @@ language: uk
 start:
   questions:
     - key: greets
-      ask: {uk: Клієнт вітається?, en: Does the client greet?}
+      ask: {uk: "Клієнт вітається?", en: "Does the client greet?"}
 fields:
   - key: name
-    question: {uk: Як вас звати?, en: What is your name?}
+    question: {uk: "Як вас звати?", en: "What is your name?"}
 """
     resp = await client.post(_url(tenant), json={"yaml": text}, headers=adm)
     assert resp.status_code == 200, resp.text

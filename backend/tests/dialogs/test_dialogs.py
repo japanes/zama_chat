@@ -19,6 +19,8 @@ A file:
       extract: {offer_interview__niche: …}            # what the extract model returns
                                                       # (only when it is called)
       reply: Вітаю!                                   # what the reply model returns
+                                                      # (no rewrite / reply: a quiet turn,
+                                                      # no model is asked — handed over)
       expect:                                         # all optional
         reply: Вітаю!
         prompt: service_greeting_only                 # prompt the reply was made with
@@ -29,6 +31,7 @@ A file:
         rewritten: Привіт
         step: {ask_next: {question: …}}               # subset of the reply's scenario_step
         no_step: true                                 # the reply has no scenario_step
+        quiet: true                                   # the bot said nothing
         scenario:                                     # the newest run of a scenario
           key: offer_interview
           status: focus
@@ -105,6 +108,7 @@ class Expect(Strict):
     rewritten: str | None = None
     step: dict[str, Any] | None = None
     no_step: bool = False
+    quiet: bool = False
     scenario: ExpectScenario | None = None
     sink: list[dict[str, Any]] | None = None
 
@@ -125,8 +129,10 @@ class DialogTurn(Strict):
                 raise ValueError("a step needs `client` or `wait_minutes`")
             if self.rewrite or self.reply or self.extract or self.decide:
                 raise ValueError("a wait step has no rewrite / decide / extract / reply")
-        elif self.rewrite is None or self.reply is None:
-            raise ValueError("a client message needs `rewrite` and `reply`")
+        elif (self.rewrite is None) != (self.reply is None):
+            raise ValueError("a client message needs both `rewrite` and `reply`, or neither")
+        elif self.rewrite is None and (self.extract or self.decide):
+            raise ValueError("a quiet turn has no decide / extract")
         return self
 
 
@@ -187,13 +193,15 @@ async def test_dialog(path, client, services, fake_llm):
             await worker.run_due()  # timers that came due while the client was away
         body = None
         if turn.client is not None:
-            assert turn.rewrite is not None and turn.reply is not None
             decider.rules = {**defaults, **turn.decide}
-            script = [chat_reply(json.dumps(turn.rewrite.model_dump(), ensure_ascii=False))]
-            if turn.extract is not None:
-                script.append(chat_reply(json.dumps(turn.extract, ensure_ascii=False)))
-            script.append(chat_reply(turn.reply))
-            fake_llm.push(*script)
+            if turn.rewrite is not None and turn.reply is not None:
+                rewrite = json.dumps(turn.rewrite.model_dump(), ensure_ascii=False)
+                script = [chat_reply(rewrite)]
+                if turn.extract is not None:
+                    script.append(chat_reply(json.dumps(turn.extract, ensure_ascii=False)))
+                script.append(chat_reply(turn.reply))
+                fake_llm.push(*script)
+            fake_llm.requests.clear()
             resp = await client.post(
                 "/v1/messages",
                 json={"contact": {"external_id": "c1", "name": "Olha"}, "text": turn.client},
@@ -221,6 +229,8 @@ def _subset(expected: Any, actual: Any) -> bool:
 
 
 def _scenario_step(fake_llm) -> dict[str, Any] | None:
+    if not fake_llm.requests:
+        return None  # a quiet turn
     content = fake_llm.requests[-1]["messages"][-1]["content"]
     try:
         data = json.loads(content)
@@ -278,6 +288,9 @@ async def _check(services, body: dict, expect: Expect, where: str, fake_llm) -> 
 
     if expect.reply is not None:
         assert body["reply"] == expect.reply, where
+    if expect.quiet:
+        assert body["reply"] is None, f"{where}: reply {body['reply']!r}"
+        assert not fake_llm.requests, f"{where}: a model was asked"
     if expect.handover is not None:
         assert body["handover"] is expect.handover, where
         assert conv.handover is expect.handover, where

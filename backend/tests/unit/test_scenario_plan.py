@@ -105,12 +105,19 @@ def test_events_go_to_the_plan():
     assert prompt["ask_next"]["question"] == "Яка послуга?"
 
 
-def test_waiting_after_all_fields_counts_as_completed_for_the_reply():
+def test_waiting_after_all_fields_is_told_to_the_client_once():
     run = work(INTERVIEW)
     run.status = RunStatus.WAITING
     run.add(ActionEvent.ALL_FIELDS)
+    run.add(ActionEvent.WAITING)
     plan = build_plan([run], language="uk", client_question=False)
-    assert plan.completed == ["Інтерв'ю"]
+    assert plan is not None
+    assert plan.completed == []
+    assert plan.waiting == [{"title": "Інтерв'ю", "for": "event", "new": True}]
+    # later turns: still waiting, nothing new to say
+    later = work(INTERVIEW)
+    later.status = RunStatus.WAITING
+    assert build_plan([later], language="uk", client_question=False) is None
 
 
 def test_cancelled_and_paused():
@@ -142,6 +149,8 @@ def test_summary_for_the_trace():
         "accepted": [],
         "ask": "offer",
         "clarify": None,
+        "confirm": None,
+        "waiting": [],
         "completed": [],
         "cancelled": [],
     }

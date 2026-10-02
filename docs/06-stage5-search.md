@@ -1,6 +1,7 @@
 # Этап 5: каталог и поиск
 
-Код написан, тесты написаны, но **не запускались**. Elasticsearch и Qdrant поднимаются
+Тесты проходят (прогон 2026-10-02), кроме 5 тестов морфологии ES: они идут только при
+запущенном Elasticsearch. Elasticsearch и Qdrant поднимаются
 отдельно: `make up-search` (профиль `search` в `docker-compose.yml`).
 
 ## Что сделано
@@ -79,7 +80,7 @@ zama models assign embed openai/text-embedding-3-large
 # админка → Каталог → Импорт CSV; Поиск → «Проверить»
 ```
 
-## Тесты этапа 5 (написаны, не запускались)
+## Тесты этапа 5
 
 - `tests/unit/`: `test_search_text.py`, `test_catalog_field.py`.
 - `tests/integration/`:
