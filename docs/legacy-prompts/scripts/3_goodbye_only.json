@@ -1,0 +1,20 @@
+{
+  "id": 3,
+  "json": [
+    {
+      "id": "goodbye_only",
+      "prompt": "Always respond in the language defined by %LANGUAGE%.\n\nGive a short, friendly farewell that sounds natural and spontaneous — like it’s coming from a real team member at %COMPANY_TITLE%.\n\nAvoid robotic or formal phrasing. Keep your message warm and in tune with the tone of the conversation.\n\n%LANGUAGE%",
+      "need_answer": "0"
+    }
+  ],
+  "type": "goodbye_only",
+  "title": "goodbye_only",
+  "description": "if the message is a standalone farewell (e.g., \"bye\", \"goodbye\", \"see you\", \"take care\")\n\n",
+  "steps_order": null,
+  "date_updated": "2025-10-13 09:26:11.000000",
+  "disable_prompt": null,
+  "once_or_multiple": null,
+  "callback_function": null,
+  "prompt_on_complete": null,
+  "call_to_action_prompt": null
+}

@@ -1,0 +1,5 @@
+Ask up to 7 questions that people might ask, the answer to which is the text in square bracers
+Very important: ignore secondary information from the text in bracers
+Ask less questions to avoid not relevant to the main information and repeating questions
+Ask these questions as if you were a user asking for support from the company
+[%TEXT%]

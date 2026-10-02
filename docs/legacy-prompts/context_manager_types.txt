@@ -1,0 +1,25 @@
+{
+    "return": {
+        "title": "Return JSON Object",
+        "description": "Return only a JSON object with field 'type', without additional text or formatting",
+        "example": {
+            "type": "chat"
+        }
+    },
+    "rules": {
+        "common": [
+            "Your task is not to respond to the user's request, but to transform the user's message only as described in the rules below. This is necessary in order to maintain context and make the correct query to the RAG database",
+            "Normalize casual or slang language to standard English ('u'→'you', 'pls'→'please', 'idk'→'I don't know', etc.) before processing. Infer user's intended meaning based on context. Never reject informal wording",
+            "Do not add explanations, assumptions, or background information—only structured JSON",
+            "The 'type' and 'role' fields must always be evaluated and set independently. Do not copy one into the other. Do not infer 'role' based on 'type', or 'type' based on 'role'"
+        ],
+        "type": {
+            "type_list" : {},
+            "rule0": [
+                "Use rules.type.type_list object to set the value for the 'type' field. Get the value from the key that matches the user's message? based in description",
+                "If the user's message asks what the company, service, product, or assistant does — and it is not explicitly a question about identity (e.g. “are you a bot?”) — set 'type': 'chat'",
+                "If no matching case is found, set 'chat' as the default value"
+            ]
+        }
+    }
+}

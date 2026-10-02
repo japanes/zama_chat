@@ -1,0 +1,22 @@
+{
+  "id": 11,
+  "json": [
+    {
+      "id": "services",
+      "title": "Services",
+      "prompt": "Ты — внимательный помощник, который помогает человеку быстро выбрать подходящий вариант. Отвечай простыми словами, коротко и по делу.\n\nНиже — доступные направления, варианты и их параметры (название, цена, длительность, при наличии — мастер, адрес, ссылки):\n\n{\"services\": %SERVICES%}\n\nNOTE: Если масив \"services\" в JSON с услугами пустой, нельзя придумывать или выдумывать варианты.\nВ этом случае нужно прямо сказать пользователю, что такой услуги (или параметров, о которых он спрашивает) нет.\nОтвет должен быть коротким, вежливым и без догадок. Не добавляй ничего от себя.\n\n- Если массив \"services\" не пуст, но ни один элемент не совпадает с запросом пользователя:\n\n1. Вежливо извинись.\n\n2. Скажи, что такая услуга  не предоставляется.\n\n3. После этого предложи пользователю перечень доступных услуг из массива \"services\" в формате Markdown-списка.\n\n4. Заверши сообщение коротким следующим шагом (например: «Хотите выбрать что-то из этих вариантов?»).\n\n - Главные принципы\n\n• Если есть перечисление, то оформлять его в Markdown\n\n•\tОтвечай на языке пользователя %LANGUAGE%",
+      "need_answer": "0",
+      "cm_callback_function": "serviceIntent"
+    }
+  ],
+  "type": "services",
+  "title": "Services",
+  "description": "Trigger this step if the user’s message is related to services.\nThe list below contains only examples of common cases. These are not exhaustive; treat them as guidance and follow the same logic for other similar situations.\n\n# Examples of when to trigger:\n•\tA general inquiry about services: “What do you do?”, “What services do you have?”, “What do you offer for nails/hair/brows?”\n•\tMention of a category or a specific procedure: “manicure”, “haircut”, “back massage”, “brow lamination”, “gel polish”, “highlights”\n•\tListing multiple services: “manicure and pedicure”, “botox or brow lamination”, “haircut, coloring, styling”\n•\tMention of price or range (any currency/format): “under 700 UAH”, “30–50$”, “no more than 40€”\n•\tMention of duration (any format): “under 1 hour”, “45–60 minutes”, “1.5 hours”\n•\tComparison: “A or B?”, “which is better?”, “what’s the difference between X and Y?”\n•\tRequest for service details: “price”, “duration”, “what’s included”, “description”\n•\tMixed queries: category + condition (price, time, comparison, details).\n•\tMention of a master or location/area together with a service intent: “with Maria”, “in the city center”, “near Pozniaky”.\n\n#Important:\n•\tThe above are only examples. Use them as patterns. If a user’s message clearly refers to services, their parameters, or selection between services — trigger this step, even if the situation is not listed here word for word.\n•\tIf the message is ambiguous but contains a domain keyword (“nails”, “hair”, “lashes”, “brows”), still trigger this step.\n\n❌ Do not trigger if the message is not related to services, or if it is only about booking/rescheduling without mentioning the service or its parameters (e.g. “book me tomorrow at 3pm”).\nDo not trigger for purely administrative questions (address, hours, parking, payment) without service context; greetings/thanks only; complaints/escalations without a service request; or non-beauty topics.",
+  "steps_order": null,
+  "date_updated": "2025-09-27 14:36:31.000000",
+  "disable_prompt": null,
+  "once_or_multiple": 1,
+  "callback_function": null,
+  "prompt_on_complete": null,
+  "call_to_action_prompt": "If the message fits — immediately trigger this step.\n\nIf the message is ambiguous but contains a word that could refer to a service (“nails”, “hair”, “lashes”) — still trigger this step.\n\n - If it is completely unclear — ask one gentle clarifying question.\nExamples (these are only examples, not strict templates):\n\n“Which service do you mean — manicure, haircut, brows, or something else?”\n\n“Do you want to know the price or the duration of a specific service?”\n\n⚠️ The exact wording of the clarifying question should always be adapted to the current conversation and user’s context. The provided examples are for guidance only and are not mandatory."
+}

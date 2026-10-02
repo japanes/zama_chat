@@ -1,0 +1,39 @@
+# context_manager_question | 2402 chars | used by: Capo di Monte (2025-10-04)
+
+{
+    "return": {
+        "title": "Return JSON Object",
+        "description": "Return only a JSON object with fields 'role' and 'question' without additional text or formatting",
+        "example": {
+            "role": "knowledge_responder",
+            "question": [
+                "user message"
+            ]
+        }
+    },
+    "rules": {
+        "common": [
+            "Your task is not to respond to the user's request, but to transform the user's message only as described in the rules below. This is necessary in order to maintain context and make the correct query to the RAG database",
+            "Normalize casual or slang language to standard English ('u'→'you', 'pls'→'please', 'idk'→'I don't know', etc.) before processing. Infer user's intended meaning based on context. Never reject informal wording",
+            "Do not add explanations, assumptions, or background information—only structured JSON",
+            "The 'type' and 'role' fields must always be evaluated and set independently. Do not copy one into the other. Do not infer 'role' based on 'type', or 'type' based on 'role'"
+        ],
+        "question": {
+            "rule": [
+                "You are given a dialogue and one specific line from it.",
+                "1. Rewrite the selected line so that it is clear and self-contained, understandable without reading the rest of the dialogue.",
+                "2. If the selected line is already clear and complete, DO NOT change it — return it exactly as it is.",
+                "3. If the selected line is vague, incomplete, or uses generic words (like \"yes\", \"no\", \"this\", \"that\", \"on complexes\"), replace it with the exact, explicit wording found in the dialogue.",
+                "4. The final result must be **concise**, containing only the essential meaning, without extra words or unnecessary details.",
+                "45. **Never add the company name or brand name from the dialogue unless it is already part of the selected line itself.**",
+                "6. Return only the rewritten line. Do NOT add any explanations or commentary."
+            ]
+        },
+        "role": {
+            "role_list": {},
+            "rule0": [
+                "Use the rules.role.role_list object to set the value for the 'role' field. Get the value from the key that matches the user's message based in description"
+            ]
+        }
+    }
+}

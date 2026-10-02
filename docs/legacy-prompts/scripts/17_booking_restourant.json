@@ -1,0 +1,63 @@
+{
+  "id": 17,
+  "json": [
+    {
+      "id": "select_date",
+      "title": "Date",
+      "prompt": "Запитайте, на яку дату користувач хоче забронювати столик у ресторані.",
+      "need_answer": "1",
+      "check_prompt": "Your task is to interpret any user expression related to the **desired appointment date only**. The input may be informal, vague, or relative (e.g. “next Friday”, “this weekend”). Use the provided `current_date` to resolve to an ISO date.\n \nReturn only valid JSON in the following format:\n \n{\n  \"target_date\": string | null,\n  \"date_range\": [string, string] | null,\n  \"alternatives\": [string] | null,\n  \"flexibility\": \"exact\" | \"range\" | \"any\" | \"soonest\" | \"after\" | \"before\" | \"uncertain\" | null\n}\n \nIf the expression is unclear or non-interpretable — return all fields as `null` and set flexibility to `\"uncertain\"`.\n\nToday date: %TODAY_DATE%"
+    },
+    {
+      "id": "select_time",
+      "title": "Time",
+      "prompt": "Запитайте, на який час користувач хоче зробити бронювання.",
+      "need_answer": "1",
+      "check_prompt": "Your task is to interpret any user expression related to the **desired appointment time only**. The input may include exact time (e.g. \"at 10:00\"), time windows (\"afternoon\"), or constraints (\"not after 6pm\").\n\nReturn valid JSON:\n\n{\n  \"time\": string | null,                  // single exact time, if only one is given\n  \"multiple_time\": [string] | null,       // list of exact times, if multiple are given\n  \"time_window\": \"morning\" | \"afternoon\" | \"evening\" |\n                 \"after_15:00\" | \"before_12:00\" |\n                 \"between_13:00_17:00\" | null,\n  \"constraints\": {\n    \"not_before\": string | null,\n    \"not_after\": string | null\n  },\n  \"flexibility\": \"exact\" | \"multiple\" | \"range\" |\n                 \"any\" | \"after\" | \"before\" | \"uncertain\" | null\n}\n\nRules:\n- Single exact time → set \"time\", set both constraints, \"flexibility\": \"exact\".\n- Multiple exact times → set \"multiple_time\", \"flexibility\": \"multiple\".\n- Time window or range → set \"time_window\"/constraints, \"flexibility\": \"range\" | \"after\" | \"before\".\n- Fully flexible (e.g. \"any time\") → all null, \"flexibility\": \"any\".\n- Unclear or not interpretable → all null, \"flexibility\": \"uncertain\"."
+    },
+    {
+      "id": "select_party_size",
+      "title": "Party size",
+      "prompt": "Запитайте, на скількох людей потрібно забронювати столик.",
+      "need_answer": "1",
+      "check_prompt": "•\tПеревір, що відповідь містить ціле число більше нуля.\n•\tЯкщо число вказане словами («на трьох», «п’ятеро», «десять осіб») → перетвори це значення у число.\n•\tЯкщо відповідь нечітка («кілька», «багато») → попроси уточнити конкретним числом.\n\n"
+    },
+    {
+      "id": "collect_name",
+      "title": "Name",
+      "prompt": "Запитайте, як звати користувача, який робить бронювання. Попросіть повне ім’я та прізвище.",
+      "need_answer": "1",
+      "check_prompt": "Перевір, що відповідь містить повне ім’я  та прізвище"
+    },
+    {
+      "id": "collect_phone",
+      "title": "Phone",
+      "prompt": "Запитайте номер телефону користувача, щоб ресторан міг підтвердити бронювання.",
+      "need_answer": "1",
+      "check_prompt": "\n•\tПеревір, що номер телефону є українським мобільним номером і складається з 12 цифр (у форматі +380XXXXXXXXX).\n•\tДозволяй користувачеві вводити номер у скороченій формі (наприклад, 097…, 38097…), але перетворюй його у стандартний формат +380XXXXXXXXX.\n•\tЯкщо користувач ввів неповний номер (менше 9 цифр після коду) або додав зайві символи (літери, пробіли, спецсимволи) → попроси ввести правильно.\n•\tЯкщо формат некоректний → дай підказку: «Номер має бути у форматі +380…»."
+    },
+    {
+      "id": "confirm_summary",
+      "title": "Summary",
+      "prompt": "Підсумуйте зібрану інформацію в одному повідомленні для перегляду користувачем. Відформатуйте у вигляді маркованого списку. Запитайте підтвердження для продовження.\n\n%SCRIPT_RESULT%",
+      "need_answer": "1",
+      "check_prompt": "Перевір, що користувач підтвердив правильність усіх даних у списку. Якщо відповіді нечіткі або не містять явної згоди — попроси підтвердження або внесення змін."
+    },
+    {
+      "id": "finalize_submission",
+      "title": "Finalize submission",
+      "prompt": "Подякуйте користувачу, підтвердьте отримання заявки та повідомте, що його чекатимуть у ресторані у вказану дату та час. Завершіть розмову.",
+      "need_answer": "0"
+    }
+  ],
+  "type": "booking_restourant",
+  "title": "Booking restourant",
+  "description": "•\tПочинай цей флоу лише тоді, коли користувач чітко й однозначно висловлює намір зробити дію — забронювати столик у ресторані.\n•\tНамір має бути прямим і недвозначним: явне рішення «хочу забронювати столик», «давайте оформимо бронь», «готовий забронювати час» тощо.\n•\tНе покладайся лише на фіксовані ключові слова; орієнтуйся на зміст повідомлення.\n•\tНе запускай флоу, якщо людина лише описує потребу/ситуацію без наміру діяти: «шукаю ресторан», «які у вас години роботи?», «чи є вільні місця завтра?» тощо.\n•\tПеред запуском флоу — обов’язково підтвердь намір. Сформулюй природне запитання під контекст ресторану.\n",
+  "steps_order": null,
+  "date_updated": "2025-10-04 17:33:07.000000",
+  "disable_prompt": null,
+  "once_or_multiple": 0,
+  "callback_function": null,
+  "prompt_on_complete": "•\tЯкщо користувач намагається подати заявку на бронювання повторно, але сценарій бронювання вже був завершений під час цієї сесії, не запускай сценарій знову.\n•\tЗамість цього відповідай таким повідомленням:\n«Вашу заявку вже успішно надіслано. Ось деталі, які ви надали:»\n%SCRIPT_COMPLETE_RESULT%\n•\tНе використовуй це повідомлення, якщо користувач просто відповідає фразами типу:\n«ок», «дякую», «так», «зрозуміло», «вибачте», «круто» тощо.\n•\tВ усіх інших випадках не застосовуй це повідомлення.",
+  "call_to_action_prompt": "•\tЯкщо користувач лише описує потребу, проблему чи загальну ситуацію — не запускай сценарій бронювання.\n•\tНатомість постав чітке та доречне запитання для підтвердження, виходячи з повідомлення користувача.\n•\tЗапускай сценарій лише тоді, коли користувач відповість ствердно й однозначно підтвердить намір продовжити.\n"
+}

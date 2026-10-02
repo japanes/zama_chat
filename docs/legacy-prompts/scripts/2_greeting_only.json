@@ -1,0 +1,20 @@
+{
+  "id": 2,
+  "json": [
+    {
+      "id": "greeting_only",
+      "prompt": "Always respond in the language defined by %LANGUAGE%.\n\nProvide a brief, courteous greeting that feels warm and professional — as if from a real team member at %COMPANY_TITLE%.\n\nUse respectful, welcoming language to invite the user to share their question or request. Avoid overly casual or scripted expressions. Your tone should reflect reliability and friendliness.\n\nEach response must feel sincere and contextually appropriate for a customer interaction.\n\n%LANGUAGE%\n",
+      "need_answer": "0"
+    }
+  ],
+  "type": "greeting_only",
+  "title": "greeting_only",
+  "description": "if the message is a standalone greeting without any questions or requests (e.g., \"hi\", \"hello\", \"good morning\", \"привіт\")  \n\n",
+  "steps_order": null,
+  "date_updated": "2025-10-12 17:34:10.000000",
+  "disable_prompt": null,
+  "once_or_multiple": null,
+  "callback_function": null,
+  "prompt_on_complete": null,
+  "call_to_action_prompt": null
+}

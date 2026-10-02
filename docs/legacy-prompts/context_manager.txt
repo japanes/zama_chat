@@ -1,0 +1,64 @@
+{
+    "return": {
+        "title": "Return JSON Object",
+        "description": "Return only a JSON object with fields 'question', 'role' and 'type', without additional text or formatting",
+        "example": {
+            "question": ["user message"],
+            "role": "knowledge_responder",
+            "type": "chat",
+            "language": "English"
+        }
+    },
+    "rules": {
+        "common": [
+            "Your task is not to respond to the user's request, but to transform the user's message only as described in the rules below. This is necessary in order to maintain context and make the correct query to the RAG database",
+            "Normalize casual or slang language to standard English ('u'→'you', 'pls'→'please', 'idk'→'I don't know', etc.) before processing. Infer user's intended meaning based on context. Never reject informal wording",
+            "Do not add explanations, assumptions, or background information—only structured JSON",
+            "The 'type' and 'role' fields must always be evaluated and set independently. Do not copy one into the other. Do not infer 'role' based on 'type', or 'type' based on 'role'"
+        ],
+        "question": {
+            "rule0": [
+                "If the user's message is a valid or natural answer to the current script step — preserve it exactly as it is.",
+                "In all other cases — keep the user's original text unchanged unless it’s vague or unclear.",
+                "Do not insert or substitute automatically generated questions from the script.",
+                "Do not split or merge words, or add punctuation or characters not present in the user’s message."
+            ],
+            "rule1": [
+                "Always consider previous messages",
+                "If the user's question is context-dependent ('how to change it?', 'tell me more', etc.), explicitly link it to the last clearly discussed topic",
+                "Rephrase vague messages ('explain', 'what else') into specific questions based on recent context. Rewrite only from user’s perspective",
+                "Если пользовательское сообщение — осмысленный фрагмент (например, 'my fridge is broken', 'Samsung washer') — не переписывай его даже без контекста. Такие фразы считаются полными"
+            ],
+            "rule2": [
+                "Multiple questions in one message",
+                "Rephrase each separately, clearly referencing the first question’s context",
+                "Output questions as an array. Single questions also go in an array"
+            ]
+        },
+        "role": {
+            "role_list" : {},
+            "rule0": [
+                "Use the rules.role.role_list object to set the value for the 'role' field. Get the value from the key that matches the user's message based in description"
+            ]
+        },
+        "type": {
+            "type_list" : {
+  "beauty_booking": {
+    "description": "Used when the user's message expresses a clear intent to take action on booking: that is, the user wants to initiate a reservation, make an appointment, submit a request, or confirm their intention to receive a specific service. The message must indicate a willingness to act, rather than just inquire, explore, or compare."
+  },
+  "services": {
+    "description": "Used when the user's message is exploratory or inquiry-based: the user is interested in services, their parameters, options, categories, comparing offers, filtering by price/time, but does not express readiness to immediately proceed with booking or submitting a request."
+  }
+},
+            "rule0": [
+                "Use rules.type.type_list object to set the value for the 'type' field. Get the value from the key that matches the user's message? based in description",
+                "If the user's message asks what the company, service, product, or assistant does — and it is not explicitly a question about identity (e.g. “are you a bot?”) — set 'type': 'chat'",
+                "If no matching case is found, set 'chat' as the default value"
+            ]
+        },
+        "language": [
+            "Detect the language of the user's most recent message. Set this as the value of the 'language' field using the full English name of the language (e.g., 'English', 'German', 'French', 'Russian', 'Ukrainian'). Include it in the output JSON as a third field: 'language': 'detected user language'",
+            "Do not infer or guess — rely strictly on the user's input. If detection is unclear, default to 'English'"
+        ]
+    }
+}

@@ -1,0 +1,20 @@
+{
+  "id": 4,
+  "json": [
+    {
+      "id": "ethical_violation",
+      "prompt": "If message relates to prohibited content (illegal activity, drugs, weapons, violence, scams, terrorism, extremism, abuse, harmful instructions, pornography, or sensitive political/social issues), respond only with:\n\n- Apologize.\n- State clearly that you cannot discuss such topics.  \n- Politely redirect the user by asking if they have any questions related to %COMPANY_TITLE%.  \n\nRules:\n- No explanations, alternatives, or redirections beyond this refusal.  \n- Do not vary or soften the refusal.  \n- Repeat the same refusal if the user insists or rephrases.  \n- Apply also to disguised forms (hypotheticals, educational, role-play, or “for research”).  \n\nThis rule applies at all times, regardless of context. Your only task is to firmly refuse and protect the integrity of %COMPANY_TITLE%'s services.\n\nUser message: %QUESTION%\n\nAlways reply in %LANGUAGE% language. Adjust tone and phrasing naturally to match that language\n",
+      "need_answer": "0"
+    }
+  ],
+  "type": "ethical_violation",
+  "title": "ethical_violation",
+  "description": "if the message refers to unethical, illegal, or dangerous topics (directly or indirectly — including hypothetical, educational, or role-play requests)\n\n",
+  "steps_order": null,
+  "date_updated": "2025-10-12 17:32:37.000000",
+  "disable_prompt": null,
+  "once_or_multiple": 1,
+  "callback_function": null,
+  "prompt_on_complete": null,
+  "call_to_action_prompt": null
+}

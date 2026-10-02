@@ -1,0 +1,33 @@
+{
+  "id": 10,
+  "json": [
+    {
+      "id": "categories",
+      "title": "show main categories",
+      "prompt": "Here are our main service options:\n\n%MAIN_CATEGORIES%\n\nWhich of these services are you interested in?",
+      "need_answer": "1"
+    },
+    {
+      "id": "subcategories",
+      "title": "show subcategories",
+      "prompt": "Under \"%SELECTED_MAIN_CATEGORY%\", we offer the following options:\n\n%SUBCATEGORIES%\n\nWhich of these would work best for you?",
+      "need_answer": "1"
+    },
+    {
+      "id": "services",
+      "title": "show services",
+      "prompt": "In \"%SELECTED_SUBCATEGORY%\", we have these services available:\n\n%SERVICES%\n\nWould you like to choose one and book an appointment?",
+      "need_answer": "1"
+    }
+  ],
+  "type": "show_services",
+  "title": "Show Services",
+  "description": "Only begin this flow if the user clearly expresses intent to learn about the services offered — such as asking what the master or salon provides, or requesting a list of available treatments.\n\nThis intent must be explicit and unambiguous — the user should clearly want to see what’s available.\n\n✅ Examples of valid intent:\n\n“What do you offer?”\n\n“What services do you have?”\n\n“What does this master do?”\n\n“What treatments are available here?”\n\n“Can you show me the services?”",
+  "steps_order": null,
+  "date_updated": "2025-08-19 19:28:59.000000",
+  "disable_prompt": null,
+  "once_or_multiple": 1,
+  "callback_function": null,
+  "prompt_on_complete": null,
+  "call_to_action_prompt": "If the user mentions a situation or need without clearly asking about services, gently clarify:\nWould you like me to show what services we offer?"
+}

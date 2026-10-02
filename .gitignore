@@ -1,0 +1,27 @@
+# local only
+tmp/
+.env
+.env.*
+!.env.example
+secrets/
+
+# python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+
+# node / nuxt
+node_modules/
+.nuxt/
+.output/
+dist/
+
+# editors
+.idea/
+.vscode/
+*.swp
+.DS_Store

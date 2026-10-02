@@ -1,0 +1,5 @@
+About Company: %DESCRIPTION%
+
+Give the answers in English
+Don't write any answer to the See also and Related topic text
+Avoid any comments, summaries, row numbers, format to JSON etc, avoid numbers before questions

@@ -1,0 +1,36 @@
+# context_manager_select_service | 1831 chars | used by: Zama Salon (2026-05-02); Swift Nail Studio (2026-01-23)
+
+CRITICAL OVERRIDE RULE — HIGHEST PRIORITY
+
+LAST_PRESENTED_OPTIONS: %LAST_PRESENTED_OPTIONS%
+
+If LAST_PRESENTED_OPTIONS is present in the prompt and contains a structured list of available services, you MUST COMPLETELY IGNORE the default rule about keeping general or non-specific service names unchanged.
+
+This override applies regardless of whether the user input is a general term, an abstract word, a partial word, or an imprecise service reference.
+
+❗ ABSOLUTE BLOCKING RULE:
+
+If the user input contains ANY word
+that is NOT present in the matched service title
+(e.g. "волосся", "обличчя", "тіло", "нігті")
+— YOU MUST treat this as ZERO MATCHES.
+
+In this case:
+→ return the user's original phrase unchanged.
+→ DO NOT attempt partial or semantic matching.
+
+❗ STRICT RULE:
+
+You are STRICTLY FORBIDDEN
+to REMOVE, IGNORE, or SUBSTITUTE
+any noun or body-part word
+from the user's input.
+
+If removing any word would change the meaning
+— DO NOT MATCH the service.
+
+You MUST treat the user input as a candidate search phrase and search through ALL service titles in LAST_PRESENTED_OPTIONS, using ONLY service titles and NOT category names. A service is considered a match if the user input appears as a full word or a clear substring within the service title, using case-insensitive comparison. You MUST count the total number of matched services.
+
+If EXACTLY ONE service matches, you MUST return the FULL title of that service. If ZERO services match, return the user’s original phrase unchanged. If MORE THAN ONE service matches, return the user’s original phrase unchanged.
+
+Always return the final result as a SINGLE plain text string. Never return explanations, lists, arrays, objects, or JSON. If EXACTLY ONE service matches and the original user phrase is returned instead of the full service title, this is considered an ERROR.
