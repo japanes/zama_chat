@@ -78,6 +78,24 @@ async def test_one_link_per_minute_per_address(client, services, mailer, clock):
     assert len(mailer.sent) == 2
 
 
+async def test_dev_echo_shows_the_link_every_time(client, services, monkeypatch):
+    """No mail server in dev: the link comes back in the answer, also twice in a minute."""
+    services.extra.pop("mailer", None)
+    monkeypatch.setattr(services.settings, "magic_link_dev_echo", True)
+    await make_user(services, "olha@example.com")
+    links = []
+    for _ in range(2):
+        resp = await client.post("/v1/admin/auth/magic-link", json={"email": "olha@example.com"})
+        links.append(resp.json()["dev_link"])
+    assert links[0] != links[1]
+    token = links[1].split("token=")[1]
+    resp = await client.post("/v1/admin/auth/magic-link/verify", json={"token": token})
+    assert resp.status_code == 200, resp.text
+    # an unknown address still gets no link
+    resp = await client.post("/v1/admin/auth/magic-link", json={"email": "nobody@example.com"})
+    assert resp.json() == {"ok": True}
+
+
 async def test_link_is_single_use(client, services, mailer):
     await make_user(services, "olha@example.com")
     await client.post("/v1/admin/auth/magic-link", json={"email": "olha@example.com"})

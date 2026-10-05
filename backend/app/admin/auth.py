@@ -81,7 +81,9 @@ async def send_magic_link(services: Services, email: str, *, locale: str | None)
                 .limit(1)
             )
         ).scalar_one_or_none()
-        if recent is not None:
+        # the limit keeps a mailbox from being flooded; with the dev echo the link is shown
+        # on the page and a throttled request would show "check your inbox" with no link
+        if recent is not None and not dev_echo:
             log.info("auth.magic_link_throttled")
             return None
         user = await active_user_by_email(session, email)
