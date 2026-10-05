@@ -54,7 +54,7 @@ from app.scenarios.catalog import ask_options, option_label, with_choices
 from app.scenarios.checks import CheckItem, check_filters
 from app.scenarios.events import FOCUSED, PAUSED, RECEIPT_REVIEW
 from app.scenarios.extract import Extracted, Target, extract
-from app.scenarios.plan import RespondPlan, build_plan
+from app.scenarios.plan import CatalogAsk, RespondPlan, build_plan
 from app.scenarios.questions import (
     CANCEL_PREFIX,
     CHANGE_FIELD,
@@ -643,22 +643,29 @@ def next_questions(runs: list[WorkRun], *, ask: bool = True) -> None:
 
 
 async def _catalog_options(
-    services: "Services", ctx: TurnContext, runs: list[WorkRun]
-) -> dict[str, list[str]]:
-    """Options for a catalog field the focus asks now; the listed items become the
-    conversation's last_presented (core/pipeline.py)."""
-    out: dict[str, list[str]] = {}
+    services: "Services", ctx: TurnContext, runs: list[WorkRun], rewritten: str
+) -> tuple[dict[str, CatalogAsk], dict[str, Any]]:
+    """What to show with a catalog field the focus asks now (+ the same for the trace);
+    the listed items become the conversation's last_presented (core/pipeline.py)."""
+    out: dict[str, CatalogAsk] = {}
+    trace: dict[str, Any] = {}
     for run in runs:
         if run.status != RunStatus.FOCUS or run.asking in (None, CONFIRM):
             continue
         f = run.definition.field(run.asking)
         if f.type != FieldType.CATALOG or run.states[f.key].value:
             continue
-        items = await ask_options(services, ctx, f)
-        if items:
-            out[f"{run.key}.{f.key}"] = [option_label(n, i) for n, i in enumerate(items, 1)]
-            ctx.extra["presented"] = [i.to_presented(n) for n, i in enumerate(items, 1)]
-    return out
+        shown = await ask_options(services, ctx, f, rewritten)
+        key = f"{run.key}.{f.key}"
+        trace[key] = shown.to_trace()
+        out[key] = CatalogAsk(
+            [option_label(n, i) for n, i in enumerate(shown.items, 1)],
+            shown.more,
+            shown.categories,
+        )
+        if shown.items:
+            ctx.extra["presented"] = [i.to_presented(n) for n, i in enumerate(shown.items, 1)]
+    return out, trace
 
 
 async def _payment(
@@ -771,7 +778,7 @@ async def run_scenarios(
     passed = pass_focus(runs)
     next_questions(runs, ask=not wants_human)
 
-    catalog_options = await _catalog_options(services, ctx, runs)
+    catalog_options, catalog_ask = await _catalog_options(services, ctx, runs, rewritten)
     payment = await _payment(services, ctx, runs) if not wants_human else {}
     all_runs = [*expired, *runs]
     plan = build_plan(
@@ -792,6 +799,7 @@ async def run_scenarios(
         "contacts": contacts,
         "extract_targets": [f"{t.scenario}.{t.field.key}" for t in targets],
         "catalog_no_choices": no_choices,
+        "catalog_ask": catalog_ask,
         "extracted": {f"{s}.{f}": v for (s, f), v in extracted.values.items()},
         "rejected": extracted.rejected,
         "issues": {

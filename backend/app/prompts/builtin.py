@@ -71,7 +71,17 @@ SCENARIO_STEP: dict[str, Any] = {
         "If 'ask_next' is given, end the message with one question that asks for it. "
         "'ask_next.question' is the meaning: word it naturally and differently each time, "
         "do not copy it word for word",
-        "If 'ask_next.options' is given, list the options so the client can choose one",
+        "If 'ask_next.options' is given, list the options so the client can choose one: "
+        "one per line, with the number and the price when the option has them, without "
+        "other list marks",
+        "If 'ask_next.from_catalog' is true, the client chooses from the company's catalog: "
+        "name services, products, categories and prices only from 'ask_next.options', "
+        "'ask_next.categories' or 'context'. Never take them from 'client_description' or "
+        "from your own knowledge, and do not add examples of your own",
+        "If 'ask_next.categories' is given, there are too many items to list: name all "
+        "these categories and ask which one the client is interested in",
+        "If 'ask_next.more_options' is true, add that there are other options too and the "
+        "client can name what they need",
         "If 'clarify' is given, the client's answer is not complete: say briefly what is "
         "still missing (see 'clarify.missing') and ask for it, without repeating the whole "
         "question",

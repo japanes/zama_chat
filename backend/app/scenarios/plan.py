@@ -29,6 +29,15 @@ CONFIRM_QUESTION = {
 
 
 @dataclass
+class CatalogAsk:
+    """What goes with the question of a catalog field (scenarios/catalog.py)."""
+
+    options: list[str] = field(default_factory=list)  # numbered items with prices
+    more: bool = False  # more items fit than are listed
+    categories: list[str] = field(default_factory=list)  # named when no items are listed
+
+
+@dataclass
 class AskStep:
     field: str
     question: str
@@ -37,6 +46,9 @@ class AskStep:
     options: list[str] = field(default_factory=list)
     # a receipt field: what to pay {amount, currency}
     payment: dict[str, Any] | None = None
+    # a catalog field: more items fit than `options` has; the categories to name instead
+    more_options: bool = False
+    categories: list[str] = field(default_factory=list)
 
     @property
     def attachment(self) -> bool:
@@ -96,6 +108,13 @@ class RespondPlan:
                 ask["hint"] = self.ask.hint
             if self.ask.options:
                 ask["options"] = self.ask.options
+            if self.ask.type == FieldType.CATALOG:
+                # the reply names only what the catalog has (the rules of scenario_step)
+                ask["from_catalog"] = True
+                if self.ask.more_options:
+                    ask["more_options"] = True
+                if self.ask.categories:
+                    ask["categories"] = self.ask.categories
             if self.ask.attachment:
                 ask["attachment"] = True
             if self.ask.payment:
@@ -193,7 +212,7 @@ def _confirm_step(run: WorkRun, texts: _Texts) -> ConfirmStep:
 def _ask_step(
     run: WorkRun,
     texts: _Texts,
-    catalog_options: dict[str, list[str]],
+    catalog_options: dict[str, CatalogAsk],
     payment: dict[str, dict[str, Any]],
 ) -> tuple[AskStep | None, ClarifyStep | None]:
     if run.asking is None or run.asking == CONFIRM:
@@ -205,16 +224,17 @@ def _ask_step(
     if fs.state == PARTIAL and fs.value:
         return None, ClarifyStep(f.key, question, fs.value, _missing(run, f.key, texts))
     hint = texts(defn, f.description) if f.description is not None else None
-    options: list[str] = []
+    step = AskStep(f.key, question, str(f.type), hint, payment=payment.get(f"{defn.key}.{f.key}"))
     if f.type == FieldType.CHOICE:
-        options = [texts(defn, o.label) for o in f.options]
+        step.options = [texts(defn, o.label) for o in f.options]
     elif f.type == FieldType.CATALOG:
-        # numbered catalog items (scenarios/catalog.py); none → an open question
-        options = list(catalog_options.get(f"{defn.key}.{f.key}", []))
-    return (
-        AskStep(f.key, question, str(f.type), hint, options, payment.get(f"{defn.key}.{f.key}")),
-        None,
-    )
+        # numbered catalog items or the categories (scenarios/catalog.py); neither → an
+        # open question
+        shown = catalog_options.get(f"{defn.key}.{f.key}") or CatalogAsk()
+        step.options = list(shown.options)
+        step.more_options = shown.more
+        step.categories = list(shown.categories)
+    return step, None
 
 
 def build_plan(
@@ -223,7 +243,7 @@ def build_plan(
     language: str,
     client_question: bool,
     wants_human: bool = False,
-    catalog_options: dict[str, list[str]] | None = None,
+    catalog_options: dict[str, CatalogAsk] | None = None,
     payment: dict[str, dict[str, Any]] | None = None,
 ) -> RespondPlan | None:
     """None when the scenarios have nothing to say in this reply (no focus, nothing

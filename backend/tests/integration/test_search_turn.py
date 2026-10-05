@@ -442,3 +442,197 @@ async def test_catalog_field_lists_the_options_and_takes_the_second(
     [run] = await runs_of(services.sm, body["conversation_id"])
     assert run.fields["service"]["ref"] == second["ref"]
     assert run.fields["service"]["value"] == second["title"]
+
+
+# --- a catalog too long to list ---------------------------------------------------------
+
+# the whole catalog (3 items, 2 categories) with at most 2 options in a message
+LONG = {
+    **BOOKING,
+    "fields": [
+        {**BOOKING["fields"][0], "catalog": {"categories": [], "max_options": 2}},
+        BOOKING["fields"][1],
+    ],
+}
+NOTHING_NAMED = {"booking__service": None, "booking__name": None}
+
+
+@pytest.fixture
+async def long_catalog(services):
+    env = await _setup(services)
+    await install_scenario(services.sm, env.bundle.tenant_id, env.bundle.channel_id, LONG)
+    return env
+
+
+def _ask_next(fake_llm) -> dict:
+    return _user_json(fake_llm.requests[-1])["scenario_step"]["ask_next"]
+
+
+async def _catalog_ask(services, body: dict) -> dict:
+    turn = await _turn(services, body["turn_id"])
+    return _step(turn, "scenarios")["summary"]["catalog_ask"]["booking.service"]
+
+
+async def test_named_items_are_listed_without_the_search_step(
+    client, services, fake_llm, long_catalog
+):
+    # the route sees no question (search = none), the extract cannot choose between the
+    # two manicures: the bot lists exactly them, with prices
+    body = await _say(
+        client,
+        long_catalog,
+        fake_llm,
+        "хочу на манікюр",
+        "Хочу на манікюр",
+        rules={
+            **SCENARIO_RULES,
+            "field:booking.service": True,
+            "opt:*": fits("манікюр"),
+        },
+        extract=NOTHING_NAMED,
+    )
+    ask = _ask_next(fake_llm)
+    assert sorted(o.split(". ", 1)[1] for o in ask["options"]) == [
+        "Манікюр з покриттям — 450.00 UAH",
+        "Манікюр класичний — 300.00 UAH",
+    ]
+    assert ask["from_catalog"] is True
+    assert "categories" not in ask
+    assert "more_options" not in ask
+    shown = (await _conversation(services, body["conversation_id"])).state[STATE_KEY]
+    assert {i["ref"] for i in shown} == MANICURE
+    trace = await _catalog_ask(services, body)
+    assert trace["source"] == "named"
+    assert set(trace["items"]) == MANICURE
+    # one search for the extract choices and the options
+    assert len(services.extra["search"].words.searches) == 1
+
+    # «давайте другий» takes the second of the listed
+    second = next(i for i in shown if i["n"] == 2)
+    body = await _say(
+        client,
+        long_catalog,
+        fake_llm,
+        "давайте другий",
+        f"Хочу записатися на {second['title']}",
+        rules={**SCENARIO_RULES, "field:booking.service": True},
+        extract={"booking__service": second["ref"]},
+    )
+    [run] = await runs_of(services.sm, body["conversation_id"])
+    assert run.fields["service"]["ref"] == second["ref"]
+
+
+async def test_nothing_named_asks_by_the_categories(client, services, fake_llm, long_catalog):
+    body = await _say(
+        client,
+        long_catalog,
+        fake_llm,
+        "хочу записатися",
+        "Хочу записатися",
+        rules={**SCENARIO_RULES, "opt:*": False},
+        extract=NOTHING_NAMED,
+    )
+    ask = _ask_next(fake_llm)
+    assert ask == {
+        "question": "На яку послугу?",
+        "from_catalog": True,
+        "categories": ["manicure", "pedicure"],
+    }
+    conv = await _conversation(services, body["conversation_id"])
+    assert STATE_KEY not in (conv.state or {})
+    assert (await _catalog_ask(services, body))["source"] == "categories"
+
+    # the client picks a category: its items are listed
+    body = await _say(
+        client,
+        long_catalog,
+        fake_llm,
+        "манікюр",
+        "Манікюр",
+        rules={**SCENARIO_RULES, "field:booking.service": True, "opt:*": fits("manicure")},
+        extract={"booking__service": None},
+    )
+    ask = _ask_next(fake_llm)
+    assert len(ask["options"]) == 2
+    assert all("Манікюр" in o for o in ask["options"])
+    assert "categories" not in ask
+
+
+async def test_more_items_fit_than_can_be_listed(client, services, fake_llm, long_catalog):
+    body = await _say(
+        client,
+        long_catalog,
+        fake_llm,
+        "щось для рук чи ніг",
+        "Послуга для рук чи ніг",
+        rules={**SCENARIO_RULES, "field:booking.service": True, "opt:*": True},
+        extract=NOTHING_NAMED,
+    )
+    ask = _ask_next(fake_llm)
+    assert len(ask["options"]) == 2
+    assert ask["more_options"] is True
+    trace = await _catalog_ask(services, body)
+    assert trace["more"] is True
+    assert len(trace["items"]) == 2
+
+
+async def test_categories_keep_the_order_of_the_field(client, services, fake_llm):
+    env = await _setup(services)
+    ordered = {
+        **LONG,
+        "fields": [
+            {
+                **LONG["fields"][0],
+                "catalog": {"categories": ["pedicure", "manicure"], "max_options": 2},
+            },
+            LONG["fields"][1],
+        ],
+    }
+    await install_scenario(services.sm, env.bundle.tenant_id, env.bundle.channel_id, ordered)
+    await _say(
+        client,
+        env,
+        fake_llm,
+        "хочу записатися",
+        "Хочу записатися",
+        rules={**SCENARIO_RULES, "opt:*": False},
+        extract=NOTHING_NAMED,
+    )
+    assert _ask_next(fake_llm)["categories"] == ["pedicure", "manicure"]
+
+
+async def test_the_search_step_items_are_listed_as_before(client, services, fake_llm, long_catalog):
+    # the route asked for the catalog: its checked items are the options, no second check
+    body = await _say(
+        client,
+        long_catalog,
+        fake_llm,
+        "хочу на манікюр",
+        "Хочу записатися на манікюр",
+        rules={
+            **SCENARIO_RULES,
+            "field:booking.service": True,
+            "search": "catalog",
+            "cand:*": fits("манікюр"),
+        },
+        extract=NOTHING_NAMED,
+    )
+    assert len(_ask_next(fake_llm)["options"]) == 2
+    assert (await _catalog_ask(services, body))["source"] == "search"
+
+
+async def test_the_reply_rules_keep_to_the_catalog(client, services, fake_llm, long_catalog):
+    await _say(
+        client,
+        long_catalog,
+        fake_llm,
+        "хочу записатися",
+        "Хочу записатися",
+        rules={**SCENARIO_RULES, "opt:*": False},
+        extract=NOTHING_NAMED,
+    )
+    rules = " ".join(_user_json(fake_llm.requests[-1])["scenario_step"]["rules"])
+    assert "'ask_next.from_catalog'" in rules
+    assert "'client_description'" in rules
+    assert "'ask_next.categories'" in rules
+    assert "'ask_next.more_options'" in rules

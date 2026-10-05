@@ -1,7 +1,7 @@
 from app.db.models import RunStatus
 from app.scenarios.events import PAUSED
 from app.scenarios.fields import FILLED, PARTIAL, FieldState
-from app.scenarios.plan import AskStep, ClarifyStep, RespondPlan, build_plan
+from app.scenarios.plan import AskStep, CatalogAsk, ClarifyStep, RespondPlan, build_plan
 from app.scenarios.schema import ActionEvent
 from app.scenarios.work import WorkRun
 from tests.scenario_helpers import booking_data, interview_data, loaded, make_def, open_run
@@ -79,6 +79,58 @@ def test_choice_options_go_to_the_plan():
     plan = build_plan([run], language="en", client_question=False)
     assert plan.ask.options == ["Online", "Offline"]
     assert plan.to_prompt([])["ask_next"]["options"] == ["Online", "Offline"]
+
+
+def _catalog_run():
+    data = interview_data()
+    data["fields"][0] = {
+        "key": "service",
+        "type": "catalog",
+        "question": {"uk": "Яка послуга?", "en": "Which service?"},
+    }
+    return work(loaded(make_def(data)), asking="service")
+
+
+def _ask_catalog(shown: CatalogAsk | None) -> dict:
+    options = {"interview.service": shown} if shown is not None else None
+    plan = build_plan(
+        [_catalog_run()], language="uk", client_question=False, catalog_options=options
+    )
+    return plan.to_prompt([])["ask_next"]
+
+
+def test_catalog_items_go_to_the_plan():
+    ask = _ask_catalog(CatalogAsk(["1. Манікюр — 300.00 UAH", "2. Педикюр — 500.00 UAH"]))
+    assert ask == {
+        "question": "Яка послуга?",
+        "options": ["1. Манікюр — 300.00 UAH", "2. Педикюр — 500.00 UAH"],
+        "from_catalog": True,
+    }
+
+
+def test_more_catalog_items_than_listed_are_told():
+    ask = _ask_catalog(CatalogAsk(["1. Манікюр"], more=True))
+    assert ask["options"] == ["1. Манікюр"]
+    assert ask["more_options"] is True
+
+
+def test_catalog_categories_go_to_the_plan_instead_of_items():
+    ask = _ask_catalog(CatalogAsk(categories=["Волосся", "Нігті"]))
+    assert ask == {
+        "question": "Яка послуга?",
+        "from_catalog": True,
+        "categories": ["Волосся", "Нігті"],
+    }
+
+
+def test_a_catalog_question_with_nothing_to_show_stays_open():
+    # still marked: the reply must not make up services from the business description
+    assert _ask_catalog(None) == {"question": "Яка послуга?", "from_catalog": True}
+
+
+def test_other_fields_are_not_marked_as_catalog():
+    plan = build_plan([work(INTERVIEW, asking="niche")], language="uk", client_question=False)
+    assert plan.to_prompt([])["ask_next"] == {"question": "Яка у вас ніша?"}
 
 
 def test_events_go_to_the_plan():

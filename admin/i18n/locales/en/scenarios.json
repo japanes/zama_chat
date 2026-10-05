@@ -151,7 +151,7 @@
     "catalog_categories": "Catalog categories",
     "catalog_categories_hint": "Comma-separated. The client picks only from these categories. Empty — the whole catalog.",
     "catalog_max_options": "List up to",
-    "catalog_max_options_hint": "If the categories have this many items or fewer, the bot lists them as numbered options.",
+    "catalog_max_options_hint": "With this many items or fewer in the categories the bot lists them all. With more, it lists only the ones that fit what the client said (up to this number); when nothing is named, it names the categories of the catalog.",
     "date_allow_past": "A past date is fine (birthday…)",
     "date_max_days": "At most days ahead",
     "no_limit": "no limit",
