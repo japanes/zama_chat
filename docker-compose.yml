@@ -26,6 +26,9 @@ services:
     environment:
       discovery.type: single-node
       xpack.security.enabled: "false"
+      # dev only: with less than 5% of the disk free ES makes every index read-only and
+      # a new index waits for its shard forever
+      cluster.routing.allocation.disk.threshold_enabled: "false"
       ES_JAVA_OPTS: "-Xms1g -Xmx1g"
     ports:
       - "127.0.0.1:9201:9200"
