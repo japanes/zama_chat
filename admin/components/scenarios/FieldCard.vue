@@ -1,5 +1,5 @@
 <template>
-  <div class="rounded-card border border-slate-200 dark:border-slate-700">
+  <div class="card">
     <div class="flex flex-wrap items-center gap-2 px-4 py-2.5 border-b border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/30 rounded-t-card">
       <span class="text-xs font-semibold muted w-5">{{ index + 1 }}</span>
       <input v-model.trim="field.key" class="input h-8 w-44 code" :class="keyOk ? '' : 'border-rose-400'" :readonly="readonly" :aria-label="t('scenarios.field_key')" />
