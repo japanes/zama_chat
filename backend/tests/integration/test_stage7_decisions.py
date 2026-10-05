@@ -2,12 +2,16 @@
 to an operator, the stats and disagreements of the admin page, decision_mode of the
 sandbox, per-role overrides of `make eval`."""
 
+import importlib.util
 import json
 import uuid
 from datetime import timedelta
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
+from alembic.migration import MigrationContext
+from alembic.operations import Operations
 from sqlalchemy import select
 
 from app.core.ingest import save_client_message
@@ -26,7 +30,7 @@ from app.db.models import (
 )
 from app.decisions.engine import DecideContext, DecisionSet, run_decisions
 from app.decisions.fake import FakeDecider
-from app.decisions.policy import Rule
+from app.decisions.policy import Rule, load_policy
 from app.llm.service import Overrides
 from app.prompts.seed import seed_prompts
 from tests.admin_helpers import admin_headers
@@ -34,6 +38,7 @@ from tests.conftest import chat_reply
 from tests.decision_helpers import yes_no
 from tests.factories import make_model, make_tenant
 from tests.integration.test_turn import Scripted
+from tests.unit.test_jev_decider import FakeFallback, Gateway, make_decider, ok
 
 pytestmark = pytest.mark.db
 
@@ -257,6 +262,71 @@ async def test_unsure_filter_means_ask_again(services, tenant):
     item = CheckItem(defn, field, "відповідь", load_states(defn, None))
     failed = await check_filters(services, ctx, [item], "uk")
     assert flt in failed[(defn.key, field.key)]
+
+
+# --- the rule that comes with the system --------------------------------------------------
+
+MIGRATIONS = Path(__file__).resolve().parents[2] / "alembic" / "versions"
+OPTIONS_RULE = "4c97f46f4c0d"  # the shared rule of the catalog options (opt:*)
+
+
+async def _migrate(services, revision: str, step: str) -> None:
+    """Runs upgrade() / downgrade() of one migration on the test database."""
+    (path,) = MIGRATIONS.glob(f"*_{revision}_*.py")
+    spec = importlib.util.spec_from_file_location(f"migration_{revision}", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    def run(sync_session) -> None:
+        with Operations.context(MigrationContext.configure(sync_session.connection())):
+            getattr(module, step)()
+
+    async with services.sm() as session, session.begin():
+        await session.run_sync(run)
+
+
+async def test_the_catalog_options_check_keeps_the_unsure_jev_answer(services, tenant):
+    await _migrate(services, OPTIONS_RULE, "upgrade")
+    async with services.sm() as session:
+        policy = await load_policy(session, tenant.tenant_id)
+    assert policy.rule("opt:3") == Rule("opt:*", PolicyMode.JEV, 0.7, BelowAction.KEEP)
+
+    # Jev is unsure about both: the option keeps its answer, the search candidate goes
+    # to the LLM as before
+    gateway = Gateway(ok({"opt:3": {"probability": 0.35}, "cand:3": {"probability": 0.35}}))
+    fallback = FakeFallback({"cand:3": True})
+    ctx = DecideContext(tenant.tenant_id, None, policy=policy)
+    result = await make_decider(gateway, fallback=fallback).decide(
+        "s", [yes_no("opt:3"), yes_no("cand:3")], ctx
+    )
+    assert fallback.calls == [["cand:3"]]
+    assert result.value("opt:3") is False
+    assert result.answers["opt:3"].provider == DecisionProvider.JEV
+    assert result.value("cand:3") is True
+
+
+async def test_the_options_rule_does_not_touch_the_admins_rule(services, tenant):
+    async with services.sm() as session, session.begin():
+        session.add(DecisionRule(tenant_id=None, pattern="opt:*", threshold=0.6, note="mine"))
+    await _migrate(services, OPTIONS_RULE, "upgrade")
+    await _migrate(services, OPTIONS_RULE, "downgrade")
+    async with services.sm() as session:
+        rows = list((await session.execute(select(DecisionRule))).scalars())
+    assert [(r.pattern, r.threshold, r.below, r.note) for r in rows] == [
+        ("opt:*", 0.6, BelowAction.LLM, "mine")
+    ]
+
+
+async def test_the_options_rule_is_added_once_and_removed_by_the_downgrade(services):
+    await _migrate(services, OPTIONS_RULE, "upgrade")
+    await _migrate(services, OPTIONS_RULE, "upgrade")
+    async with services.sm() as session:
+        rows = list((await session.execute(select(DecisionRule))).scalars())
+    assert [(r.tenant_id, r.pattern, r.below) for r in rows] == [(None, "opt:*", BelowAction.KEEP)]
+    await _migrate(services, OPTIONS_RULE, "downgrade")
+    async with services.sm() as session:
+        assert list((await session.execute(select(DecisionRule))).scalars()) == []
 
 
 # --- stats and disagreements ----------------------------------------------------------------
