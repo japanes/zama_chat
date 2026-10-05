@@ -34,7 +34,7 @@ from app.llm.openai_client import LLMRequestError, LLMTransportError
 from app.logging import get_logger
 from app.search.base import CatalogFilters, IndexHit, SearchBadRequest, SearchUnavailable
 from app.search.index import CATALOG, KNOWLEDGE, clients, embed_model
-from app.search.text import item_text
+from app.search.text import CHUNK_CHARS, item_text
 
 if TYPE_CHECKING:
     from app.services import Services
@@ -48,7 +48,10 @@ CONTEXT_ITEMS = 5
 CONTEXT_KNOWLEDGE = 4
 MATCH_THRESHOLD = 0.5  # p("fits") from the decider
 RRF_K = 60
-QUESTION_TEXT_CHARS = 600
+QUESTION_TEXT_CHARS = 600  # details of a catalog item shown to the decider
+# a knowledge chunk is shown whole (title + text): an answer in a cut-off half would be
+# thrown away as "does not fit"
+KNOWLEDGE_TEXT_CHARS = CHUNK_CHARS + 400
 
 
 @dataclass
@@ -367,11 +370,13 @@ def _short(text: str, limit: int = QUESTION_TEXT_CHARS) -> str:
 def candidate_question(key: str, found: Found) -> Question:
     # TODO(review): wording; English for now (docs/04 §5: the probe decides the language)
     if found.kind == KNOWLEDGE:
+        # an indexed chunk already starts with the title of its source
+        text = found.text if found.text.startswith(found.title) else f"{found.title}. {found.text}"
         return Question(
             key,
             DecisionType.BOOLEAN,
             "Does this text from the company's knowledge base answer the client's question "
-            f"(fully or in part)?\nText: {_short(found.title + '. ' + found.text)}",
+            f"(fully or in part)?\nText: {_short(text, KNOWLEDGE_TEXT_CHARS)}",
             {
                 "true": "The text has the information the client asks for.",
                 "false": "The text is about something else or does not help to answer.",

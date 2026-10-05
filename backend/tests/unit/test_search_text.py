@@ -10,8 +10,9 @@ from app.search.base import CatalogDoc, CatalogFilters, IndexHit
 from app.search.es import document, search_body
 from app.search.presented import STATE_KEY, presented, rewrite_view, with_presented
 from app.search.qdrant import match_filter
-from app.search.service import Found, rrf
+from app.search.service import Found, candidate_question, rrf
 from app.search.text import (
+    CHUNK_CHARS,
     chunk_id,
     chunk_text,
     item_hash,
@@ -243,3 +244,15 @@ def test_context_entries():
     }
     kb = Found(kind="knowledge", id="2", ref="s", title="Доставка", text="НП", language="uk")
     assert kb.to_context() == {"kind": "knowledge", "title": "Доставка", "text": "НП"}
+
+
+def test_the_decider_sees_a_whole_knowledge_chunk():
+    # the answer is in the last words of a chunk of the largest size
+    answer = "Поруч є платна парковка."
+    body = ("слово " * CHUNK_CHARS)[: CHUNK_CHARS - len(answer) - 1] + " " + answer
+    source = KnowledgeSource(tenant_id=TENANT, title="Правила салону", body=body, language="uk")
+    (chunk,) = source_chunks(source)
+    found = Found(kind="knowledge", id="1", ref="1", title=source.title, text=chunk, language="uk")
+    text = candidate_question("kb:1", found).instructions
+    assert text.endswith(answer)
+    assert text.count("Правила салону") == 1
