@@ -120,6 +120,8 @@
     "threshold": "Порог",
     "tokens": "токены: {in} вход / {out} выход",
     "tokens_full": "{in} вход ({cached} из кэша) / {out} выход",
+    "total": "Итого за ход",
+    "total_split": "модели {llm} · Jev {jev}",
     "yes_votes": "Ответы «да»"
   },
   "sandbox": {

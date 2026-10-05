@@ -141,6 +141,14 @@
       </div>
     </div>
 
+    <!-- everything paid for in the turn: LLM calls + Jev answers -->
+    <div v-if="calls.length || decisions.length" class="flex flex-wrap items-center gap-2 rounded-button bg-slate-50 dark:bg-slate-900/40 px-3 py-2">
+      <span class="font-medium">{{ t('trace.total') }}</span>
+      <span class="text-xs muted">{{ t('trace.total_split', { llm: f.money(llmCost), jev: f.money(jevCost) }) }}</span>
+      <span class="ml-auto badge-gray">{{ f.ms(turn.duration_ms) }}</span>
+      <span class="font-semibold whitespace-nowrap">{{ f.money(turn.cost) }}</span>
+    </div>
+
     <JsonView :value="detail.turn.route" collapsible :label="t('trace.raw_route')" />
   </div>
 </template>
@@ -154,6 +162,12 @@ const turn = computed(() => props.detail.turn)
 const steps = computed(() => (props.detail.turn.trace?.steps || []) as any[])
 const decisions = computed(() => (props.detail.decisions || []) as any[])
 const calls = computed(() => (props.detail.llm_calls || []) as any[])
+
+// the split of turn.cost; an LLM answer to a decision is already among the LLM calls
+const llmCost = computed(() => calls.value.reduce((sum, c) => sum + (Number(c.cost) || 0), 0))
+const jevCost = computed(() =>
+  decisions.value.filter((d) => d.provider === 'jev').reduce((sum, d) => sum + (Number(d.cost) || 0), 0),
+)
 
 const answers = computed(() => {
   const raw = props.detail.turn.route?.answers || {}

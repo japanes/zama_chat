@@ -120,6 +120,8 @@
     "threshold": "Поріг",
     "tokens": "токени: {in} вхід / {out} вихід",
     "tokens_full": "{in} вхід ({cached} з кешу) / {out} вихід",
+    "total": "Разом за хід",
+    "total_split": "моделі {llm} · Jev {jev}",
     "yes_votes": "Відповіді «так»"
   },
   "sandbox": {

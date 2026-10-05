@@ -120,6 +120,8 @@
     "threshold": "Threshold",
     "tokens": "tokens: {in} in / {out} out",
     "tokens_full": "{in} in ({cached} cached) / {out} out",
+    "total": "Turn total",
+    "total_split": "models {llm} · Jev {jev}",
     "yes_votes": "Yes answers"
   },
   "sandbox": {
