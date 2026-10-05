@@ -55,7 +55,11 @@
       <div class="lg:col-span-2 card flex flex-col min-h-[28rem]">
         <div ref="scroller" class="flex-1 card-body overflow-y-auto max-h-[65vh]">
           <UiState :loading="stateLoading" :error="stateError" :has-data="!!state" :retry="loadState">
-            <ChatThread :messages="state?.messages || []" with-trace :preloaded="lastTurn" :open-turn="lastTurn?.turn?.id" />
+            <ChatThread :messages="shown" with-trace :preloaded="lastTurn" :open-turn="lastTurn?.turn?.id" />
+            <!-- the bot is writing: the answer takes 10–15 seconds -->
+            <div v-if="pending" class="mt-3 flex justify-end">
+              <div class="rounded-card px-3.5 py-2.5 text-sm bg-primary/70 text-white animate-pulse">{{ t('sandbox.thinking') }}</div>
+            </div>
           </UiState>
         </div>
         <div v-if="attachOpen" class="border-t border-slate-200 dark:border-slate-700 px-3 pt-3 flex flex-wrap items-center gap-2">
@@ -135,6 +139,9 @@ const attachUrl = ref('')
 const attachment = computed(() => (attachOpen.value && /^https?:\/\//.test(attachUrl.value) ? { type: attachType.value, url: attachUrl.value } : null))
 const busy = ref(false)
 const state = ref<any>(null)
+// the client's message is shown at once; the server's list replaces it with the answer
+const pending = ref<any>(null)
+const shown = computed(() => [...(state.value?.messages || []), ...(pending.value ? [pending.value] : [])])
 const stateLoading = ref(false)
 const stateError = ref<string | null>(null)
 const lastTurn = ref<any>(null)
@@ -172,6 +179,9 @@ async function send() {
   if ((!body && !files.length) || busy.value) return
   busy.value = true
   lastError.value = null
+  pending.value = { id: 'pending', role: 'client', text: body, attachments: files, created_at: new Date().toISOString() }
+  text.value = ''
+  scrollDown()
   try {
     const res = await api<any>(path('/sandbox/turn'), {
       method: 'POST',
@@ -184,7 +194,6 @@ async function send() {
         decision_mode: decisionMode.value || null,
       },
     })
-    text.value = ''
     attachUrl.value = ''
     attachOpen.value = false
     state.value = res.state
@@ -194,7 +203,10 @@ async function send() {
     loadSessions()
   } catch (e) {
     lastError.value = errorText(e)
+    // not sent: the text goes back to the input (unless a new one is typed already)
+    if (!text.value) text.value = body
   } finally {
+    pending.value = null
     busy.value = false
     scrollDown()
   }
