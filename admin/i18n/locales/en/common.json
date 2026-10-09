@@ -36,7 +36,7 @@
     "open": "Open"
   },
   "nav": {
-    "results": "Results",
+    "results": "Requests",
     "conversations": "Conversations",
     "sandbox": "Sandbox",
     "scenarios": "Scenarios",
@@ -65,13 +65,17 @@
       "bot": "Bot",
       "access": "Access",
       "models": "AI models",
-      "system": "System"
+      "system": "System",
+      "knows": "What the bot knows"
     },
     "operator": "Operator",
     "notifiers": "Notifications",
     "catalog": "Catalog",
     "knowledge": "Knowledge base",
-    "decisions": "Decisions"
+    "decisions": "Decisions",
+    "inbox": "Inbox",
+    "bot_settings": "Bot settings",
+    "waiting": "Waiting for you: {n}"
   },
   "auth": {
     "another_email": "Use another email",
@@ -235,5 +239,32 @@
     "slug_hint": "Lowercase Latin letters, digits and dashes; used in links. Cannot be changed later.",
     "sub": "Each tenant has its own channels, scenarios and team.",
     "title": "Name"
+  },
+  "hub": {
+    "sub": "Everything you set up once: where the bot works, who has access, which AI models it uses.",
+    "group": {
+      "connect": "Connections",
+      "behaviour": "How the bot behaves",
+      "access": "Team and access",
+      "models": "AI models",
+      "system": "System"
+    },
+    "channels": "Where clients write: Instagram, the website chat. Which scenarios work in each.",
+    "notifiers": "Where the bot sends a note to your team: Telegram or email.",
+    "endpoints": "Addresses of your systems where the bot sends finished requests.",
+    "api_keys": "Keys for your site or CRM to talk to the bot.",
+    "bot_settings": "Languages, tone, pauses between messages, who answers by default.",
+    "prompts": "Instructions for the AI. Change them only if you know what you are doing.",
+    "decisions": "Which steps the bot decides by fixed rules and which it leaves to the AI.",
+    "members": "Who can sign in and what they are allowed to do.",
+    "audit": "Who changed what and when.",
+    "models": "The AI models the bot may use, and their prices.",
+    "roles": "Which model does which job: understands, answers, checks.",
+    "roles_problem": "A model is missing — the bot cannot answer",
+    "costs": "How much the AI has cost, by day and by model.",
+    "tenants": "All businesses on this installation.",
+    "users": "Everyone who can sign in to the admin.",
+    "shared_prompts": "The instructions every business starts with.",
+    "system_audit": "Changes across all businesses."
   }
 }

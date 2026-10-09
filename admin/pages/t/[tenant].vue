@@ -1,5 +1,5 @@
 <template>
-  <div v-if="tenant">
+  <div v-if="tenant" class="h-full">
     <NuxtPage />
   </div>
   <div v-else class="max-w-lg mx-auto mt-16 text-center">

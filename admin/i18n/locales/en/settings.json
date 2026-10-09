@@ -58,7 +58,7 @@
     "merge_max_wait": "Wait at most, seconds",
     "merge_pause": "Pause between messages, seconds",
     "no_scenarios": "No scenarios in this channel. The bot only answers questions.",
-    "operator_mode": "Operator mode: the bot suggests replies, a human sends them",
+    "operator_mode": "The bot suggests replies, a person sends them",
     "order_hint": "If two scenarios fit a message equally well, the one higher in the list goes first.",
     "overrides": "Own settings of the channel",
     "overrides_hint": "Empty means the tenant settings are used.",
@@ -68,7 +68,7 @@
     "tenant_languages": "Tenant languages: {languages}",
     "title": "Name",
     "token_expires": "Token valid until {at}",
-    "operator_mode_hint": "The bot does not answer by itself: it suggests reply variants, a person picks one.",
+    "operator_mode_hint": "For every conversation of this channel: the bot does not answer by itself, it prepares reply variants, and a person picks one in the Inbox.",
     "operator_variants": "Reply variants (2-5)"
   },
   "prompts": {

@@ -5,7 +5,7 @@
     <div class="flex flex-wrap items-center gap-2">
       <span :class="LOOK[task.kind]?.badge || 'badge-gray'">{{ t(`operator.kind.${task.kind}`) }}</span>
       <template v-if="withContact && task.contact">
-        <NuxtLink :to="`${base}/conversations/${task.conversation_id}`" class="font-medium hover:text-primary">
+        <NuxtLink :to="`${base}/inbox/${task.conversation_id}`" class="font-medium hover:text-primary">
           {{ task.contact.name || task.contact.username || task.contact.external_id }}
         </NuxtLink>
         <span class="text-xs muted">{{ task.channel?.title }}</span>
@@ -79,7 +79,7 @@
         <input v-model="note" class="input" maxlength="1000" :placeholder="t('operator.note_placeholder')" />
       </div>
       <div v-if="canAct" class="flex flex-wrap justify-end gap-2">
-        <NuxtLink v-if="withContact" :to="`${base}/conversations/${task.conversation_id}`" class="btn-secondary btn-sm">{{ t('operator.open_chat') }}</NuxtLink>
+        <NuxtLink v-if="withContact" :to="`${base}/inbox/${task.conversation_id}`" class="btn-secondary btn-sm">{{ t('operator.open_chat') }}</NuxtLink>
         <button type="button" class="btn-secondary btn-sm text-rose-600" :disabled="busy" @click="resolve('reject')">{{ t('operator.reject_receipt') }}</button>
         <button type="button" class="btn-primary btn-sm" :disabled="busy" @click="resolve('accept')">{{ t('operator.accept_receipt') }}</button>
       </div>
@@ -89,7 +89,7 @@
       <p class="text-sm muted">{{ t('operator.handover_hint') }}</p>
       <div v-if="canAct" class="flex flex-wrap justify-end gap-2">
         <button type="button" class="btn-secondary btn-sm" :disabled="busy" @click="resolve('dismiss')">{{ t('operator.dismiss') }}</button>
-        <NuxtLink v-if="withContact" :to="`${base}/conversations/${task.conversation_id}`" class="btn-secondary btn-sm">{{ t('operator.open_chat') }}</NuxtLink>
+        <NuxtLink v-if="withContact" :to="`${base}/inbox/${task.conversation_id}`" class="btn-secondary btn-sm">{{ t('operator.open_chat') }}</NuxtLink>
         <button type="button" class="btn-primary btn-sm" :disabled="busy" @click="resolve('release')">{{ t('operator.release') }}</button>
       </div>
     </template>

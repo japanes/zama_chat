@@ -1,7 +1,7 @@
 <template>
   <div class="space-y-5 max-w-3xl">
     <div>
-      <h1 class="page-title">{{ t('nav.settings') }}</h1>
+      <h1 class="page-title">{{ t('nav.bot_settings') }}</h1>
       <p class="page-sub">{{ t('settings.sub') }}</p>
     </div>
 
@@ -122,7 +122,7 @@ const toast = useToast()
 const { errorText } = useErrorText()
 const { path } = useTenant()
 const { load: loadInfo } = useTenantInfo()
-usePage(() => [{ label: t('nav.settings') }])
+usePage(() => [{ label: t('nav.bot_settings') }])
 
 const form = ref<any>(null)
 const title = ref('')

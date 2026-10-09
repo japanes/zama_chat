@@ -1,53 +1,38 @@
 <template>
-  <div class="space-y-5">
-    <div class="flex flex-wrap items-start justify-between gap-3">
-      <div>
+  <div class="max-w-[980px] mx-auto space-y-5">
+    <div class="flex flex-wrap items-end justify-between gap-3">
+      <div class="min-w-0">
         <h1 class="page-title">{{ t('nav.scenarios') }}</h1>
-        <p class="page-sub">{{ t('scenarios.sub') }}</p>
+        <p class="page-sub">{{ t('editor.list.sub') }}</p>
       </div>
       <NuxtLink v-if="can('admin')" :to="`${base}/scenarios/new`" class="btn-primary">
         <UiIcon name="plus" :size="16" /> {{ t('scenarios.new') }}
       </NuxtLink>
     </div>
 
-    <div class="card overflow-hidden">
-      <UiState :loading="loading" :error="error" :empty="!loading && !items.length ? t('scenarios.empty') : false" :has-data="items.length > 0" :retry="load">
-        <div class="overflow-x-auto">
-          <table class="table table-hover">
-            <thead>
-              <tr>
-                <th>{{ t('scenarios.title') }}</th>
-                <th>{{ t('scenarios.version') }}</th>
-                <th>{{ t('nav.channels') }}</th>
-                <th>{{ t('scenarios.updated') }}</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="s in items" :key="s.key" @click="navigateTo(`${base}/scenarios/${s.key}`)">
-                <td>
-                  <span class="font-medium">{{ s.title || s.key }}</span>
-                  <p class="code text-xs muted">{{ s.key }}</p>
-                </td>
-                <td class="whitespace-nowrap">
-                  <span v-if="s.active_version" class="badge-green">v{{ s.active_version }}</span>
-                  <span v-else class="badge-gray">{{ t('scenarios.off') }}</span>
-                  <span v-if="s.latest_version !== s.active_version" class="text-xs muted ml-1">{{ t('scenarios.latest', { v: s.latest_version }) }}</span>
-                </td>
-                <td>
-                  <div class="flex flex-wrap gap-1">
-                    <span v-for="c in s.channels" :key="c.channel_id" :class="c.is_enabled ? 'badge-blue' : 'badge-gray'">
-                      {{ c.title }} #{{ c.position + 1 }}
-                    </span>
-                    <span v-if="!s.channels.length" class="text-xs muted">{{ t('scenarios.no_channels') }}</span>
-                  </div>
-                </td>
-                <td class="whitespace-nowrap text-sm muted">{{ f.dateTime(s.updated_at) }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </UiState>
-    </div>
+    <UiState :loading="loading" :error="error" :has-data="loaded" :retry="load">
+      <ul v-if="items.length" class="space-y-2.5">
+        <li v-for="s in items" :key="s.key">
+          <NuxtLink :to="`${base}/scenarios/${s.key}`" class="card card-hover flex flex-wrap items-center gap-x-4 gap-y-1.5 px-5 py-4 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+            <span class="flex-1 basis-[260px] min-w-0">
+              <span class="block text-[17px] font-semibold text-slate-900 dark:text-white truncate">{{ s.title || s.key }}</span>
+              <span class="block text-sm truncate" :class="where(s) ? 'muted' : 'text-[#7a4b00] dark:text-amber-300'">
+                {{ where(s) ? t('editor.list.channels', { list: where(s) }) : t('editor.list.no_channels') }}
+              </span>
+            </span>
+            <span v-if="s.active_version" class="badge-green">{{ t('editor.status.on') }}</span>
+            <span v-else class="badge-gray">{{ t('editor.status.off') }}</span>
+            <span class="text-sm muted whitespace-nowrap">{{ t('editor.list.changed', { when: f.relative(s.updated_at) }) }}</span>
+            <UiIcon name="chevron-right" :size="18" class="muted shrink-0" />
+          </NuxtLink>
+        </li>
+      </ul>
+      <div v-else-if="loaded" class="card card-body text-center py-10">
+        <p class="text-[17px] font-semibold text-slate-900 dark:text-white">{{ t('scenarios.empty') }}</p>
+        <p class="mt-1 muted">{{ t('editor.list.empty_sub') }}</p>
+        <NuxtLink v-if="can('admin')" :to="`${base}/scenarios/new`" class="btn-primary mt-5">{{ t('editor.list.first') }}</NuxtLink>
+      </div>
+    </UiState>
   </div>
 </template>
 
@@ -59,9 +44,19 @@ const { base, path, can } = useTenant()
 usePage(() => [{ label: t('nav.scenarios') }])
 
 const items = ref<any[]>([])
+const loaded = ref(false)
 const { loading, error, load } = useLoader(async () => {
   items.value = (await api<{ items: any[] }>(path('/scenarios'))).items
+  loaded.value = true
   return items.value
 })
+
+// the channels the scenario is switched on in, as one line
+function where(s: any): string {
+  return (s.channels as any[])
+    .filter((c) => c.is_enabled)
+    .map((c) => c.title)
+    .join(', ')
+}
 onMounted(load)
 </script>

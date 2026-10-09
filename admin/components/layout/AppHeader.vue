@@ -18,11 +18,11 @@
         <NuxtLink
           v-if="c.to && i < crumbs.length - 1"
           :to="c.to"
-          class="truncate text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+          class="truncate text-slate-500 hover:text-slate-900 hover:underline dark:text-slate-400 dark:hover:text-slate-200"
         >
           {{ c.label }}
         </NuxtLink>
-        <span v-else class="truncate font-medium text-slate-900 dark:text-white">{{ c.label }}</span>
+        <span v-else class="truncate font-semibold text-slate-900 dark:text-white">{{ c.label }}</span>
       </template>
     </nav>
 
@@ -36,5 +36,11 @@
 defineProps<{ showHamburger?: boolean }>()
 const emit = defineEmits<{ menu: [] }>()
 const { t } = useI18n()
-const crumbs = useCrumbs()
+const pageCrumbs = useCrumbs()
+const { hubLink, inSettings, onHub } = useNav()
+
+// a page behind «Settings» shows the way back to it
+const crumbs = computed(() =>
+  inSettings.value && !onHub.value ? [{ label: t('nav.settings'), to: hubLink.value }, ...pageCrumbs.value] : pageCrumbs.value,
+)
 </script>

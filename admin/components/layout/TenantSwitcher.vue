@@ -2,17 +2,17 @@
   <div ref="root" class="relative">
     <button
       type="button"
-      class="w-full flex items-center gap-2 h-10 px-2.5 rounded-button border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+      class="w-full flex items-center gap-2.5 h-12 px-2.5 rounded-button border border-slate-700 bg-slate-800 text-white hover:bg-slate-700 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
       :title="tenant?.title"
       @click="open = !open"
     >
-      <span class="grid place-items-center w-6 h-6 shrink-0 rounded-md bg-accent/15 text-accent-dark dark:text-accent-light text-xs font-semibold">
+      <span class="grid place-items-center w-7 h-7 shrink-0 rounded-lg bg-slate-700 text-white text-sm font-semibold">
         {{ (tenant?.title || '?').charAt(0).toUpperCase() }}
       </span>
       <template v-if="!collapsed">
         <span class="flex-1 min-w-0 text-left">
-          <span class="block text-sm font-medium truncate">{{ tenant?.title || t('nav.pick_tenant') }}</span>
-          <span v-if="tenant" class="block text-[11px] text-slate-400 truncate">{{ t(`roles.${tenant.role}`) }}</span>
+          <span class="block text-sm font-semibold truncate">{{ tenant?.title || t('nav.pick_tenant') }}</span>
+          <span v-if="tenant" class="block text-xs text-slate-400 truncate">{{ t(`roles.${tenant.role}`) }}</span>
         </span>
         <UiIcon name="chevron-down" :size="14" class="text-slate-400" />
       </template>
@@ -25,8 +25,8 @@
         v-for="item in auth.tenants"
         :key="item.id"
         type="button"
-        class="w-full flex items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-700"
-        :class="item.id === tenant?.id ? 'text-primary font-medium' : 'text-slate-700 dark:text-slate-300'"
+        class="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-700"
+        :class="item.id === tenant?.id ? 'text-primary-dark dark:text-primary-light font-semibold' : 'text-slate-900 dark:text-slate-300'"
         @click="pick(item.slug)"
       >
         <span class="truncate">{{ item.title }}</span>
@@ -53,7 +53,7 @@ function pick(slug: string) {
   open.value = false
   rememberTenant(slug)
   const m = route.path.match(/^\/t\/[^/]+\/([^/]+)/)
-  navigateTo(`/t/${slug}/${m ? m[1] : 'results'}`)
+  navigateTo(`/t/${slug}/${m ? m[1] : 'inbox'}`)
 }
 
 onClickOutside(root, () => (open.value = false))

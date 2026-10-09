@@ -158,7 +158,9 @@
       "receipt_amount_missing": "Поле {field}: сума не задана, код її не перевірятиме",
       "receipt_currency_required": "Поле {field}: для фіксованої суми потрібна валюта",
       "receipt_field_required": "«Перевірено квитанцію» потребує поля-квитанції",
-      "receipt_quantity_field_invalid": "Поле {field}: {ref} має бути числовим полем"
+      "receipt_quantity_field_invalid": "Поле {field}: {ref} має бути числовим полем",
+      "draft_empty": "З опису не вийшло жодного питання. Напишіть, що бот має дізнатися у клієнта.",
+      "draft_failed": "Чернетка не вийшла. Спробуйте ще раз або опишіть завдання докладніше."
     },
     "tenant": {
       "language_duplicate": "Мову вказано двічі",

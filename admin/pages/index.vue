@@ -19,5 +19,5 @@ usePage(() => [{ label: t('home.title') }])
 
 const last = lastTenantSlug()
 const target = auth.tenants.find((x) => x.slug === last) || auth.tenants[0]
-if (target) await navigateTo(`/t/${target.slug}/results`, { replace: true })
+if (target) await navigateTo(`/t/${target.slug}/inbox`, { replace: true })
 </script>

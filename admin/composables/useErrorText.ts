@@ -19,6 +19,10 @@ export function useErrorText() {
     if ((key === 'need' || key === 'role') && typeof v === 'string' && te(`roles.${v}`)) {
       return t(`roles.${v}`)
     }
+    // the role of a model goes by what it does: «Answer to the client», not `reply`
+    if (key === 'role' && typeof v === 'string' && te(`models.role.${v}`)) {
+      return `«${t(`models.role.${v}`)}»`
+    }
     return v === null || v === undefined ? '' : String(v)
   }
 

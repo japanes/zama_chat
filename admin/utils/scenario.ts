@@ -41,7 +41,10 @@ export const KEY_RE = /^[a-z][a-z0-9]*(_[a-z0-9]+)*$/
 export function newField(n: number): any {
   return {
     key: `field_${n}`,
+    // editor only: the key follows the name until somebody types it by hand
+    _auto: true,
     type: 'text',
+    title: null,
     question: {},
     options: [],
     filters: [],
@@ -134,6 +137,7 @@ export function cleanDefinition(d: any): any {
       compact({
         key: f.key,
         type: f.type || 'text',
+        title: text(f.title),
         question: text(f.question) ?? {},
         description: text(f.description),
         options:
@@ -154,6 +158,8 @@ export function cleanDefinition(d: any): any {
         ask_after: (f.ask_after || []).length ? [...f.ask_after] : undefined,
       }),
     ),
+    // 'any' is the default: the key is written only when the scenario limits answers
+    answers: d.answers === 'asked' ? 'asked' : undefined,
     completion: d.completion || 'all_fields',
     confirm: d.confirm ? compact({ question: text(d.confirm.question) }) : undefined,
     events:
@@ -272,6 +278,99 @@ function typedSettings(f: any): any {
   }
 }
 
+// --- human names: the key is made from the name, a person never has to type it ---------
+
+const TRANSLIT: Record<string, string> = {
+  а: 'a', б: 'b', в: 'v', г: 'g', ґ: 'g', д: 'd', е: 'e', ё: 'e', є: 'ye', ж: 'zh', з: 'z', и: 'i',
+  і: 'i', ї: 'yi', й: 'y', к: 'k', л: 'l', м: 'm', н: 'n', о: 'o', п: 'p', р: 'r', с: 's', т: 't',
+  у: 'u', ф: 'f', х: 'h', ц: 'ts', ч: 'ch', ш: 'sh', щ: 'sch', ъ: '', ы: 'y', ь: '', э: 'e', ю: 'yu',
+  я: 'ya',
+}
+
+// "Номер телефона" → "nomer_telefona"; never a key from `taken`
+export function slugKey(value: string, taken: string[] = [], fallback = 'item'): string {
+  let out = ''
+  for (const ch of (value || '').toLowerCase()) out += TRANSLIT[ch] ?? ch
+  out = out
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^[0-9_]+/, '')
+    .slice(0, 40)
+    .replace(/_+$/, '')
+  if (!out) out = fallback
+  let key = out
+  for (let n = 2; taken.includes(key); n++) key = `${out}_${n}`
+  return key
+}
+
+// the name of an answer as people see it: its title, or the key when there is none
+export function fieldName(f: any, ...languages: (string | null | undefined)[]): string {
+  const title = f?.title
+  if (typeof title === 'string' && title.trim()) return title
+  if (title && typeof title === 'object') {
+    for (const l of languages) if (l && (title[l] || '').trim()) return title[l]
+    const any = Object.values(title).find((v) => typeof v === 'string' && v.trim())
+    if (any) return any as string
+  }
+  // a key the editor made up says nothing to a person: the caller names such a question
+  return f?._auto ? '' : f?.key || ''
+}
+
+// a field renamed: everything that points at it by key follows
+export function renameField(d: any, from: string, to: string) {
+  if (!from || from === to) return
+  const swap = (list: string[] | undefined) => (list || []).map((k) => (k === from ? to : k))
+  for (const q of d.start?.questions || []) if (q.field === from) q.field = to
+  for (const f of d.fields || []) {
+    f.ask_after = swap(f.ask_after)
+    if (f.receipt?.amount_field === from) f.receipt.amount_field = to
+    if (f.receipt?.quantity_field === from) f.receipt.quantity_field = to
+  }
+  for (const e of d.events_list || []) e.reopen_fields = swap(e.reopen_fields)
+  for (const a of d.actions || []) if (a.field === from) a.field = to
+}
+
+// --- start: "this is enough" / "only together with another" over weights + threshold ----
+
+export function startThreshold(start: any): number {
+  return start?.threshold === '' || start?.threshold == null
+    ? Number(start?.questions?.[0]?.weight) || 1
+    : Number(start.threshold) || 1
+}
+
+export function signEnough(start: any, q: any): boolean {
+  return (Number(q.weight) || 1) >= startThreshold(start)
+}
+
+// The simple choice writes plain numbers: "enough" = the threshold itself, "together" =
+// a half of it (two such signs reach it). The exact numbers stay editable next to it.
+export function setSignEnough(start: any, q: any, enough: boolean) {
+  let threshold = startThreshold(start)
+  if (!enough && threshold < 2) {
+    for (const other of start.questions || []) if (other !== q && signEnough(start, other)) other.weight = 2
+    threshold = 2
+  }
+  start.threshold = threshold
+  q.weight = enough ? threshold : Math.max(1, Math.ceil(threshold / 2))
+}
+
+// index sets of the smallest groups of signs that start the scenario
+export function startSets(start: any, max = 4): number[][] {
+  const qs = (start?.questions || []) as any[]
+  if (!qs.length || qs.length > 12) return []
+  const threshold = startThreshold(start)
+  const sets: number[][] = []
+  for (let mask = 1; mask < 1 << qs.length; mask++) {
+    const idx = qs.map((_, i) => i).filter((i) => mask & (1 << i))
+    const sum = idx.reduce((s, i) => s + (Number(qs[i].weight) || 1), 0)
+    if (sum < threshold) continue
+    if (idx.every((i) => sum - (Number(qs[i].weight) || 1) < threshold)) sets.push(idx)
+  }
+  sets.sort((a, b) => a.length - b.length)
+  return sets.slice(0, max)
+}
+
 export function startLabel(q: any): string {
   return q.field ? `field: ${q.field}` : q.key || '?'
 }
@@ -303,4 +402,21 @@ export function missingLanguages(value: unknown, languages: string[], main: stri
   if (typeof value === 'string') return value.trim() ? languages.filter((l) => l !== main) : languages
   const have = value && typeof value === 'object' ? (value as Record<string, string>) : {}
   return languages.filter((l) => !(have[l] || '').trim())
+}
+
+// a start sign in words, for the summaries: «…the client's question…» / names «Service»
+export function signLabel(d: any, i: number, lang: string, t: (key: string, params?: any) => string): string {
+  const q = d.start?.questions?.[i]
+  if (!q) return ''
+  if (q.field !== undefined) {
+    const f = (d.fields || []).find((x: any) => x.key === q.field)
+    return t('editor.start.names_field', { name: (f && fieldName(f, lang, d.language)) || (f ? t('editor.q.untitled') : q.field || '…') })
+  }
+  const ask = q.ask
+  let value = ''
+  if (typeof ask === 'string') value = ask
+  else if (ask && typeof ask === 'object') value = ask[lang] || ask[d.language] || (Object.values(ask)[0] as string) || ''
+  value = value.trim()
+  if (!value) return t('editor.start.sign_n', { n: i + 1 })
+  return `«${value.length > 80 ? `${value.slice(0, 80)}…` : value}»`
 }

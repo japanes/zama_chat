@@ -1,18 +1,18 @@
 <template>
-  <div class="min-h-screen bg-slate-50 dark:bg-slate-900 flex">
+  <div class="bg-slate-50 dark:bg-slate-900 flex" :class="fill ? 'h-dvh overflow-hidden' : 'min-h-screen'">
     <!-- desktop sidebar -->
     <AppSidebar v-if="isDesktop" :collapsed="collapsed" @toggle="toggleCollapsed" />
 
-    <div class="flex-1 min-w-0 flex flex-col">
+    <div class="flex-1 min-w-0 flex flex-col" :class="fill ? 'min-h-0' : ''">
       <AppHeader show-hamburger @menu="mobileOpen = true" />
-      <div v-if="roleProblems > 0 && showRoleBanner" class="px-4 md:px-6 lg:px-8 pt-4">
+      <div v-if="roleProblems > 0 && showRoleBanner" class="px-4 md:px-6 lg:px-8 pt-4" :class="fill ? 'pb-4' : ''">
         <div class="alert-red flex flex-wrap items-center gap-2">
           <UiIcon name="alert" :size="18" />
           <span class="flex-1">{{ t('models.roles.problem_banner') }}</span>
           <NuxtLink to="/models/roles" class="btn-sm btn-secondary">{{ t('models.roles.open') }}</NuxtLink>
         </div>
       </div>
-      <main class="flex-1 min-w-0 p-4 md:p-6 lg:p-8">
+      <main class="flex-1 min-w-0" :class="fill ? 'min-h-0 overflow-hidden' : 'p-4 md:p-6 lg:p-8'">
         <slot />
       </main>
     </div>
@@ -42,6 +42,10 @@ const mobileOpen = ref(false)
 const collapsed = ref(false)
 const roleProblems = useRoleProblems()
 const { tenant } = useTenant()
+
+// a page with `definePageMeta({ fill: true })` takes the whole area under the header and
+// scrolls its own panes (the Inbox, the sandbox); the others scroll with the window
+const fill = computed(() => !!(route.meta as Record<string, unknown>).fill)
 
 // the roles page shows its own banner
 const showRoleBanner = computed(() => !route.path.startsWith('/models/roles'))
@@ -74,9 +78,16 @@ watch(
   (value) => {
     if (route.params.tenant && value) rememberTenant(value.slug)
     refreshRoleProblems(value?.id || null)
+    refreshInboxCount(value?.id || null)
   },
   { immediate: true },
 )
+
+// the «Inbox» badge: how many conversations wait for a person (while the tab is visible)
+const visibility = useDocumentVisibility()
+useIntervalFn(() => {
+  if (visibility.value === 'visible') refreshInboxCount(tenant.value?.id || null)
+}, 20000)
 </script>
 
 <style scoped>

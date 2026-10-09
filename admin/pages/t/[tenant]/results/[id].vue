@@ -11,7 +11,7 @@
           </div>
           <div class="flex items-center gap-2">
             <StatusBadge kind="run" :value="data.result.status" />
-            <NuxtLink :to="`${base}/conversations/${data.result.conversation_id}`" class="btn-secondary">
+            <NuxtLink :to="`${base}/inbox/${data.result.conversation_id}`" class="btn-secondary">
               <UiIcon name="chat" :size="16" /> {{ t('results.open_conversation') }}
             </NuxtLink>
           </div>

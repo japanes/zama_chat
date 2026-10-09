@@ -1,5 +1,5 @@
-/* The factory dashboard look: slate surfaces, brand gradient on primary buttons,
-   rounded cards. Shared building blocks live here so pages stay plain markup. */
+/* The look: cool light surfaces, navy ink and sidebar, one solid blue for the main
+   action, rounded cards. Shared building blocks live here so pages stay plain markup. */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -9,7 +9,7 @@
     @apply antialiased;
   }
   body {
-    @apply bg-slate-50 text-slate-800 font-body dark:bg-slate-950 dark:text-slate-200;
+    @apply bg-slate-50 text-slate-900 font-body text-[15px] dark:bg-slate-950 dark:text-slate-200;
   }
   h1,
   h2,
@@ -24,13 +24,17 @@
     @apply text-2xl font-bold font-heading text-slate-900 dark:text-white;
   }
   .page-sub {
-    @apply mt-1 text-sm text-slate-500 dark:text-slate-400;
+    @apply mt-1 text-[15px] text-slate-500 dark:text-slate-400;
   }
   .muted {
     @apply text-slate-500 dark:text-slate-400;
   }
   .hint {
-    @apply mt-1 text-xs text-slate-500 dark:text-slate-400;
+    @apply mt-1 text-[13px] leading-snug text-slate-500 dark:text-slate-400;
+  }
+  /* a text link inside a sentence or under a form */
+  .link {
+    @apply font-medium text-primary-dark hover:underline dark:text-primary-light;
   }
   .code {
     @apply font-mono;
@@ -55,52 +59,74 @@
 
   /* --- buttons --- */
   .btn {
-    @apply inline-flex items-center justify-center gap-1.5 h-9 px-4 rounded-button text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap;
+    @apply inline-flex items-center justify-center gap-2 h-11 px-4 rounded-button text-[15px] font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap;
   }
   .btn-primary {
-    @apply btn text-white bg-primary;
-    background-image: linear-gradient(to right, #ec6ead, #3494e6);
+    @apply btn text-white bg-primary-dark;
   }
   .btn-primary:not(:disabled):hover {
-    filter: brightness(0.95);
+    background-color: #175a95;
   }
   .btn-secondary {
-    @apply btn border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700;
+    @apply btn border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700;
   }
   .btn-ghost {
     @apply btn text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700;
   }
   .btn-danger {
-    @apply btn text-white bg-rose-600 hover:bg-rose-700;
+    @apply btn text-white bg-rose-700 hover:bg-rose-800;
+  }
+  /* «add one more»: a dashed button under a list */
+  .btn-dashed {
+    @apply btn border border-dashed border-slate-400 dark:border-slate-500 text-primary-dark dark:text-primary-light hover:bg-slate-50 dark:hover:bg-slate-700/50;
   }
   .btn-sm {
-    @apply h-8 px-3 text-xs;
+    @apply h-9 px-3 text-sm font-medium;
   }
   .btn-icon {
-    @apply px-0 w-9;
+    @apply px-0 w-11;
   }
   .btn-icon.btn-sm {
-    @apply w-8;
+    @apply w-9;
   }
 
   /* --- forms --- */
   .label {
-    @apply block mb-1 text-sm font-medium text-slate-700 dark:text-slate-300;
+    @apply block mb-1.5 text-sm font-semibold text-slate-900 dark:text-slate-200;
   }
   .input,
   .select,
   .textarea {
-    @apply block w-full rounded-input border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary disabled:opacity-60 read-only:bg-slate-50 dark:read-only:bg-slate-800;
+    @apply block w-full rounded-input border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 text-[15px] text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary disabled:opacity-60 read-only:bg-slate-50 dark:read-only:bg-slate-800;
   }
   .input,
   .select {
-    @apply h-9;
+    @apply h-11;
   }
   .textarea {
-    @apply py-2 leading-relaxed;
+    @apply py-2.5 leading-relaxed;
   }
   .checkbox {
-    @apply h-4 w-4 rounded border-slate-300 dark:border-slate-600 text-primary accent-primary focus:ring-primary/40;
+    @apply h-[18px] w-[18px] shrink-0 rounded border-slate-300 dark:border-slate-600 text-primary-dark accent-primary-dark focus:ring-primary/40;
+  }
+
+  /* a round toggle in a set of several: <button class="chip chip-on"> */
+  .chip {
+    @apply inline-flex items-center min-h-[36px] px-3 rounded-full border border-slate-300 dark:border-slate-600 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-60 disabled:cursor-not-allowed;
+  }
+  .chip-on {
+    @apply border-primary-dark bg-[#e8f2fc] text-primary-dark hover:bg-[#e8f2fc] dark:border-primary-light dark:bg-sky-500/15 dark:text-primary-light dark:hover:bg-sky-500/15;
+  }
+
+  /* one of several: <div class="segmented"><button class="segment segment-active">…</button></div> */
+  .segmented {
+    @apply inline-flex flex-wrap gap-1 rounded-button bg-slate-100 dark:bg-slate-900 p-1;
+  }
+  .segment {
+    @apply inline-flex items-center justify-center gap-1.5 min-h-[36px] px-3 rounded-lg text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary;
+  }
+  .segment-active {
+    @apply bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-card;
   }
 
   /* on / off switch: <label class="switch"><input type="checkbox"><span /></label> */
@@ -118,7 +144,7 @@
     @apply absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform;
   }
   .switch input:checked + span {
-    @apply bg-primary;
+    @apply bg-primary-dark;
   }
   .switch input:checked + span::after {
     @apply translate-x-4;
@@ -135,10 +161,10 @@
     @apply flex gap-1 border-b border-slate-200 dark:border-slate-700 overflow-x-auto;
   }
   .tab {
-    @apply -mb-px px-3 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 whitespace-nowrap;
+    @apply -mb-px px-3 py-2.5 text-sm font-medium border-b-2 border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 whitespace-nowrap;
   }
   .tab-active {
-    @apply border-primary text-primary dark:text-primary-light;
+    @apply border-primary-dark text-primary-dark dark:border-primary-light dark:text-primary-light;
   }
 
   /* --- tables --- */
@@ -146,10 +172,10 @@
     @apply w-full text-sm;
   }
   .table th {
-    @apply px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-700 whitespace-nowrap;
+    @apply px-4 py-3 text-left text-[13px] font-semibold text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-700 whitespace-nowrap;
   }
   .table td {
-    @apply px-4 py-3 align-top border-b border-slate-100 dark:border-slate-700/60;
+    @apply px-4 py-3 align-top border-b border-slate-200 dark:border-slate-700/60;
   }
   .table tbody tr:last-child td {
     @apply border-b-0;
@@ -160,25 +186,25 @@
 
   /* --- badges --- */
   .badge {
-    @apply inline-flex items-center gap-1 rounded-badge px-2 py-0.5 text-xs font-medium whitespace-nowrap;
+    @apply inline-flex items-center gap-1 rounded-badge px-2.5 py-0.5 text-[13px] font-medium whitespace-nowrap;
   }
   .badge-gray {
-    @apply badge bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-200;
+    @apply badge bg-[#e6e9f2] text-slate-600 dark:bg-slate-700 dark:text-slate-200;
   }
   .badge-blue {
-    @apply badge bg-sky-100 text-sky-800 dark:bg-sky-500/15 dark:text-sky-300;
+    @apply badge bg-[#e8f2fc] text-primary-dark dark:bg-sky-500/15 dark:text-sky-300;
   }
   .badge-green {
-    @apply badge bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300;
+    @apply badge bg-[#e4f3ea] text-[#17663f] dark:bg-emerald-500/15 dark:text-emerald-300;
   }
   .badge-amber {
-    @apply badge bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300;
+    @apply badge bg-[#fdf0d2] text-[#7a4b00] dark:bg-amber-500/15 dark:text-amber-300;
   }
   .badge-red {
-    @apply badge bg-rose-100 text-rose-800 dark:bg-rose-500/15 dark:text-rose-300;
+    @apply badge bg-[#fce6ea] text-[#a61b34] dark:bg-rose-500/15 dark:text-rose-300;
   }
   .badge-violet {
-    @apply badge bg-violet-100 text-violet-800 dark:bg-violet-500/15 dark:text-violet-300;
+    @apply badge bg-[#eeebf8] text-[#5b4b9a] dark:bg-violet-500/15 dark:text-violet-300;
   }
 
   /* --- alerts --- */
@@ -186,15 +212,18 @@
     @apply rounded-input border px-4 py-3 text-sm;
   }
   .alert-blue {
-    @apply alert border-sky-200 bg-sky-50 text-sky-900 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-200;
+    @apply alert border-[#bcd9f5] bg-[#e8f2fc] text-slate-900 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-200;
   }
   .alert-green {
-    @apply alert border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200;
+    @apply alert border-[#b9dfc8] bg-[#e4f3ea] text-[#17663f] dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200;
   }
   .alert-amber {
-    @apply alert border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200;
+    @apply alert border-[#f1d897] bg-[#fdf0d2] text-[#7a4b00] dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200;
   }
   .alert-red {
-    @apply alert border-rose-200 bg-rose-50 text-rose-900 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200;
+    @apply alert border-[#f3bcc6] bg-[#fce6ea] text-[#a61b34] dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200;
+  }
+  .alert-violet {
+    @apply alert border-[#b9aee0] bg-[#eeebf8] text-slate-900 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-200;
   }
 }

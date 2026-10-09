@@ -4,7 +4,7 @@
 
 // Every locale is split into the same files (one per area of the admin);
 // `make i18n-check` makes sure all locales have the same keys.
-const LOCALE_FILES = ['common', 'errors', 'activity', 'scenarios', 'settings', 'models', 'operator', 'search', 'receipts', 'decisions']
+const LOCALE_FILES = ['common', 'errors', 'activity', 'scenarios', 'settings', 'models', 'operator', 'search', 'receipts', 'decisions', 'inbox', 'editor']
 
 const locale = (code: string, name: string) => ({
   code,
@@ -37,7 +37,7 @@ export default defineNuxtConfig({
         { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' },
         {
           rel: 'stylesheet',
-          href: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@600;700&display=swap',
+          href: 'https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap',
         },
       ],
     },

@@ -158,7 +158,9 @@
       "receipt_amount_missing": "Field {field}: no amount is set, code will not check it",
       "receipt_currency_required": "Field {field}: a fixed amount needs a currency",
       "receipt_field_required": "“A payment receipt is checked” needs a receipt field",
-      "receipt_quantity_field_invalid": "Field {field}: {ref} must be a number field"
+      "receipt_quantity_field_invalid": "Field {field}: {ref} must be a number field",
+      "draft_empty": "The description gave no questions. Write what the bot should find out from the client.",
+      "draft_failed": "The draft did not work out. Try again or describe the task in more detail."
     },
     "tenant": {
       "language_duplicate": "A language is listed twice",

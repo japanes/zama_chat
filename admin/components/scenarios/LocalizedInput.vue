@@ -1,7 +1,8 @@
 <template>
-  <!-- a scenario text: one tab per bot language; a red dot marks a missing translation -->
+  <!-- a scenario text: one tab per bot language; a red dot marks a missing translation.
+       Inside the scenario editor the language comes from the page's own switch. -->
   <div>
-    <div v-if="langs.length > 1" class="flex flex-wrap gap-1 mb-1">
+    <div v-if="!ctx && langs.length > 1" class="flex flex-wrap gap-1 mb-1">
       <button
         v-for="l in langs"
         :key="l"
@@ -22,17 +23,21 @@
     </div>
     <textarea
       v-if="multiline"
+      :id="inputId"
       :value="valueFor(current)"
       :rows="rows"
       class="textarea"
+      :aria-label="ariaLabel"
       :readonly="readonly"
       :placeholder="placeholderFor(current)"
       @input="set(current, ($event.target as HTMLTextAreaElement).value)"
     />
     <input
       v-else
+      :id="inputId"
       :value="valueFor(current)"
       class="input"
+      :aria-label="ariaLabel"
       :readonly="readonly"
       :placeholder="placeholderFor(current)"
       @input="set(current, ($event.target as HTMLInputElement).value)"
@@ -53,11 +58,15 @@ const props = withDefaults(
     optional?: boolean
     readonly?: boolean
     placeholder?: string
+    // for a <label for> / a field without a visible label
+    inputId?: string
+    ariaLabel?: string
   }>(),
   { modelValue: null, rows: 2, placeholder: '' },
 )
 const emit = defineEmits<{ 'update:modelValue': [value: LText | null] }>()
 const { t } = useI18n()
+const ctx = useEditorContext()
 
 // tenant languages first, then any other language the text already has
 const langs = computed(() => {
@@ -68,9 +77,15 @@ const langs = computed(() => {
   }
   return out.length ? out : [props.main || 'en']
 })
-const current = ref(langs.value.includes(props.main) ? props.main : langs.value[0])
+const own = ref(langs.value.includes(props.main) ? props.main : langs.value[0])
 watch(langs, (value) => {
-  if (!value.includes(current.value)) current.value = value[0]
+  if (!value.includes(own.value)) own.value = value[0]
+})
+const current = computed({
+  get: () => ctx?.lang.value || own.value,
+  set: (l: string) => {
+    own.value = l
+  },
 })
 
 const asDict = computed<Record<string, string>>(() => {

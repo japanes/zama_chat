@@ -147,7 +147,7 @@
                               <div v-for="d in diff.items" :key="`${d.turn_id}:${d.key}`" class="card card-body text-sm space-y-1">
                                 <div class="flex flex-wrap items-center justify-between gap-2">
                                   <span class="code text-xs">{{ d.key }} · {{ f.dateTime(d.created_at) }}</span>
-                                  <NuxtLink v-if="d.conversation_id" :to="`${base}/conversations/${d.conversation_id}`" class="text-xs font-medium text-primary hover:underline">
+                                  <NuxtLink v-if="d.conversation_id" :to="`${base}/inbox/${d.conversation_id}`" class="text-xs font-medium text-primary hover:underline">
                                     {{ t('decisions.open') }}
                                   </NuxtLink>
                                 </div>

@@ -38,7 +38,7 @@
                 </td>
                 <td class="text-right whitespace-nowrap">
                   <NuxtLink :to="`/t/${x.slug}/results`" class="btn-ghost btn-sm">{{ t('tenants.open') }}</NuxtLink>
-                  <NuxtLink :to="`/t/${x.slug}/settings`" class="btn-icon btn-ghost btn-sm" :aria-label="t('nav.settings')">
+                  <NuxtLink :to="`/t/${x.slug}/settings/bot`" class="btn-icon btn-ghost btn-sm" :aria-label="t('nav.settings')">
                     <UiIcon name="settings" :size="16" />
                   </NuxtLink>
                 </td>
@@ -129,7 +129,7 @@ async function create() {
     formOpen.value = false
     toast.ok(t('tenants.created_ok'))
     await auth.fetchMe()
-    await navigateTo(`/t/${res.tenant.slug}/settings`)
+    await navigateTo(`/t/${res.tenant.slug}/settings/bot`)
   } catch (e) {
     formError.value = errorText(e)
   } finally {

@@ -1,0 +1,93 @@
+{
+  "inbox": {
+    "filters": "Search and filters",
+    "queue": {
+      "waiting": "Waiting for you",
+      "bot": "Bot handles",
+      "all": "All"
+    },
+    "all_channels": "All channels",
+    "sandbox_only": "Show test conversations from the sandbox",
+    "tag": {
+      "choose_reply": "Choose a reply",
+      "review_receipt": "Check the payment",
+      "approve_action": "Confirm the action",
+      "needs_person": "Waiting for a person",
+      "yours": "You answer",
+      "suggest": "Bot suggests",
+      "sandbox": "Test"
+    },
+    "empty": {
+      "search": "Nothing found",
+      "waiting": "Nobody is waiting for your answer",
+      "waiting_sub": "A conversation appears here when a client asks for a person, when the bot suggests reply variants, or when a payment has to be checked.",
+      "sandbox": "No test conversations yet",
+      "none": "No conversations here yet",
+      "none_sub": "They appear when clients write to a connected channel."
+    },
+    "howto": {
+      "title": "How to get reply variants from the bot",
+      "one": "For one client: open the conversation and choose «Bot suggests, I send» at the top.",
+      "all": "For every client of a channel: in Settings → Channels open the channel and turn on «The bot suggests replies, a person sends them».",
+      "channels": "Open the channels"
+    },
+    "loading": "Loading…",
+    "more": "Show more ({n})",
+    "bot_rest": "Conversations the bot handles on its own: {n}.",
+    "show": "Show",
+    "no_messages": "No messages yet",
+    "preview": {
+      "bot": "Bot",
+      "you": "You"
+    },
+    "to_list": "Back to the list",
+    "pick": "Choose a conversation on the left",
+    "pick_sub": "Here you will see the messages and can answer the client.",
+    "about_client": "About the client",
+    "send": "Send to the client",
+    "sandbox_readonly": "This is a test conversation from the sandbox. Here you can only read it.",
+    "who": {
+      "label": "Who answers",
+      "bot": "Bot itself",
+      "suggest": "Bot suggests, I send",
+      "me": "Only me",
+      "bot_hint": "The bot answers the client itself. You see the conversation and can step in at any moment.",
+      "suggest_hint": "The bot prepares reply variants and sends nothing itself. You pick one, edit it if you wish, and send.",
+      "me_hint": "The bot is silent. Only you answer this client.",
+      "bot_done": "The bot answers itself again",
+      "suggest_done": "The bot will now suggest replies",
+      "me_done": "The bot is silent, you answer",
+      "channel_locked": "In this channel the bot only suggests replies in every conversation. This is changed in Settings → Channels.",
+      "channel_link": "So the whole channel is set up — change"
+    },
+    "compose": {
+      "bot": "Write to the client yourself",
+      "suggest": "Your own reply",
+      "me": "Your reply",
+      "bot_note": "The bot keeps answering after your message. To make it silent, choose «Only me» at the top.",
+      "suggest_note": "When the client writes, the bot's reply variants appear here.",
+      "me_note": "The bot is silent while you answer."
+    },
+    "variants": {
+      "title": "The bot suggests a reply",
+      "sub": "Pick a variant. You can edit the text before sending.",
+      "goes": "What the client will get",
+      "placeholder": "Pick a variant above or write your own reply",
+      "skip": "Don't answer"
+    },
+    "side": {
+      "progress": "What the bot has learned",
+      "open_request": "Open the request",
+      "older": "Earlier requests of this client: {n}",
+      "no_scenario": "No scenario is going on now: the bot just answers questions.",
+      "name": "Name",
+      "channel": "Channel",
+      "language": "Language",
+      "first_seen": "First message",
+      "window_until": "You can reply until {at}",
+      "window_why": "Instagram lets you write to a client only for 24 hours after their last message.",
+      "window_closed": "You can't write to this client now: more than 24 hours have passed since their last message. You can answer when they write again.",
+      "technical": "Technical details"
+    }
+  }
+}
