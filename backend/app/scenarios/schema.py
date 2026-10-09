@@ -224,20 +224,6 @@ class FieldDef(Strict):
     ask_after: list[Key] = Field(default_factory=list)
 
 
-class Answers(StrEnum):
-    """Which questions one client message can answer:
-    any   — every unfilled question of the scenario (a talkative client fills several at once);
-    asked — only the question the bot asked last. For scenarios built as «one step = one
-            question»: with many close questions the same words fit several of them, and an
-            answer was written to a question the client was never asked. A message that
-            answers the asked question is then also not taken as a correction of another
-            answer; a correction given instead of an answer still works.
-    """
-
-    ANY = "any"
-    ASKED = "asked"
-
-
 class Completion(StrEnum):
     """When a run is completed (stage 6):
     all_fields     — every field is complete (and confirmed, when `confirm` is set);
@@ -329,7 +315,6 @@ class ScenarioDef(Strict):
     description: LocalizedText | None = None
     start: Start
     fields: list[FieldDef] = Field(min_length=1)
-    answers: Answers = Answers.ANY
     completion: Completion = Completion.ALL_FIELDS
     confirm: Confirm | None = None
     # completion external_event: event name → what it does

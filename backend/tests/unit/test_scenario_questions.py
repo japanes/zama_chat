@@ -2,7 +2,6 @@ from app.db.models import DecisionType, RunStatus
 from app.scenarios.questions import (
     CHANGE_FIELD,
     CLIENT_QUESTION,
-    CONFIRM,
     NONE,
     PAUSE_FOCUS,
     STOP,
@@ -12,15 +11,7 @@ from app.scenarios.questions import (
     start_key,
     templates,
 )
-from tests.scenario_helpers import (
-    booking_data,
-    interview_data,
-    loaded,
-    make_def,
-    open_run,
-    states,
-    view,
-)
+from tests.scenario_helpers import booking_data, loaded, make_def, open_run, states, view
 
 INTERVIEW = loaded(make_def(), position=0)
 BOOKING = loaded(make_def(booking_data()), position=1)
@@ -73,26 +64,6 @@ def test_focus_asks_its_unfilled_fields_stop_and_change():
     change = built.questions[4]
     assert list(change.criteria) == [NONE, "niche"]
     assert "торти" in change.criteria["niche"]
-
-
-def test_answers_asked_takes_only_the_asked_field():
-    asked = loaded(make_def({**interview_data(), "answers": "asked"}), position=0)
-    run = open_run(asked, fields=states(asked.definition, niche="торти"), asking="offer")
-    built = build_questions(view([asked], [run]), "uk")
-    assert [k for k in built.keys if k.startswith("field:")] == [field_key("interview", "offer")]
-    # the earlier answer can still be corrected
-    assert CHANGE_FIELD in built.keys
-
-
-def test_answers_asked_without_a_question_takes_any_field():
-    asked = loaded(make_def({**interview_data(), "answers": "asked"}), position=0)
-    for asking in (None, CONFIRM):
-        run = open_run(asked, fields=states(asked.definition, niche="торти"), asking=asking)
-        built = build_questions(view([asked], [run]), "uk")
-        assert [k for k in built.keys if k.startswith("field:")] == [
-            field_key("interview", "offer"),
-            field_key("interview", "positioning"),
-        ]
 
 
 def test_no_change_question_while_the_focus_has_no_answers():

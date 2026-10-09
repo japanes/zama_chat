@@ -95,8 +95,6 @@
     },
     "q": {
       "add": "Add a question",
-      "answers_asked": "An answer belongs only to the question asked",
-      "answers_asked_hint": "The bot writes an answer only to the question it asked last. When off, one client message can answer several questions at once.",
       "open": "Open the question “{name}”",
       "close": "Close the question “{name}”",
       "untitled": "New question",

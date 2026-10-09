@@ -1,19 +1,6 @@
 <template>
   <div class="space-y-2.5">
     <!-- step 2: the questions in the order the bot asks them; one is open at a time -->
-    <label class="flex items-start gap-2 min-h-[44px] text-sm">
-      <input
-        type="checkbox"
-        class="checkbox mt-0.5"
-        :checked="def.answers === 'asked'"
-        :disabled="readonly"
-        @change="def.answers = ($event.target as HTMLInputElement).checked ? 'asked' : 'any'"
-      />
-      <span>
-        {{ t('editor.q.answers_asked') }}
-        <span class="hint block">{{ t('editor.q.answers_asked_hint') }}</span>
-      </span>
-    </label>
     <QuestionCard
       v-for="(f, i) in (def.fields as any[])"
       :key="i"

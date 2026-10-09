@@ -17,7 +17,6 @@ from app.scenarios.work import WorkRun, focus_of
 from tests.scenario_helpers import (
     booking_data,
     decisions,
-    interview_data,
     loaded,
     make_def,
     open_run,
@@ -163,33 +162,6 @@ def test_a_correction_targets_a_filled_field_of_the_focus():
     runs = [work(INTERVIEW, fields=fields)]
     [target] = rt.extract_targets(runs, decisions({CHANGE_FIELD: "niche"}), runs[0])
     assert (target.field.key, target.current, target.correction) == ("niche", "торти", True)
-
-
-def _asked_interview(**fields):
-    """An «answers: asked» interview: niche is filled, the bot asks about the offer."""
-    asked = loaded(make_def(interview_data(answers="asked")), position=0)
-    return work(asked, fields=states(asked.definition, **fields), asking="offer")
-
-
-def test_answers_asked_an_answer_to_the_question_is_not_a_correction_of_another():
-    run = _asked_interview(niche="торти")
-    marks = {field_key("interview", "offer"): True, CHANGE_FIELD: "niche"}
-    targets = rt.extract_targets([run], decisions(marks), run)
-    assert [(t.field.key, t.correction) for t in targets] == [("offer", False)]
-
-
-def test_answers_asked_a_correction_instead_of_an_answer_is_taken():
-    run = _asked_interview(niche="торти")
-    marks = {field_key("interview", "offer"): False, CHANGE_FIELD: "niche"}
-    [target] = rt.extract_targets([run], decisions(marks), run)
-    assert (target.field.key, target.current, target.correction) == ("niche", "торти", True)
-
-
-def test_answers_asked_the_asked_partial_answer_is_still_refined():
-    run = _asked_interview(niche="торти", offer=("partial", "щось", ["concrete"]))
-    marks = {field_key("interview", "offer"): True, CHANGE_FIELD: "offer"}
-    [target] = rt.extract_targets([run], decisions(marks), run)
-    assert (target.field.key, target.current, target.correction) == ("offer", "щось", True)
 
 
 def test_a_complete_field_marked_by_mistake_is_not_extracted():

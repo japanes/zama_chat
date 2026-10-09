@@ -158,8 +158,6 @@ export function cleanDefinition(d: any): any {
         ask_after: (f.ask_after || []).length ? [...f.ask_after] : undefined,
       }),
     ),
-    // 'any' is the default: the key is written only when the scenario limits answers
-    answers: d.answers === 'asked' ? 'asked' : undefined,
     completion: d.completion || 'all_fields',
     confirm: d.confirm ? compact({ question: text(d.confirm.question) }) : undefined,
     events:
