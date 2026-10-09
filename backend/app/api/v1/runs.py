@@ -3,6 +3,10 @@ interface (one question at a time, its own «skip» and «confirm» buttons) ins
 window.
 
   GET  /v1/scenarios/{key}     the scenario's questions, before any run exists
+  POST /v1/scenarios/{key}/check
+                               answers the caller collected itself (not in a dialogue) →
+                               which of them pass the filters of their questions; no run,
+                               no conversation, nothing is written but the decisions log
   POST /v1/runs/start          start the given scenario for a contact; the bot asks the
                                first question without a model call
   POST /v1/runs/message        one client message → the bot's reply, the run after the turn
@@ -56,13 +60,15 @@ from app.db.models import (
     Tenant,
     Turn,
 )
+from app.decisions.engine import DecideContext, DecisionSet
 from app.errors import AppError, Conflict, NotFound
 from app.scenarios import fields as fl
+from app.scenarios.checks import CheckItem, answers_fit, ask_filters
 from app.scenarios.events import SKIPPED
 from app.scenarios.outside import Change, confirmed, lock_run, settle, under_lease, write_run
 from app.scenarios.plan import CONFIRM_QUESTION
 from app.scenarios.questions import CONFIRM
-from app.scenarios.schema import ActionEvent, ScenarioDef, parse_definition
+from app.scenarios.schema import ActionEvent, FieldType, ScenarioDef, parse_definition
 from app.scenarios.store import load_definition
 from app.services import Services
 
@@ -346,10 +352,22 @@ async def _run_language(session: AsyncSession, client: ApiClient, wanted: str | 
     return code
 
 
+class ScenarioFilter(BaseModel):
+    key: str
+    # the yes/no question the answer has to pass
+    ask: str
+
+
 class ScenarioField(BaseModel):
     key: str
+    # text, choice, date… (scenarios/schema.py FieldType)
+    type: str
     title: str | None
     question: str
+    # what counts as an answer; null when the scenario does not say
+    description: str | None
+    # the checks of the answer; empty — any answer is taken
+    filters: list[ScenarioFilter]
 
 
 class ScenarioOut(BaseModel):
@@ -384,11 +402,203 @@ async def scenario_questions(
         fields=[
             ScenarioField(
                 key=f.key,
+                type=str(f.type),
                 title=_text(defn, f.title, code),
                 question=_text(defn, f.question, code) or "",
+                description=_text(defn, f.description, code),
+                filters=[
+                    ScenarioFilter(key=flt.key, ask=_text(defn, flt.ask, code) or "")
+                    for flt in f.filters
+                ],
             )
             for f in defn.fields
         ],
+    )
+
+
+# --- answers collected outside a dialogue ---------------------------------------------------
+
+# The decider reads an answer of this length whole. In a turn it sees the first
+# checks.ANSWER_PREVIEW characters of what the client said; what a caller collected for a
+# question is longer than a chat reply, and a check of its beginning alone would be no check.
+CHECK_ANSWER_MAX = 4000
+
+
+class CheckAnswer(BaseModel):
+    # key of a question of the scenario
+    field: str = Field(min_length=1, max_length=64)
+    value: str = Field(min_length=1, max_length=CHECK_ANSWER_MAX)
+
+
+class CheckIn(BaseModel):
+    # what to check: each answer against the filters of its question
+    answers: list[CheckAnswer] = Field(min_length=1, max_length=50)
+    # answers already taken, by question key — the context a filter may need, exactly as
+    # a turn gives the decider the answers accepted earlier in the run
+    accepted: dict[str, str] = Field(default_factory=dict)
+    # the language of the questions and criteria (one of the tenant's languages); without
+    # it the scenario's own
+    language: str | None = Field(default=None, max_length=32)
+
+
+class FailedFilter(BaseModel):
+    key: str
+    ask: str
+    # the scenario's wording of «no» — what such an answer lacks; null when it gives none
+    no: str | None
+
+
+class CheckResult(BaseModel):
+    field: str
+    # every filter of the question said yes (also true for a question without filters)
+    passed: bool
+    # the filters that said no, or were not sure
+    failed: list[FailedFilter]
+    # the filters no decider answered: the answer is not checked, so it has not passed. (In
+    # a dialogue such a filter lets the answer through — the client is not asked again
+    # because of our failure; here nobody is waiting for a reply, the caller asks again.)
+    unanswered: list[str]
+    # how many filters the question has; 0 — the scenario checks nothing here
+    filters: int
+
+
+class CheckUsage(BaseModel):
+    tokens_in: int
+    tokens_out: int
+    cost: float
+    calls: list[UsageCall]
+
+
+class CheckOut(BaseModel):
+    # id of this check — the batch id of its rows in the decisions log
+    id: uuid.UUID
+    scenario: str
+    version: int
+    language: str
+    results: list[CheckResult]
+    # null when no filter was asked (the questions have none)
+    usage: CheckUsage | None
+
+
+def _check_usage(decisions: DecisionSet) -> CheckUsage:
+    """What the batch cost: a line per decider. Tokens and cost sit on the first row of a
+    decider call, the other rows carry zeros; the latency is the call's on every row."""
+    by_model: dict[tuple[str, str], list[Any]] = {}
+    for row in decisions.rows:
+        total = by_model.setdefault((str(row.provider), row.model), [0, 0, Decimal(0), 0, None])
+        total[0] += row.tokens_in or 0
+        total[1] += row.tokens_out or 0
+        total[2] += Decimal(str(row.cost or 0))
+        total[3] = max(total[3], row.latency_ms or 0)
+        total[4] = total[4] or row.error
+    calls = [
+        UsageCall(
+            # as in a turn's usage: a model that answers the questions is a model call,
+            # the decision service is a line of its own
+            kind="llm" if provider == DecisionProvider.LLM else "decisions",
+            role="decide",
+            model=model,
+            tokens_in=t_in,
+            tokens_out=t_out,
+            cost=float(cost),
+            latency_ms=latency or None,
+            error=error,
+        )
+        for (provider, model), (t_in, t_out, cost, latency, error) in by_model.items()
+    ]
+    return CheckUsage(
+        tokens_in=sum(c.tokens_in for c in calls),
+        tokens_out=sum(c.tokens_out for c in calls),
+        cost=float(sum((v[2] for v in by_model.values()), Decimal(0))),
+        calls=calls,
+    )
+
+
+@router.post("/scenarios/{key}/check", response_model=CheckOut)
+async def check_answers(
+    key: str, body: CheckIn, client: ApiClientDep, services: ServicesDep
+) -> CheckOut:
+    """Answers the caller collected itself (from the client's files, a form, another
+    system) go through the filters of their questions — the same yes/no questions, the
+    same criteria, the same decider and the same rules a turn of the dialogue uses
+    (scenarios/checks.py). One batch for all answers.
+
+    Nothing of a dialogue is touched: no contact, no conversation, no run. The decider's
+    answers are written to the decisions log without a turn.
+
+    Only text questions: a date, a phone or a choice is checked by code inside a turn
+    (scenarios/typed.py), and that part is not run here."""
+    async with services.sm() as session:
+        scenario = await _channel_scenario(session, client, key)
+        defn = parse_definition(scenario.definition)
+        code = await _run_language(session, client, body.language) or defn.language
+
+    by_key = {f.key: f for f in defn.fields}
+    asked = [a.field for a in body.answers]
+    unknown = sorted({k for k in [*asked, *body.accepted] if k not in by_key})
+    if unknown:
+        raise AppError("run.unknown_fields", {"fields": unknown}, status=422)
+    twice = sorted({k for k in asked if asked.count(k) > 1})
+    if twice:
+        raise AppError("check.field_twice", {"fields": twice}, status=422)
+    typed = sorted(k for k in asked if by_key[k].type != FieldType.TEXT)
+    if typed:
+        raise AppError("check.not_a_text_field", {"fields": typed}, status=422)
+    values = {a.field: a.value.strip() for a in body.answers}
+    empty = sorted(k for k, v in values.items() if not v)
+    if empty:
+        raise AppError("check.empty_answer", {"fields": empty}, status=422)
+
+    # the answers taken earlier, as a run would hold them; the ones under check are not
+    # context for themselves (checks.check_state leaves them out)
+    states = fl.load_states(
+        defn,
+        {
+            k: {"state": fl.FILLED, "value": v.strip()}
+            for k, v in body.accepted.items()
+            if v.strip() and k not in values
+        },
+    )
+    items = [CheckItem(defn, by_key[k], values[k], states) for k in asked]
+    if not answers_fit(items, code, answer_chars=CHECK_ANSWER_MAX):
+        # the decider would read the last answers cut; fewer answers per call do fit
+        raise AppError("check.too_long", {"answers": len(items)}, status=422)
+    check_id = new_id()
+    outcome = await ask_filters(
+        services, DecideContext(client.tenant_id), items, code, answer_chars=CHECK_ANSWER_MAX
+    )
+
+    results = []
+    for k in asked:
+        f = by_key[k]
+        failed = set(outcome.failed[(defn.key, k)])
+        results.append(
+            CheckResult(
+                field=k,
+                passed=not failed and not outcome.unanswered[(defn.key, k)],
+                failed=[
+                    FailedFilter(
+                        key=flt.key,
+                        ask=_text(defn, flt.ask, code) or "",
+                        no=_text(defn, flt.no, code),
+                    )
+                    for flt in f.filters
+                    if flt.key in failed
+                ],
+                unanswered=outcome.unanswered[(defn.key, k)],
+                filters=len(f.filters),
+            )
+        )
+    decisions = outcome.decisions
+    if decisions is not None and decisions.rows:
+        check_id = decisions.rows[0].batch_id
+    return CheckOut(
+        id=check_id,
+        scenario=scenario.key,
+        version=scenario.version,
+        language=code,
+        results=results,
+        usage=_check_usage(decisions) if decisions is not None else None,
     )
 
 

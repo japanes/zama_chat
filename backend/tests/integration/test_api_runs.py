@@ -1,6 +1,8 @@
 """Scenario runs over the public API (POST /v1/runs/…): start a given scenario, a message
 with the run and the turn's cost in the answer, state, skip, confirm, the pinned reply
-language. Fake LLM, FakeDecider — like tests/integration/test_scenario_flow.py."""
+language; answers collected outside a dialogue checked by the filters of their questions
+(POST /v1/scenarios/{key}/check). Fake LLM, FakeDecider — like
+tests/integration/test_scenario_flow.py."""
 
 import json
 
@@ -9,7 +11,17 @@ from sqlalchemy import select
 
 from app.core.language import REPLY_LANGUAGE_PIN
 from app.core.pipeline import full_pipeline
-from app.db.models import Conversation, LlmRole, Message, MessageRole, RunStatus
+from app.db.models import (
+    Contact,
+    Conversation,
+    Decision,
+    LlmRole,
+    Message,
+    MessageRole,
+    RunStatus,
+    ScenarioRun,
+)
+from app.decisions.engine import DecisionSet
 from app.decisions.fake import FakeDecider
 from app.prompts.seed import seed_prompts
 from tests.conftest import chat_reply
@@ -76,11 +88,22 @@ async def test_scenario_lists_its_questions_before_a_run_exists(services, client
     body = resp.json()
     assert (body["key"], body["language"], body["title"]) == ("interview", "uk", "Інтерв'ю")
     assert [f["key"] for f in body["fields"]] == ALL
-    assert body["fields"][0] == {"key": "niche", "title": None, "question": "Яка у вас ніша?"}
+    assert body["fields"][0] == {
+        "key": "niche",
+        "type": "text",
+        "title": None,
+        "question": "Яка у вас ніша?",
+        "description": None,
+        "filters": [{"key": "concrete", "ask": "Ніша конкретна?"}],
+    }
+    assert body["fields"][1]["filters"] == []
     assert (body["needs_confirm"], body["confirm_question"]) == (False, None)
 
     resp = await client.get("/v1/scenarios/interview?language=en", headers=bundle.auth)
     assert resp.json()["fields"][0]["question"] == "What is your niche?"
+    assert resp.json()["fields"][0]["filters"] == [
+        {"key": "concrete", "ask": "Is the niche specific?"}
+    ]
     assert fake_llm.calls == 0
     async with services.sm() as session:
         assert (await session.execute(select(Conversation))).first() is None
@@ -92,6 +115,224 @@ async def test_scenario_unknown_key_and_language(services, client):
     assert (resp.status_code, resp.json()["error"]["code"]) == (404, "scenario.not_found")
     resp = await client.get("/v1/scenarios/interview?language=de", headers=bundle.auth)
     assert (resp.status_code, resp.json()["error"]["code"]) == (422, "run.language_not_supported")
+
+
+# --- answers collected outside a dialogue ------------------------------------------------------
+
+NICHE = "filter:interview.niche.concrete"
+FITS = "filter:interview.positioning.fits"
+
+
+def _decider(services, rules, **kwargs):
+    decider = FakeDecider(rules, **kwargs)
+    services.extra["decider"] = decider
+    return decider
+
+
+async def _check(client, bundle, answers, **body):
+    return await _post(
+        client,
+        bundle,
+        "/v1/scenarios/interview/check",
+        answers=[{"field": k, "value": v} for k, v in answers.items()],
+        **body,
+    )
+
+
+async def test_check_says_which_answers_pass_the_filters_of_their_questions(
+    services, client, fake_llm
+):
+    bundle = await _setup(services)
+    decider = _decider(services, {NICHE: True, FITS: False})
+    resp = await _check(
+        client,
+        bundle,
+        {"niche": "торти на замовлення", "positioning": "ми найкращі", "offer": "торти"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert (body["scenario"], body["version"], body["language"]) == ("interview", 1, "uk")
+    by_field = {r["field"]: r for r in body["results"]}
+    assert [r["field"] for r in body["results"]] == ["niche", "positioning", "offer"]
+    assert by_field["niche"] == {
+        "field": "niche",
+        "passed": True,
+        "failed": [],
+        "unanswered": [],
+        "filters": 1,
+    }
+    assert by_field["positioning"]["passed"] is False
+    assert by_field["positioning"]["failed"] == [
+        {"key": "fits", "ask": "Відмінність пасує?", "no": None}
+    ]
+    # a question without filters: nothing to ask, the answer is taken as it is
+    assert by_field["offer"] == {
+        "field": "offer",
+        "passed": True,
+        "failed": [],
+        "unanswered": [],
+        "filters": 0,
+    }
+    # one batch for all the answers, the same questions a turn asks
+    assert decider.asked() == [NICHE, FITS]
+    assert fake_llm.calls == 0
+
+    # the decisions are in the log without a turn; nothing of a dialogue appeared
+    async with services.sm() as session:
+        rows = (await session.execute(select(Decision))).scalars().all()
+        assert {(r.key, r.turn_id, str(r.batch_id)) for r in rows} == {
+            (NICHE, None, body["id"]),
+            (FITS, None, body["id"]),
+        }
+        assert {r.tenant_id for r in rows} == {bundle.tenant_id}
+        for model in (Contact, Conversation, ScenarioRun):
+            assert (await session.execute(select(model))).first() is None
+    usage = body["usage"]
+    assert [(c["kind"], c["role"], c["model"]) for c in usage["calls"]] == [
+        ("decisions", "decide", "fake/decider")
+    ]
+    assert (usage["tokens_in"], usage["tokens_out"], usage["cost"]) == (0, 0, 0)
+
+
+async def test_check_shows_the_decider_the_whole_answer_and_the_accepted_ones(services, client):
+    bundle = await _setup(services)
+    decider = _decider(services, {FITS: True})
+    long_answer = "Ми печемо без цукру. " * 150  # longer than a turn shows (1000 characters)
+    resp = await _check(
+        client,
+        bundle,
+        {"positioning": long_answer},
+        accepted={"niche": "торти на замовлення", "offer": "  "},
+        language="en",
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["language"] == "en"
+    state, questions = decider.calls[0]
+    assert " ".join(long_answer.split()) in state
+    assert "«What is your niche?»: «торти на замовлення»" in state
+    assert "What do you sell?" not in state  # an empty accepted answer is no context
+    assert "Does it fit?" in questions[0].instructions
+
+
+async def test_check_an_answer_under_check_is_not_its_own_context(services, client):
+    bundle = await _setup(services)
+    decider = _decider(services, {NICHE: True})
+    resp = await _check(client, bundle, {"niche": "нова ніша"}, accepted={"niche": "стара ніша"})
+    assert resp.status_code == 200, resp.text
+    assert "стара ніша" not in decider.calls[0][0]
+
+
+async def test_check_an_unsure_answer_fails(services, client):
+    bundle = await _setup(services)
+    _decider(services, {NICHE: True}, unsure={NICHE: "ask_client"})
+    resp = await _check(client, bundle, {"niche": "щось для людей"})
+    assert resp.json()["results"][0]["passed"] is False
+    assert [f["key"] for f in resp.json()["results"][0]["failed"]] == ["concrete"]
+
+
+class SilentDecider:
+    """Answers nothing: what is left of a batch when the decider dropped a question."""
+
+    async def decide(self, state, questions, ctx):
+        return DecisionSet()
+
+
+async def test_check_names_the_filters_nobody_answered(services, client):
+    bundle = await _setup(services)
+    services.extra["decider"] = SilentDecider()
+    resp = await _check(client, bundle, {"niche": "торти"})
+    assert resp.status_code == 200, resp.text
+    # a turn lets such an answer through; here it is "not checked", and that is not a pass
+    assert resp.json()["results"][0] == {
+        "field": "niche",
+        "passed": False,
+        "failed": [],
+        "unanswered": ["concrete"],
+        "filters": 1,
+    }
+
+
+async def test_check_gives_the_scenario_wording_of_a_failed_filter(services, client):
+    data = interview_data()
+    data["fields"][0]["filters"][0]["no"] = {"uk": "загальні слова", "en": "general words"}
+    bundle = await _setup(services, data)
+    _decider(services, {NICHE: False})
+    resp = await _check(client, bundle, {"niche": "усе для всіх"}, language="en")
+    assert resp.json()["results"][0]["failed"] == [
+        {"key": "concrete", "ask": "Is the niche specific?", "no": "general words"}
+    ]
+
+
+async def test_check_without_filters_asks_nobody(services, client):
+    bundle = await _setup(services)
+    decider = _decider(services, {})
+    resp = await _check(client, bundle, {"offer": "торти"})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["usage"] is None
+    assert resp.json()["results"][0]["passed"] is True
+    assert decider.calls == []
+
+
+@pytest.mark.parametrize(
+    ("body", "status", "code"),
+    [
+        ({"answers": [{"field": "nope", "value": "x"}]}, 422, "run.unknown_fields"),
+        (
+            {"answers": [{"field": "niche", "value": "x"}], "accepted": {"nope": "x"}},
+            422,
+            "run.unknown_fields",
+        ),
+        (
+            {"answers": [{"field": "niche", "value": "a"}, {"field": "niche", "value": "b"}]},
+            422,
+            "check.field_twice",
+        ),
+        ({"answers": [{"field": "niche", "value": "   "}]}, 422, "check.empty_answer"),
+        (
+            {"answers": [{"field": "niche", "value": "x"}], "language": "de"},
+            422,
+            "run.language_not_supported",
+        ),
+        # four answers of the full length do not get into the decider's state whole
+        (
+            {
+                "answers": [
+                    {"field": "niche", "value": "я" * 4000},
+                    {"field": "offer", "value": "я" * 4000},
+                    {"field": "positioning", "value": "я" * 4000},
+                    {"field": "extra", "value": "я" * 4000},
+                ]
+            },
+            422,
+            "check.too_long",
+        ),
+    ],
+)
+async def test_check_refuses_what_it_cannot_check(services, client, body, status, code):
+    data = interview_data()
+    data["fields"].append({"key": "extra", "question": {"uk": "Ще щось?", "en": "More?"}})
+    bundle = await _setup(services, data)
+    decider = _decider(services, {"filter:*": True})
+    resp = await _post(client, bundle, "/v1/scenarios/interview/check", **body)
+    assert (resp.status_code, resp.json()["error"]["code"]) == (status, code), resp.text
+    assert decider.calls == []
+
+
+async def test_check_only_text_questions(services, client):
+    data = interview_data()
+    data["fields"].append(
+        {"key": "phone", "type": "phone", "question": {"uk": "Телефон?", "en": "Phone?"}}
+    )
+    bundle = await _setup(services, data)
+    resp = await _check(client, bundle, {"phone": "+380501112233"})
+    assert (resp.status_code, resp.json()["error"]["code"]) == (422, "check.not_a_text_field")
+
+
+async def test_check_of_a_scenario_of_another_tenant_is_not_found(services, client):
+    await _setup(services)
+    other = await make_tenant(services.sm, slug="other", title="Other", settings=LANGUAGES)
+    resp = await _check(client, other, {"niche": "торти"})
+    assert (resp.status_code, resp.json()["error"]["code"]) == (404, "scenario.not_found")
 
 
 # --- start ------------------------------------------------------------------------------------
