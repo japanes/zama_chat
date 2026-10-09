@@ -8,11 +8,11 @@ Sandbox conversations are hidden from the lists unless `sandbox=true` is asked f
 
 import uuid
 from datetime import datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import Select, delete, func, or_, select, update
+from sqlalchemy import ColumnElement, Select, and_, delete, exists, func, not_, or_, select, update
 from sqlalchemy.dialects.postgresql import distinct_on
 
 from app.admin.access import audit
@@ -30,6 +30,7 @@ from app.api.admin.deps import TenantAdmin, TenantOperator
 from app.api.deps import ServicesDep
 from app.api.v1.messages import AttachmentIn
 from app.channels.instagram.window import window_closes_at
+from app.core.explain import explain_turn, turn_failure
 from app.core.ingest import attachment_note, save_client_message
 from app.core.turn import run_turn
 from app.db.models import (
@@ -49,6 +50,7 @@ from app.db.models import (
     Receipt,
     Scenario,
     ScenarioRun,
+    TaskKind,
     TaskStatus,
     Turn,
 )
@@ -70,9 +72,18 @@ MESSAGE_META_KEYS = ("task_id", "variant", "edited", "source", "user_id", "send_
 
 def _collected(definition: dict[str, Any] | None, fields: dict[str, Any]) -> dict[str, Any]:
     try:
-        return collected(parse_definition(definition), fields)
+        defn = parse_definition(definition)
     except AppError:
         return {"fields": {}, "partial": {}, "missing": [], "broken_definition": True}
+    return {
+        **collected(defn, fields),
+        # for a readable progress list: the scenario's name, its fields in order, their
+        # human names and questions (texts as written: a string or {language: text})
+        "scenario_title": defn.title,
+        "order": [f.key for f in defn.fields],
+        "titles": {f.key: f.title for f in defn.fields if f.title is not None},
+        "questions": {f.key: f.question for f in defn.fields},
+    }
 
 
 def contact_dict(c: Contact | None) -> dict[str, Any] | None:
@@ -334,6 +345,55 @@ async def resend_delivery(
 # --- conversations ------------------------------------------------------------------------
 
 
+def _waits_for_person() -> ColumnElement[bool]:
+    """The conversation needs a person now: there is something to decide (variants, an
+    action, a receipt), or the bot is silent (handover) and nobody has answered yet —
+    no message from a person since the handover, or the client wrote after the last one.
+    """
+    to_decide = exists().where(
+        OperatorTask.conversation_id == Conversation.id,
+        OperatorTask.status == TaskStatus.OPEN,
+        OperatorTask.kind != TaskKind.HANDOVER,
+    )
+    person_answered = exists().where(
+        Message.conversation_id == Conversation.id,
+        Message.role == MessageRole.OPERATOR,
+        or_(Conversation.handover_at.is_(None), Message.created_at >= Conversation.handover_at),
+    )
+    client_wrote_last = and_(
+        Conversation.last_client_at.is_not(None),
+        or_(
+            Conversation.last_bot_at.is_(None),
+            Conversation.last_client_at > Conversation.last_bot_at,
+        ),
+    )
+    silent = and_(Conversation.handover.is_(True), or_(not_(person_answered), client_wrote_last))
+    return or_(to_decide, silent)
+
+
+async def _inbox_counts(
+    session, tenant_id: uuid.UUID, *, sandbox: bool = False, channel_id: uuid.UUID | None = None
+) -> dict[str, int]:
+    """waiting — need a person; bot — the bot handles them itself; all — every one."""
+    waits = _waits_for_person()
+    query = select(
+        func.count().filter(waits),
+        func.count().filter(not_(waits), Conversation.handover.is_(False)),
+        func.count(),
+    ).where(Conversation.tenant_id == tenant_id, Conversation.sandbox.is_(sandbox))
+    if channel_id:
+        query = query.where(Conversation.channel_id == channel_id)
+    waiting, bot, total = (await session.execute(query)).one()
+    return {"waiting": waiting, "bot": bot, "all": total}
+
+
+@router.get("/inbox/counts")
+async def inbox_counts(access: TenantOperator, services: ServicesDep) -> dict[str, int]:
+    """How many conversations wait for a person: the badge in the admin menu."""
+    async with services.sm() as session:
+        return await _inbox_counts(session, access.tenant_id)
+
+
 @router.get("/conversations")
 async def list_conversations(
     access: TenantOperator,
@@ -343,9 +403,12 @@ async def list_conversations(
     sandbox: bool = False,
     handover: bool | None = None,
     q: str | None = None,
+    queue: Literal["waiting", "bot", "all"] | None = None,
 ) -> dict[str, Any]:
     query = (
-        select(Conversation, Contact, Channel.title)
+        select(
+            Conversation, Contact, Channel.title, Channel.kind, _waits_for_person().label("waiting")
+        )
         .join(Contact, Contact.id == Conversation.contact_id)
         .join(Channel, Channel.id == Conversation.channel_id)
         .where(Conversation.tenant_id == access.tenant_id, Conversation.sandbox.is_(sandbox))
@@ -354,6 +417,10 @@ async def list_conversations(
         query = query.where(Conversation.channel_id == channel_id)
     if handover is not None:
         query = query.where(Conversation.handover.is_(handover))
+    if queue == "waiting":
+        query = query.where(_waits_for_person())
+    elif queue == "bot":
+        query = query.where(not_(_waits_for_person()), Conversation.handover.is_(False))
     if q:
         like = f"%{q.strip()}%"
         query = query.where(
@@ -374,7 +441,7 @@ async def list_conversations(
                 .offset(page.offset)
             )
         ).all()
-        ids = [c.id for c, _, _ in rows]
+        ids = [row[0].id for row in rows]
         last = (
             await session.execute(
                 select(Message)
@@ -396,19 +463,39 @@ async def list_conversations(
                 )
             ).all()
         )
+        open_tasks: dict[uuid.UUID, list[str]] = {}
+        for conv_id, kind in (
+            await session.execute(
+                select(OperatorTask.conversation_id, OperatorTask.kind)
+                .where(
+                    OperatorTask.conversation_id.in_(ids),
+                    OperatorTask.status == TaskStatus.OPEN,
+                )
+                .order_by(OperatorTask.created_at)
+            )
+        ).all():
+            open_tasks.setdefault(conv_id, []).append(kind)
+        counts = await _inbox_counts(
+            session, access.tenant_id, sandbox=sandbox, channel_id=channel_id
+        )
     items = []
-    for conv, contact, channel_title in rows:
+    for conv, contact, channel_title, channel_kind, waiting in rows:
         msg = last_by_conv.get(conv.id)
         items.append(
             {
                 **conversation_dict(conv),
                 "contact": contact_dict(contact),
                 "channel_title": channel_title,
+                "channel_kind": channel_kind,
                 "last_message": message_dict(msg) if msg else None,
                 "open_runs": open_runs.get(conv.id, 0),
+                # kinds of the open operator tasks, the oldest first
+                "open_tasks": open_tasks.get(conv.id, []),
+                # needs a person now (see _waits_for_person)
+                "waiting": bool(waiting),
             }
         )
-    return {"items": items, "total": total}
+    return {"items": items, "total": total, "counts": counts}
 
 
 def conversation_dict(c: Conversation) -> dict[str, Any]:
@@ -493,7 +580,15 @@ async def conversation_detail(session, conv: Conversation, *, limit: int = 500) 
         else None
     )
     return {
-        "conversation": {**conversation_dict(conv), "window_closes_at": iso(closes)},
+        "conversation": {
+            **conversation_dict(conv),
+            "window_closes_at": iso(closes),
+            # the channel asks a person to pick every answer: the conversation's own
+            # switch cannot turn that off
+            "channel_operator_mode": bool(
+                channel is not None and (channel.settings or {}).get("operator_mode")
+            ),
+        },
         "tasks": [task_dict(t) for t in tasks],
         "contact": contact_dict(contact),
         "channel": channel_dict(channel) if channel else None,
@@ -548,6 +643,15 @@ async def turn_detail(session, turn: Turn) -> dict[str, Any]:
             "route": turn.route or {},
             "trace": turn.trace or {},
         },
+        # the same in a person's words: what the bot understood, found and decided
+        "explain": explain_turn(
+            input_text=turn.input_text,
+            rewritten=turn.rewritten,
+            route=turn.route,
+            trace=turn.trace,
+        ),
+        # a failed turn: the reason as a code the admin has words for
+        "failure": turn_failure(turn.error),
         "messages": [message_dict(m) for m in messages],
         "llm_calls": [
             {

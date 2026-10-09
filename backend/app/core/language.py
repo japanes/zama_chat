@@ -5,9 +5,11 @@ whether to accept it and which language the bot answers in:
 - a short / neutral message ("ок", "+", an emoji, a phone number) keeps the previous one;
 - the reply language comes from the tenant rule: explicit rule → "*" rule → the client's
   language if the bot speaks it → the first tenant language.
+- a conversation started over POST /v1/runs/start with a language keeps it (the pin).
 """
 
 import re
+from typing import Any
 
 from app.core.tenant_settings import ANY_LANGUAGE, LANG_RE, TenantSettings
 
@@ -94,6 +96,18 @@ def detect_client_language(
     if code is None or is_neutral(text):
         return previous or settings.primary_language
     return code
+
+
+# conversations.state key: the reply language chosen by the caller of POST /v1/runs/start.
+# The dialogue is shown inside the caller's own interface, so the bot speaks the language of
+# that interface, not the one guessed from a short answer.
+REPLY_LANGUAGE_PIN = "reply_language_pin"
+
+
+def pinned_reply_language(state: dict[str, Any] | None, settings: TenantSettings) -> str | None:
+    """The pinned reply language of the conversation, when it is one of the tenant's."""
+    code = normalize_code((state or {}).get(REPLY_LANGUAGE_PIN))
+    return code if code in settings.languages else None
 
 
 def reply_language_for(client_language: str, settings: TenantSettings) -> str:

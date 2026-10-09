@@ -1,10 +1,15 @@
 """Prompts and scenarios in the admin: versions, rollback, tenant overrides, checks."""
 
-import pytest
+import json
 
+import pytest
+from sqlalchemy import select
+
+from app.db.models import LlmCall, LlmRole, UserRole
 from app.prompts.store import active_prompts
 from tests.admin_helpers import admin_headers
-from tests.factories import make_tenant
+from tests.conftest import chat_reply
+from tests.factories import make_model, make_tenant
 from tests.scenario_helpers import interview_data
 
 pytestmark = pytest.mark.db
@@ -205,6 +210,151 @@ async def test_missing_language_is_a_warning(client, services, adm, tenant):
     out = resp.json()
     assert out["valid"] is True
     assert any(w["code"] == "scenario.text_missing_language" for w in out["warnings"])
+
+
+async def test_a_template_becomes_the_tenants_own_scenario(client, services, adm, tenant):
+    url = f"/v1/admin/tenants/{tenant.tenant_id}/scenario-templates"
+    templates = (await client.get(url, headers=adm)).json()["items"]
+    by_key = {t["key"]: t for t in templates}
+    assert "beauty_booking" in by_key
+    assert [f["key"] for f in by_key["cancel_booking"]["fields"]] == ["booking", "reason"]
+
+    # nothing is saved by looking at the templates
+    assert (await client.get(_url(tenant), headers=adm)).json()["items"] == []
+
+    # the editor takes the definition as a draft: it passes the check and is saved
+    # under the tenant's own key
+    draft = {**by_key["cancel_booking"]["definition"], "key": "my_cancel"}
+    checked = (
+        await client.post(_url(tenant, "/check"), json={"definition": draft}, headers=adm)
+    ).json()
+    assert checked["valid"] is True, checked
+    saved = await client.post(_url(tenant), json={"definition": draft}, headers=adm)
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["scenario"]["key"] == "my_cancel"
+
+
+async def test_templates_are_for_those_who_edit_scenarios(client, services, tenant):
+    operator = await admin_headers(
+        services, "op@example.com", tenant_id=tenant.tenant_id, role=UserRole.OPERATOR
+    )
+    url = f"/v1/admin/tenants/{tenant.tenant_id}/scenario-templates"
+    assert (await client.get(url, headers=operator)).status_code == 403
+    assert (await client.get(url)).status_code == 401
+
+
+# --- a draft from a description in words ---------------------------------------------------
+
+DESCRIPTION = "Клієнт записується на стрижку. Треба дізнатися день і телефон."
+
+
+def _sketch() -> dict:
+    def text(uk: str, en: str) -> dict:
+        return {"uk": uk, "en": en}
+
+    return {
+        "key": "haircut_booking",
+        "title": text("Запис на стрижку", "Haircut booking"),
+        "description": text("Бот збирає заявку на стрижку.", "The bot takes a haircut request."),
+        "start": [text("Клієнт хоче записатися на стрижку?", "Does the client want a haircut?")],
+        "questions": [
+            {
+                "key": "day",
+                "name": text("День", "Day"),
+                "type": "date",
+                "question": text("На який день?", "Which day?"),
+                "options": [],
+            },
+            {
+                "key": "phone",
+                "name": text("Телефон", "Phone"),
+                "type": "phone",
+                "question": text("Ваш номер телефону?", "Your phone number?"),
+                "options": [],
+            },
+        ],
+        "confirm": True,
+    }
+
+
+async def test_a_description_becomes_a_draft_the_editor_can_save(
+    client, services, fake_llm, adm, tenant
+):
+    await make_model(services.sm, "openai/writer", roles=(LlmRole.REPLY,))
+    fake_llm.push(chat_reply(json.dumps(_sketch(), ensure_ascii=False)))
+
+    resp = await client.post(
+        _url(tenant, "/draft"), json={"description": f"  {DESCRIPTION}  "}, headers=adm
+    )
+    assert resp.status_code == 200, resp.text
+    out = resp.json()
+    assert out["model"] == "openai/writer" and out["warnings"] == []
+    draft = out["definition"]
+    assert (draft["key"], draft["language"]) == ("haircut_booking", "uk")
+    assert [(f["key"], f["type"]) for f in draft["fields"]] == [("day", "date"), ("phone", "phone")]
+    assert draft["fields"][0]["title"] == {"uk": "День", "en": "Day"}
+
+    # the model got the person's words and a strict form to fill, in the tenant's languages
+    [request] = fake_llm.requests
+    assert DESCRIPTION in request["messages"][0]["content"]
+    form = request["response_format"]["json_schema"]
+    assert form["strict"] is True
+    assert form["schema"]["properties"]["title"]["required"] == ["uk", "en"]
+
+    # a draft is not saved; the editor saves it as an ordinary scenario
+    assert (await client.get(_url(tenant), headers=adm)).json()["items"] == []
+    saved = await client.post(_url(tenant), json={"definition": draft}, headers=adm)
+    assert saved.status_code == 200, saved.text
+    # the call is counted in the tenant's spending
+    async with services.sm() as session:
+        [call] = (await session.execute(select(LlmCall))).scalars().all()
+    assert (call.tenant_id, call.role, call.prompt_key) == (
+        tenant.tenant_id,
+        "reply",
+        "scenario_draft",
+    )
+
+
+async def test_a_draft_from_a_model_without_structured_output(
+    client, services, fake_llm, adm, tenant
+):
+    await make_model(services.sm, "openai/plain", supports_json_schema=False)
+    answer = "Ось чернетка:\n```json\n" + json.dumps(_sketch(), ensure_ascii=False) + "\n```"
+    fake_llm.push(chat_reply(answer))
+
+    resp = await client.post(_url(tenant, "/draft"), json={"description": DESCRIPTION}, headers=adm)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["definition"]["key"] == "haircut_booking"
+    assert "response_format" not in fake_llm.requests[0]
+
+
+async def test_a_draft_that_did_not_work_out_says_so(client, services, fake_llm, adm, tenant):
+    await make_model(services.sm, "openai/plain", supports_json_schema=False)
+    url = _url(tenant, "/draft")
+
+    fake_llm.push(chat_reply("Вибачте, я не можу з цим допомогти."))
+    resp = await client.post(url, json={"description": DESCRIPTION}, headers=adm)
+    assert (resp.status_code, resp.json()["error"]["code"]) == (422, "scenario.draft_failed")
+
+    fake_llm.push(chat_reply(json.dumps({**_sketch(), "questions": []})))
+    resp = await client.post(url, json={"description": DESCRIPTION}, headers=adm)
+    assert (resp.status_code, resp.json()["error"]["code"]) == (422, "scenario.draft_empty")
+
+    assert (await client.post(url, json={"description": ""}, headers=adm)).status_code == 422
+    assert fake_llm.calls == 2
+
+
+async def test_a_draft_needs_a_model_and_the_right_to_edit(client, services, fake_llm, adm, tenant):
+    url = _url(tenant, "/draft")
+    resp = await client.post(url, json={"description": DESCRIPTION}, headers=adm)
+    assert (resp.status_code, resp.json()["error"]["code"]) == (503, "llm.role_not_assigned")
+
+    operator = await admin_headers(
+        services, "op2@example.com", tenant_id=tenant.tenant_id, role=UserRole.OPERATOR
+    )
+    resp = await client.post(url, json={"description": DESCRIPTION}, headers=operator)
+    assert resp.status_code == 403
+    assert fake_llm.calls == 0
 
 
 async def test_channel_scenarios_order(client, services, adm, tenant):

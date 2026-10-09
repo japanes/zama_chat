@@ -46,6 +46,9 @@ class FieldState:
     # typed fields: why code rejected the value (re-asked without Jev)
     issue: str | None = None
     issue_params: dict[str, Any] = field(default_factory=dict)
+    # closed without an answer (POST /v1/runs/{id}/skip): not asked again, no value, in the
+    # result it stays among the missing fields
+    skipped: bool = False
 
     @property
     def complete(self) -> bool:
@@ -141,6 +144,7 @@ def set_answer(
     """A new answer for the field, before the filters. A partial answer is merged with
     the new words unless the client corrects it (`replace`)."""
     fs.value = value.strip() if replace or fs.state != PARTIAL else merge_value(fs.value, value)
+    fs.skipped = False
     fs.norm = norm
     fs.issue = issue
     fs.issue_params = dict(issue_params or {})
@@ -216,7 +220,15 @@ def reset(fs: FieldState, now: datetime) -> None:
     fs.needs_recheck = False
     fs.reasks = 0
     fs.stuck = False
+    fs.skipped = False
     fs.updated_at = now.isoformat()
+
+
+def set_skipped(fs: FieldState, now: datetime) -> None:
+    """The question is closed without an answer: whatever was collected for it is dropped."""
+    reset(fs, now)
+    fs.state = FILLED
+    fs.skipped = True
 
 
 def answers(states: dict[str, FieldState], *, complete_only: bool = True) -> dict[str, str]:

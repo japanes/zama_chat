@@ -15,7 +15,11 @@ from typing import TYPE_CHECKING
 
 from app.core import respond as respond_step
 from app.core.context import TurnContext, TurnPlan
-from app.core.language import detect_client_language, reply_language_for
+from app.core.language import (
+    detect_client_language,
+    pinned_reply_language,
+    reply_language_for,
+)
 from app.core.rewrite import PROMPT_KEY as REWRITE_KEY
 from app.core.rewrite import rewrite
 from app.core.routing import route
@@ -79,11 +83,12 @@ async def full_pipeline(services: "Services", ctx: TurnContext) -> TurnPlan:
     client_language = detect_client_language(
         ctx.client_language, rw.language, ctx.input_text, ctx.settings
     )
-    reply_language = reply_language_for(client_language, ctx.settings)
-    ctx.trace.note(
-        "language",
-        {"detected": rw.language, "client": client_language, "reply": reply_language},
-    )
+    pinned = pinned_reply_language(ctx.state, ctx.settings)
+    reply_language = pinned or reply_language_for(client_language, ctx.settings)
+    note = {"detected": rw.language, "client": client_language, "reply": reply_language}
+    if pinned is not None:
+        note["pinned"] = True  # the caller of POST /v1/runs/start chose the language
+    ctx.trace.note("language", note)
 
     sq = search_question(content)
     search_questions = [sq] if sq is not None else []

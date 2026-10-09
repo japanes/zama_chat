@@ -8,7 +8,9 @@ and edited / versioned the same way in the admin.
                    ("let's take the second one"), adapted from the legacy
                    context_manager_select_service;
 - search_context — rules for the reply model about the found catalog items / knowledge;
-- receipt_vision — reading a payment receipt from an image (LLM `vision`, stage 6).
+- receipt_vision — reading a payment receipt from an image (LLM `vision`, stage 6);
+- scenario_draft — a scenario draft from the owner's description in their own words
+                   (the admin's «new scenario» page, scenarios/draft.py).
 """
 
 import json
@@ -19,6 +21,7 @@ SCENARIO_STEP_KEY = "scenario_step"
 SELECT_PRESENTED_KEY = "select_presented"
 SEARCH_CONTEXT_KEY = "search_context"
 RECEIPT_VISION_KEY = "receipt_vision"
+SCENARIO_DRAFT_KEY = "scenario_draft"
 
 # TODO(review): wording; check on real dialogues with make eval
 EXTRACT: dict[str, Any] = {
@@ -161,6 +164,48 @@ RECEIPT_VISION: dict[str, Any] = {
     # nothing about the expected amount on purpose: the model must read, not confirm
 }
 
+# TODO(review): wording; check on real descriptions
+SCENARIO_DRAFT: dict[str, Any] = {
+    "task": (
+        "You help the owner of a business set up a chat bot. From the owner's words in "
+        "'description' make a draft of a scenario: a conversation in which the bot asks "
+        "the client questions one by one and passes the collected answers on as a request"
+    ),
+    "rules": [
+        "Use what the description says or clearly implies; do not add questions the owner "
+        "did not ask for. If it names no questions at all, take the few such a request can "
+        "not do without (what the client wants, the name, a phone)",
+        "'questions': what the bot must learn from the client, in the order of a natural "
+        "conversation, at most 12. One question is one piece of information: a day and a "
+        "time are two questions",
+        "'type' of a question: 'date' for a day, 'time' for a time of day, 'phone', "
+        "'email', 'number' for an amount or a quantity, 'yes_no' for a yes or no question, "
+        "'choice' when the owner listed the options to choose from (put them in 'options', "
+        "at least two), 'attachment' when the client must send a photo or a file, "
+        "otherwise 'text'",
+        "'options' is an empty list for every type except 'choice'",
+        "'name' is a short name of the answer for the owner: one to three words, a noun "
+        "(Service, Phone). 'question' is what the bot asks the client: polite and short",
+        "'start': one to three yes or no questions about the client's message. When the "
+        "answer to one of them is yes, the bot starts this scenario. Write them about the "
+        "client in the third person (Does the client want to book a haircut?)",
+        "'title' is a short name of the scenario, two to four words. 'description' is one "
+        "sentence for the owner: what the bot does in this scenario",
+        "'confirm' is true when the bot should show the client all the answers and ask to "
+        "confirm them before the request is passed on (bookings, orders), false for short "
+        "requests",
+        "'key' of the scenario and of every question: a short English name in lower case, "
+        "words joined with an underscore (haircut_booking, phone). The keys of the "
+        "questions differ from each other",
+        "Write every text in each language listed in 'languages': the property name is the "
+        "language code. Do not mix languages inside one text",
+        "Where the collected request goes (a manager, Telegram, a CRM) is set up in "
+        "another place: do not make a question out of it",
+    ],
+    "languages": [],
+    "description": "",
+}
+
 
 def builtin_prompts() -> dict[str, str]:
     return {
@@ -169,6 +214,7 @@ def builtin_prompts() -> dict[str, str]:
         SELECT_PRESENTED_KEY: json.dumps(SELECT_PRESENTED, ensure_ascii=False, indent=4),
         SEARCH_CONTEXT_KEY: json.dumps(SEARCH_CONTEXT, ensure_ascii=False, indent=4),
         RECEIPT_VISION_KEY: json.dumps(RECEIPT_VISION, ensure_ascii=False, indent=4),
+        SCENARIO_DRAFT_KEY: json.dumps(SCENARIO_DRAFT, ensure_ascii=False, indent=4),
     }
 
 

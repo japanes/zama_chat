@@ -24,8 +24,10 @@ from app.api.deps import ServicesDep
 from app.db.models import Channel, ChannelScenario, Prompt, Scenario, UserRole
 from app.errors import AppError, Conflict, NotFound
 from app.prompts.store import activate_version, save_version
+from app.scenarios.draft import DESCRIPTION_LIMIT, draft_scenario
 from app.scenarios.loader import parse_yaml, prepare, tenant_languages
 from app.scenarios.store import definition_json, enable_in_channel, save_scenario
+from app.scenarios.templates import list_templates
 
 router = APIRouter(prefix="/v1/admin", tags=["admin-content"])
 
@@ -381,6 +383,32 @@ async def get_scenario_version(
     if row is None:
         raise NotFound("scenario.version_not_found", {"key": key, "version": version})
     return {"scenario": scenario_row_dict(row, definition=True)}
+
+
+@router.get("/tenants/{tenant_id}/scenario-templates")
+async def scenario_templates(access: TenantAdmin, services: ServicesDep) -> dict[str, Any]:
+    """Ready scenarios to start a new one from. A template becomes a draft in the editor
+    and is saved as the tenant's own scenario; nothing is saved here."""
+    return {"items": list_templates(services.settings.scenario_templates_dir)}
+
+
+class ScenarioDraftIn(BaseModel):
+    # what the bot must do, in the person's own words
+    description: str = Field(min_length=1, max_length=DESCRIPTION_LIMIT)
+
+
+@router.post("/tenants/{tenant_id}/scenarios/draft")
+async def draft_scenario_route(
+    body: ScenarioDraftIn, access: TenantAdmin, services: ServicesDep
+) -> dict[str, Any]:
+    """A draft from a description in words: {definition, warnings, model}. Not saved —
+    the editor opens it, the person fixes and saves it."""
+    async with services.sm() as session:
+        tenant = await get_tenant(session, access.tenant_id)
+    defn, warnings, model = await draft_scenario(
+        services, access.tenant_id, tenant_languages(tenant), body.description.strip()
+    )
+    return {"definition": definition_json(defn), "warnings": warnings, "model": model}
 
 
 @router.post("/tenants/{tenant_id}/scenarios/check")

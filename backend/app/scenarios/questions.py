@@ -23,7 +23,14 @@ from dataclasses import dataclass, field
 from app.db.models import DecisionType, RunStatus
 from app.decisions.engine import Question
 from app.scenarios.fields import PARTIAL, FieldState, load_states
-from app.scenarios.schema import ATTACHMENT_TYPES, FieldDef, FieldType, ScenarioDef, StartQuestion
+from app.scenarios.schema import (
+    ATTACHMENT_TYPES,
+    Answers,
+    FieldDef,
+    FieldType,
+    ScenarioDef,
+    StartQuestion,
+)
 from app.scenarios.store import LoadedScenario, OpenRun, ScenarioView
 
 STOP = "stop"
@@ -272,6 +279,15 @@ def _asks_data(run: OpenRun) -> bool:
     return run.status in (RunStatus.FOCUS, RunStatus.PAUSED)
 
 
+def _asked_only(run: OpenRun) -> str | None:
+    """`answers: asked`: the one field a message can answer — the question asked last.
+    None = no limit (the scenario takes any answer, or no question was asked yet)."""
+    defn = run.scenario.definition
+    if defn.answers != Answers.ASKED or run.asking is None or run.asking == CONFIRM:
+        return None
+    return run.asking if run.asking in defn.field_keys else None
+
+
 def build_questions(view: ScenarioView, language: str) -> ScenarioQuestions:
     """All scenario questions of this turn, in a stable order (start signs in channel
     order, then fields, then stop / change_field / client_question)."""
@@ -295,7 +311,10 @@ def build_questions(view: ScenarioView, language: str) -> ScenarioQuestions:
             continue
         defn = run.scenario.definition
         states = load_states(defn, run.fields)
+        only = _asked_only(run)
         for f in defn.fields:
+            if only is not None and f.key != only:
+                continue
             if not states[f.key].complete and asks_text(f):
                 add(field_question(defn, f, language))
 

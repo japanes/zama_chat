@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     # Fernet key for tokens / secrets stored in the DB
     secret_key: SecretStr = SecretStr("")
 
+    # ready scenarios the admin offers to start a new one from (scenario files)
+    scenario_templates_dir: Path = PROJECT_ROOT / "scenarios"
+
     public_api_url: str = "http://localhost:8090"
     admin_url: str = "http://localhost:3120"
 

@@ -202,6 +202,9 @@ class ReceiptSettings(Strict):
 class FieldDef(Strict):
     key: Key
     type: FieldType = FieldType.TEXT
+    # a short human name of the answer for the admin ("Service"); the client never sees
+    # it. Without it the key is shown.
+    title: LocalizedText | None = None
     # what the bot asks; a hint for the reply model, which words it anew every time
     question: LocalizedText
     # what counts as an answer (for the extract model and the "field:" question)
@@ -219,6 +222,20 @@ class FieldDef(Strict):
     filters: list[Filter] = Field(default_factory=list)
     # asked only after these fields are filled
     ask_after: list[Key] = Field(default_factory=list)
+
+
+class Answers(StrEnum):
+    """Which questions one client message can answer:
+    any   — every unfilled question of the scenario (a talkative client fills several at once);
+    asked — only the question the bot asked last. For scenarios built as «one step = one
+            question»: with many close questions the same words fit several of them, and an
+            answer was written to a question the client was never asked. A message that
+            answers the asked question is then also not taken as a correction of another
+            answer; a correction given instead of an answer still works.
+    """
+
+    ANY = "any"
+    ASKED = "asked"
 
 
 class Completion(StrEnum):
@@ -312,6 +329,7 @@ class ScenarioDef(Strict):
     description: LocalizedText | None = None
     start: Start
     fields: list[FieldDef] = Field(min_length=1)
+    answers: Answers = Answers.ANY
     completion: Completion = Completion.ALL_FIELDS
     confirm: Confirm | None = None
     # completion external_event: event name → what it does

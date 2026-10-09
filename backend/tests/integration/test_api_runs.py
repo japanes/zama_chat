@@ -1,0 +1,413 @@
+"""Scenario runs over the public API (POST /v1/runs/…): start a given scenario, a message
+with the run and the turn's cost in the answer, state, skip, confirm, the pinned reply
+language. Fake LLM, FakeDecider — like tests/integration/test_scenario_flow.py."""
+
+import json
+
+import pytest
+from sqlalchemy import select
+
+from app.core.language import REPLY_LANGUAGE_PIN
+from app.core.pipeline import full_pipeline
+from app.db.models import Conversation, LlmRole, Message, MessageRole, RunStatus
+from app.decisions.fake import FakeDecider
+from app.prompts.seed import seed_prompts
+from tests.conftest import chat_reply
+from tests.factories import make_model, make_tenant
+from tests.scenario_helpers import (
+    ROUTE_DEFAULTS,
+    deliveries_of,
+    install_scenario,
+    interview_data,
+    make_endpoint,
+    runs_of,
+)
+
+pytestmark = pytest.mark.db
+
+ROLES = (LlmRole.REPLY, LlmRole.REWRITE, LlmRole.DECIDE, LlmRole.EXTRACT)
+LANGUAGES = {"languages": ["uk", "en"], "reply_language": {"uk": "uk", "ru": "uk", "*": "en"}}
+CONTACT = {"external_id": "dna:1", "name": "Olha"}
+ALL = ["niche", "offer", "positioning"]
+
+
+async def _setup(services, data=None, **tenant):
+    bundle = await make_tenant(services.sm, settings=LANGUAGES, **tenant)
+    await install_scenario(
+        services.sm, bundle.tenant_id, bundle.channel_id, data or interview_data()
+    )
+    await make_endpoint(services, bundle.tenant_id, url="http://test/dev/sink/results")
+    return bundle
+
+
+async def _post(client, bundle, path, **body):
+    return await client.post(path, json=body, headers=bundle.auth)
+
+
+async def _start(client, bundle, **body):
+    resp = await _post(
+        client, bundle, "/v1/runs/start", contact=CONTACT, scenario="interview", **body
+    )
+    assert resp.status_code == 200, resp.text
+    return resp.json()
+
+
+def _fields(run: dict) -> dict[str, dict]:
+    return {f["key"]: f for f in run["fields"]}
+
+
+async def _bot_texts(sm, conversation_id) -> list[str]:
+    async with sm() as session:
+        rows = await session.execute(
+            select(Message.text)
+            .where(Message.conversation_id == conversation_id, Message.role == MessageRole.BOT)
+            .order_by(Message.created_at, Message.id)
+        )
+        return [text for (text,) in rows]
+
+
+# --- the scenario's questions -----------------------------------------------------------------
+
+
+async def test_scenario_lists_its_questions_before_a_run_exists(services, client, fake_llm):
+    bundle = await _setup(services)
+    resp = await client.get("/v1/scenarios/interview", headers=bundle.auth)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert (body["key"], body["language"], body["title"]) == ("interview", "uk", "Інтерв'ю")
+    assert [f["key"] for f in body["fields"]] == ALL
+    assert body["fields"][0] == {"key": "niche", "title": None, "question": "Яка у вас ніша?"}
+    assert (body["needs_confirm"], body["confirm_question"]) == (False, None)
+
+    resp = await client.get("/v1/scenarios/interview?language=en", headers=bundle.auth)
+    assert resp.json()["fields"][0]["question"] == "What is your niche?"
+    assert fake_llm.calls == 0
+    async with services.sm() as session:
+        assert (await session.execute(select(Conversation))).first() is None
+
+
+async def test_scenario_unknown_key_and_language(services, client):
+    bundle = await _setup(services)
+    resp = await client.get("/v1/scenarios/nope", headers=bundle.auth)
+    assert (resp.status_code, resp.json()["error"]["code"]) == (404, "scenario.not_found")
+    resp = await client.get("/v1/scenarios/interview?language=de", headers=bundle.auth)
+    assert (resp.status_code, resp.json()["error"]["code"]) == (422, "run.language_not_supported")
+
+
+# --- start ------------------------------------------------------------------------------------
+
+
+async def test_start_creates_the_run_and_asks_the_first_question(services, client, fake_llm):
+    bundle = await _setup(services)
+    state = await _start(client, bundle, language="en", messages=10)
+    run = state["run"]
+    assert (run["scenario"], run["status"], run["asking"]) == ("interview", "focus", "niche")
+    assert (run["language"], run["title"]) == ("en", "Interview")
+    assert (run["needs_confirm"], run["confirmed"], run["confirm_question"]) == (False, True, None)
+    assert [f["key"] for f in run["fields"]] == ALL
+    assert _fields(run)["niche"] == {
+        "key": "niche",
+        "title": None,
+        "question": "What is your niche?",
+        "state": "empty",
+        "value": None,
+        "complete": False,
+        "skipped": False,
+        "reasks": 0,
+        "stuck": False,
+    }
+    assert [(m["role"], m["text"]) for m in state["messages"]] == [("bot", "What is your niche?")]
+    assert fake_llm.calls == 0
+
+    [row] = await runs_of(services.sm, state["conversation_id"])
+    assert (row.status, row.asking, row.reply_language) == (RunStatus.FOCUS, "niche", "en")
+    assert [e["event"] for e in row.events] == ["started"]
+    async with services.sm() as session:
+        conv = await session.get(Conversation, row.conversation_id)
+    assert conv.state[REPLY_LANGUAGE_PIN] == "en"
+    assert conv.reply_language == "en"
+
+
+async def test_start_again_returns_the_run_as_it_is(services, client):
+    bundle = await _setup(services)
+    first = await _start(client, bundle)
+    again = await _start(client, bundle, skip=["niche"], messages=10)
+    assert again["run"]["id"] == first["run"]["id"]
+    assert again["run"]["asking"] == "niche"
+    assert len(again["messages"]) == 1
+    assert len(await runs_of(services.sm, first["conversation_id"])) == 1
+
+
+async def test_start_without_a_language_speaks_the_scenario_language(services, client):
+    bundle = await _setup(services)
+    state = await _start(client, bundle, messages=10)
+    assert state["run"]["language"] == "uk"
+    assert state["messages"][0]["text"] == "Яка у вас ніша?"
+    async with services.sm() as session:
+        conv = await session.get(Conversation, state["conversation_id"])
+    assert REPLY_LANGUAGE_PIN not in (conv.state or {})
+
+
+async def test_start_closes_the_questions_the_caller_has_answers_to(services, client):
+    bundle = await _setup(services)
+    state = await _start(client, bundle, skip=["niche"], messages=10)
+    run = state["run"]
+    assert run["asking"] == "offer"
+    niche = _fields(run)["niche"]
+    assert (niche["state"], niche["value"], niche["complete"], niche["skipped"]) == (
+        "filled",
+        None,
+        True,
+        True,
+    )
+    assert state["messages"][0]["text"] == "Що ви продаєте?"
+
+
+@pytest.mark.parametrize(
+    ("body", "status", "code"),
+    [
+        ({"scenario": "nope"}, 404, "scenario.not_found"),
+        ({"scenario": "interview", "skip": ["nope"]}, 422, "run.unknown_fields"),
+        ({"scenario": "interview", "language": "de"}, 422, "run.language_not_supported"),
+    ],
+)
+async def test_start_refuses_what_it_does_not_know(services, client, body, status, code):
+    bundle = await _setup(services)
+    resp = await _post(client, bundle, "/v1/runs/start", contact=CONTACT, **body)
+    assert resp.status_code == status
+    assert resp.json()["error"]["code"] == code
+    async with services.sm() as session:
+        assert (await session.execute(select(Conversation.id))).first() is None
+
+
+async def test_a_scenario_switched_off_in_the_channel_does_not_start(services, client):
+    bundle = await _setup(services)
+    other = await make_tenant(services.sm, slug="other", title="Other", settings=LANGUAGES)
+    resp = await _post(client, other, "/v1/runs/start", contact=CONTACT, scenario="interview")
+    assert resp.status_code == 404
+    assert bundle.tenant_id != other.tenant_id
+
+
+# --- state ------------------------------------------------------------------------------------
+
+
+async def test_state_of_an_unknown_contact_is_empty(services, client):
+    bundle = await _setup(services)
+    resp = await _post(client, bundle, "/v1/runs/state", contact=CONTACT, scenario="interview")
+    assert resp.status_code == 200
+    assert resp.json() == {"conversation_id": None, "run": None, "messages": []}
+
+
+async def test_state_returns_the_run_and_its_messages(services, client):
+    bundle = await _setup(services)
+    started = await _start(client, bundle)
+    resp = await _post(
+        client, bundle, "/v1/runs/state", contact=CONTACT, scenario="interview", messages=5
+    )
+    state = resp.json()
+    assert state["run"]["id"] == started["run"]["id"]
+    assert [m["text"] for m in state["messages"]] == ["Яка у вас ніша?"]
+    silent = await _post(client, bundle, "/v1/runs/state", contact=CONTACT, scenario="interview")
+    assert silent.json()["messages"] == []
+
+
+# --- skip -------------------------------------------------------------------------------------
+
+
+async def test_skip_closes_the_asked_question_and_asks_the_next(services, client, fake_llm):
+    bundle = await _setup(services)
+    run_id = (await _start(client, bundle))["run"]["id"]
+    resp = await _post(client, bundle, f"/v1/runs/{run_id}/skip", messages=10)
+    assert resp.status_code == 200, resp.text
+    state = resp.json()
+    assert state["run"]["asking"] == "offer"
+    assert _fields(state["run"])["niche"]["skipped"] is True
+    assert [m["text"] for m in state["messages"]] == ["Яка у вас ніша?", "Що ви продаєте?"]
+    assert fake_llm.calls == 0
+    [row] = await runs_of(services.sm, state["conversation_id"])
+    assert [(e["event"], e.get("field")) for e in row.events] == [
+        ("started", None),
+        ("skipped", "niche"),
+    ]
+
+
+async def test_skipping_another_question_leaves_the_asked_one_as_it_is(services, client):
+    bundle = await _setup(services)
+    run_id = (await _start(client, bundle))["run"]["id"]
+    resp = await _post(client, bundle, f"/v1/runs/{run_id}/skip", field="offer", messages=10)
+    assert resp.status_code == 200, resp.text
+    run = resp.json()["run"]
+    assert run["asking"] == "niche"
+    assert _fields(run)["offer"]["skipped"] is True
+    assert _fields(run)["niche"]["reasks"] == 0
+    assert [m["text"] for m in resp.json()["messages"]] == ["Яка у вас ніша?"]
+
+
+async def test_skipping_the_same_question_twice_changes_nothing(services, client):
+    bundle = await _setup(services)
+    run_id = (await _start(client, bundle))["run"]["id"]
+    await _post(client, bundle, f"/v1/runs/{run_id}/skip", field="niche")
+    resp = await _post(client, bundle, f"/v1/runs/{run_id}/skip", field="niche", messages=10)
+    assert resp.status_code == 200
+    assert resp.json()["run"]["asking"] == "offer"
+    assert len(resp.json()["messages"]) == 2
+
+
+async def test_skipping_every_question_completes_a_run_without_confirm(services, client):
+    bundle = await _setup(services)
+    state = await _start(client, bundle)
+    run_id = state["run"]["id"]
+    for _ in ALL:
+        resp = await _post(client, bundle, f"/v1/runs/{run_id}/skip")
+        assert resp.status_code == 200, resp.text
+    run = resp.json()["run"]
+    assert (run["status"], run["asking"]) == ("completed", None)
+    assert run["finished_at"] is not None
+    [row] = await runs_of(services.sm, state["conversation_id"])
+    [delivery] = await deliveries_of(services.sm, row.id)
+    assert delivery.payload["fields"] == {}
+    assert delivery.payload["missing"] == ALL
+
+    again = await _post(client, bundle, f"/v1/runs/{run_id}/skip")
+    assert again.status_code == 409
+    assert again.json()["error"]["code"] == "run.not_open"
+
+
+async def test_skip_of_an_unknown_question_is_refused(services, client):
+    bundle = await _setup(services)
+    run_id = (await _start(client, bundle))["run"]["id"]
+    resp = await _post(client, bundle, f"/v1/runs/{run_id}/skip", field="nope")
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "run.unknown_fields"
+
+
+async def test_another_tenant_does_not_see_the_run(services, client):
+    bundle = await _setup(services)
+    run_id = (await _start(client, bundle))["run"]["id"]
+    other = await make_tenant(services.sm, slug="other", title="Other", settings=LANGUAGES)
+    for action in ("skip", "confirm"):
+        resp = await _post(client, other, f"/v1/runs/{run_id}/{action}")
+        assert resp.status_code == 404
+        assert resp.json()["error"]["code"] == "run.not_found"
+
+
+# --- confirm ----------------------------------------------------------------------------------
+
+WITH_CONFIRM = {"confirm": {"question": {"uk": "Усе так?", "en": "All correct?"}}}
+
+
+async def test_everything_collected_asks_to_confirm_and_confirm_completes(services, client):
+    bundle = await _setup(services, interview_data(**WITH_CONFIRM))
+    state = await _start(client, bundle, language="en", skip=ALL, messages=10)
+    run = state["run"]
+    assert (run["status"], run["asking"]) == ("focus", "@confirm")
+    assert (run["needs_confirm"], run["confirmed"]) == (True, False)
+    assert run["confirm_question"] == "All correct?"
+    assert [m["text"] for m in state["messages"]] == ["All correct?"]
+
+    resp = await _post(client, bundle, f"/v1/runs/{run['id']}/confirm")
+    assert resp.status_code == 200, resp.text
+    done = resp.json()["run"]
+    assert (done["status"], done["asking"], done["confirmed"]) == ("completed", None, True)
+    [row] = await runs_of(services.sm, state["conversation_id"])
+    assert [e["event"] for e in row.events][-2:] == ["confirmed", "completed"]
+    assert len(await deliveries_of(services.sm, row.id)) == 1
+
+    again = await _post(client, bundle, f"/v1/runs/{run['id']}/confirm")
+    assert again.status_code == 200
+    assert len(await deliveries_of(services.sm, row.id)) == 1
+
+
+async def test_confirm_before_every_question_is_closed_is_refused(services, client):
+    bundle = await _setup(services, interview_data(**WITH_CONFIRM))
+    state = await _start(client, bundle, skip=["niche"])
+    resp = await _post(client, bundle, f"/v1/runs/{state['run']['id']}/confirm")
+    assert resp.status_code == 409
+    assert resp.json()["error"] == {
+        "code": "run.not_collected",
+        "params": {"missing": ["offer", "positioning"]},
+    }
+    [row] = await runs_of(services.sm, state["conversation_id"])
+    assert row.status == RunStatus.FOCUS
+    assert "confirmed_at" not in row.data
+
+
+# --- a message --------------------------------------------------------------------------------
+
+
+async def _pipeline(services):
+    decider = FakeDecider(dict(ROUTE_DEFAULTS))
+    services.extra["pipeline"] = full_pipeline
+    services.extra["decider"] = decider
+    async with services.sm() as session, session.begin():
+        await seed_prompts(session)
+    await make_model(services.sm, "openai/a", roles=ROLES)
+    return decider
+
+
+async def test_a_message_returns_the_run_and_what_the_turn_cost(services, client, fake_llm):
+    decider = await _pipeline(services)
+    bundle = await _setup(services)
+    await _start(client, bundle, language="en")
+
+    text = "Я печу торти на замовлення"
+    decider.rules = {**ROUTE_DEFAULTS, "field:interview.niche": True}
+    fake_llm.push(
+        # the client writes in Ukrainian; the tenant rule would answer in Ukrainian too
+        chat_reply(json.dumps({"question": [text], "language": "uk"}, ensure_ascii=False)),
+        chat_reply(json.dumps({"interview__niche": "торти на замовлення"}, ensure_ascii=False)),
+        chat_reply("Got it. What do you sell?"),
+    )
+    resp = await _post(
+        client, bundle, "/v1/runs/message", contact=CONTACT, text=text, scenario="interview"
+    )
+    assert resp.status_code == 200, resp.text
+    assert not fake_llm.script, "unused LLM answers"
+    body = resp.json()
+    assert body["reply"] == "Got it. What do you sell?"
+    run = body["run"]
+    assert (run["status"], run["asking"], run["language"]) == ("focus", "offer", "en")
+    assert _fields(run)["niche"]["value"] == "торти на замовлення"
+
+    usage = body["usage"]
+    assert usage["turn_id"] == body["turn_id"]
+    assert [c["kind"] for c in usage["calls"]] == ["llm", "llm", "llm"]
+    assert {c["role"] for c in usage["calls"]} == {"rewrite", "extract", "reply"}
+    assert {c["model"] for c in usage["calls"]} == {"openai/a"}
+    assert usage["tokens_in"] == sum(c["tokens_in"] for c in usage["calls"])
+    assert usage["cost"] == pytest.approx(sum(c["cost"] for c in usage["calls"]))
+
+    # the pinned language won over the tenant rule (uk → uk)
+    async with services.sm() as session:
+        conv = await session.get(Conversation, body["conversation_id"])
+    assert (conv.client_language, conv.reply_language) == ("uk", "en")
+    assert conv.state[REPLY_LANGUAGE_PIN] == "en"
+    assert await _bot_texts(services.sm, conv.id) == [
+        "What is your niche?",
+        "Got it. What do you sell?",
+    ]
+
+
+async def test_a_message_for_a_dialogue_that_is_not_running_is_refused(services, client, fake_llm):
+    await _pipeline(services)
+    bundle = await _setup(services)
+    resp = await _post(
+        client, bundle, "/v1/runs/message", contact=CONTACT, text="hi", scenario="interview"
+    )
+    assert resp.status_code == 409
+    assert resp.json()["error"] == {"code": "run.not_open", "params": {"status": None}}
+
+    run_id = (await _start(client, bundle))["run"]["id"]
+    for _ in ALL:
+        await _post(client, bundle, f"/v1/runs/{run_id}/skip")
+    resp = await _post(
+        client, bundle, "/v1/runs/message", contact=CONTACT, text="hi", scenario="interview"
+    )
+    assert resp.status_code == 409
+    assert resp.json()["error"]["params"] == {"status": "completed"}
+    assert fake_llm.calls == 0
+    async with services.sm() as session:
+        clients = await session.execute(
+            select(Message.id).where(Message.role == MessageRole.CLIENT)
+        )
+        assert clients.first() is None

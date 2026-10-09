@@ -213,6 +213,10 @@ async def test_conversation_with_turn_trace(client, services, tenant, adm, fake_
     trace = (await client.get(_t(tenant, f"/turns/{turn_id}"), headers=adm)).json()
     assert trace["turn"]["input_text"] == "привіт"
     assert trace["turn"]["trace"]
+    # the same turn in a person's words
+    assert trace["explain"]["found"] == []
+    assert trace["explain"]["decided"] == [{"what": "reply"}]
+    assert trace["failure"] is None
     assert [c["model"] for c in trace["llm_calls"]] == ["openai/a"]
     assert {m["role"] for m in trace["messages"]} == {"client", "bot"}
 
@@ -321,6 +325,9 @@ async def test_sandbox_shows_a_failed_turn(client, services, tenant, adm, fake_l
     assert out["reply"] is None
     assert out["error"]["code"] == "llm.role_not_assigned"
     assert out["turn"]["turn"]["status"] == TurnStatus.FAILED
+    # the turn itself keeps the reason too: it is shown when the turn is opened later
+    assert out["turn"]["failure"]["code"] == "llm.role_not_assigned"
+    assert out["turn"]["failure"]["params"]["role"] in set(LlmRole)
     # the failed message is not answered again with the next one
     async with services.sm() as session:
         msg = (await session.execute(select(Message).where(Message.text == "hi"))).scalar_one()

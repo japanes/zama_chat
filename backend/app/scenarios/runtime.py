@@ -72,6 +72,7 @@ from app.scenarios.questions import (
 from app.scenarios.schema import (
     ATTACHMENT_TYPES,
     ActionEvent,
+    Answers,
     AttachmentSettings,
     Completion,
     FieldDef,
@@ -232,11 +233,17 @@ def extract_targets(
         if not run.takes_data:
             continue
         defn = run.definition
+        answered_asked = _answers_the_asked(run, decisions)
         for f in defn.fields:
             if f.type in ATTACHMENT_TYPES:
                 continue  # filled from the message's files, not from words
             fs = run.states[f.key]
-            correction = run is focus_before and change == f.key and fs.value is not None
+            correction = (
+                run is focus_before
+                and change == f.key
+                and fs.value is not None
+                and not (answered_asked and f.key != run.asking)
+            )
             marked = decisions.value(field_key(defn.key, f.key)) is True and not fs.complete
             if correction or marked or (run.is_new and not fs.complete):
                 targets.append(
@@ -249,6 +256,16 @@ def extract_targets(
                     )
                 )
     return targets
+
+
+def _answers_the_asked(run: WorkRun, decisions: DecisionSet) -> bool:
+    """`answers: asked`: the message answers the question asked last. Then it is not also a
+    correction of another answer — close questions share words, and a part of the new answer
+    replaced an earlier one."""
+    defn = run.definition
+    if defn.answers != Answers.ASKED or run.asking is None or run.asking not in defn.field_keys:
+        return False
+    return decisions.value(field_key(defn.key, run.asking)) is True
 
 
 def prefill_contacts(
@@ -804,6 +821,12 @@ async def run_scenarios(
         "rejected": extracted.rejected,
         "issues": {
             f"{r.key}.{k}": fs.issue for r in runs for k, fs in r.states.items() if fs.issue
+        },
+        "issue_params": {
+            f"{r.key}.{k}": fs.issue_params
+            for r in runs
+            for k, fs in r.states.items()
+            if fs.issue and fs.issue_params
         },
         "recheck_marked": marked,
         "check_rounds": rounds,

@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 
 from app.api import admin, dev
 from app.api.channels import instagram
-from app.api.v1 import events, messages
+from app.api.v1 import events, messages, runs
 from app.errors import AppError
 from app.logging import get_logger, setup_logging
 from app.services import Services
@@ -61,6 +61,7 @@ def create_app(services: Services | None = None) -> FastAPI:
 
     app.include_router(messages.router)
     app.include_router(events.router)
+    app.include_router(runs.router)
     app.include_router(instagram.router)
     for router in admin.routers:
         app.include_router(router)

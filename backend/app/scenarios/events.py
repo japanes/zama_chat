@@ -14,6 +14,8 @@ RECEIPT_ACCEPTED = "receipt_accepted"
 RECEIPT_REJECTED = "receipt_rejected"
 EXTERNAL = "external"
 REOPENED = "reopened"
+# a question closed without an answer (POST /v1/runs/{id}/skip)
+SKIPPED = "skipped"
 
 
 @dataclass(frozen=True)

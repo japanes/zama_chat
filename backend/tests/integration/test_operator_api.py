@@ -353,3 +353,94 @@ async def test_choose_reply_tasks_are_found_by_kind(services, client):
     )
     assert [i["kind"] for i in res.json()["items"]] == [TaskKind.HANDOVER]
     assert res.json()["open"] == {"choose_reply": 1, "handover": 1}
+
+
+# --- the inbox: who waits for a person ---------------------------------------------------
+
+
+async def _inbox(client, s, **params):
+    res = await client.get(f"{s['base']}/conversations", params=params, headers=s["headers"])
+    assert res.status_code == 200
+    return res.json()
+
+
+async def _counts(client, s) -> dict[str, int]:
+    res = await client.get(f"{s['base']}/inbox/counts", headers=s["headers"])
+    assert res.status_code == 200
+    return res.json()
+
+
+async def test_inbox_the_bot_handles_a_conversation_itself(services, client):
+    s = await _setup(services)
+    assert await _counts(client, s) == {"waiting": 0, "bot": 1, "all": 1}
+    data = await _inbox(client, s, queue="bot")
+    (item,) = data["items"]
+    assert item["waiting"] is False
+    assert item["open_tasks"] == []
+    assert item["channel_kind"] == ChannelKind.HTTP
+    assert data["counts"] == {"waiting": 0, "bot": 1, "all": 1}
+    assert (await _inbox(client, s, queue="waiting"))["items"] == []
+
+
+async def test_inbox_variants_to_choose_wait_for_a_person(services, client):
+    s = await _setup(services)
+    await _choose_reply(services, s["conv_id"])
+    assert await _counts(client, s) == {"waiting": 1, "bot": 0, "all": 1}
+    (item,) = (await _inbox(client, s, queue="waiting"))["items"]
+    assert item["open_tasks"] == [TaskKind.CHOOSE_REPLY]
+    assert item["waiting"] is True
+    assert (await _inbox(client, s, queue="bot"))["items"] == []
+    assert len((await _inbox(client, s, queue="all"))["items"]) == 1
+
+
+async def test_inbox_a_taken_conversation_waits_until_the_person_answers(services, client, clock):
+    s = await _setup(services)
+    await client.post(f"{s['conv_path']}/handover", headers=s["headers"])
+    # the bot is silent and no person has written yet
+    assert await _counts(client, s) == {"waiting": 1, "bot": 0, "all": 1}
+
+    clock.advance(seconds=5)
+    res = await client.post(
+        f"{s['conv_path']}/messages", json={"text": "Добрий день!"}, headers=s["headers"]
+    )
+    assert res.status_code == 200
+    # answered: neither waiting nor the bot's
+    assert await _counts(client, s) == {"waiting": 0, "bot": 0, "all": 1}
+    (item,) = (await _inbox(client, s))["items"]
+    assert item["waiting"] is False
+    assert item["open_tasks"] == [TaskKind.HANDOVER]
+
+    clock.advance(seconds=5)
+    async with services.sm() as session, session.begin():
+        await save_client_message(
+            session,
+            tenant_id=s["tenant_id"],
+            channel_id=(await _conv(services, s["conv_id"])).channel_id,
+            contact_external_id="c1",
+            text="А на суботу?",
+            now=services.clock.now(),
+        )
+    # the client wrote again
+    assert await _counts(client, s) == {"waiting": 1, "bot": 0, "all": 1}
+
+    await client.post(f"{s['conv_path']}/release", headers=s["headers"])
+    assert await _counts(client, s) == {"waiting": 0, "bot": 1, "all": 1}
+
+
+async def test_inbox_counts_skip_the_sandbox_and_other_tenants(services, client):
+    s = await _setup(services)
+    await _choose_reply(services, s["conv_id"])
+    other = await make_tenant(services.sm, slug="other")
+    headers = await admin_headers(
+        services, "x@example.com", tenant_id=other.tenant_id, role=UserRole.OPERATOR
+    )
+    res = await client.get(f"/v1/admin/tenants/{other.tenant_id}/inbox/counts", headers=headers)
+    assert res.json() == {"waiting": 0, "bot": 0, "all": 0}
+    assert await _counts(client, s) == {"waiting": 1, "bot": 0, "all": 1}
+
+    async with services.sm() as session, session.begin():
+        await session.execute(
+            update(Conversation).where(Conversation.id == s["conv_id"]).values(sandbox=True)
+        )
+    assert await _counts(client, s) == {"waiting": 0, "bot": 0, "all": 0}
+    assert (await _inbox(client, s, sandbox=True))["counts"] == {"waiting": 1, "bot": 0, "all": 1}
