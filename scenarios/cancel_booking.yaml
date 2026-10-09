@@ -5,10 +5,12 @@ key: cancel_booking
 title:
   uk: Скасування запису
   en: Cancel a booking
+  ru: Отмена записи
 language: uk
 description:
-  uk: Клієнт чітко хоче скасувати свій запис.
-  en: The client clearly wants to cancel their booking.
+  uk: Бот уточнює, який запис скасувати, і просить підтвердити.
+  en: The bot finds out which booking to cancel and asks to confirm.
+  ru: Бот уточняет, какую запись отменить, и просит подтвердить.
 
 start:
   questions:
@@ -22,6 +24,10 @@ start:
 fields:
   - key: booking
     type: text
+    title:
+      uk: Який запис
+      en: Which booking
+      ru: Какая запись
     question:
       uk: Який запис скасувати? Назвіть послугу та дату.
       en: Which booking should we cancel? Name the service and the date.
@@ -33,6 +39,10 @@ fields:
 
   - key: reason
     type: text
+    title:
+      uk: Причина
+      en: Reason
+      ru: Причина
     question:
       uk: Підкажіть, будь ласка, причину — так ми станемо кращими. Можна пропустити.
       en: Could you tell us why? It helps us improve. You can skip it.

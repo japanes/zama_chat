@@ -5,10 +5,12 @@ key: reschedule_booking
 title:
   uk: Перенесення запису
   en: Reschedule a booking
+  ru: Перенос записи
 language: uk
 description:
-  uk: Клієнт, який уже записаний, хоче змінити дату чи час свого візиту.
-  en: A client who already has a booking wants to change its date or time.
+  uk: Клієнт змінює день або час уже наявного запису.
+  en: The client changes the day or the time of an existing booking.
+  ru: Клиент меняет день или время уже существующей записи.
 
 start:
   questions:
@@ -22,6 +24,10 @@ start:
 fields:
   - key: booking
     type: text
+    title:
+      uk: Який запис
+      en: Which booking
+      ru: Какая запись
     question:
       uk: Який саме запис перенести? Назвіть послугу та поточні дату й час.
       en: Which booking should we move? Name the service and its current date and time.
@@ -36,6 +42,10 @@ fields:
 
   - key: new_date
     type: date
+    title:
+      uk: Нова дата
+      en: New date
+      ru: Новая дата
     question:
       uk: На яку дату перенести запис?
       en: Which date should we move it to?
@@ -44,6 +54,10 @@ fields:
 
   - key: new_time
     type: time
+    title:
+      uk: Новий час
+      en: New time
+      ru: Новое время
     question:
       uk: О котрій годині вам буде зручно?
       en: What time would suit you?

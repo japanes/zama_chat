@@ -6,10 +6,12 @@ key: beauty_booking
 title:
   uk: Запис у салон
   en: Salon booking
+  ru: Запись в салон
 language: uk
 description:
-  uk: Клієнт записується на послугу салону. Збираємо послугу, салон, майстра, дату, час, ім'я та телефон, показуємо підсумок і передаємо заявку в CRM.
-  en: The client books a salon service. We collect the service, the salon, the specialist, the date, the time, the name and the phone, show a summary and pass the request to the CRM.
+  uk: Бот збирає заявку на послугу, ваша CRM підтверджує час, клієнт отримує відповідь.
+  en: The bot collects a booking request, your CRM confirms the time, the client gets the answer.
+  ru: Бот собирает заявку на услугу, ваша CRM подтверждает время, клиент получает ответ.
 
 start:
   questions:
@@ -25,6 +27,10 @@ start:
 fields:
   - key: service
     type: catalog
+    title:
+      uk: Послуга
+      en: Service
+      ru: Услуга
     question:
       uk: На яку послугу ви хочете записатися?
       en: Which service would you like to book?
@@ -34,6 +40,10 @@ fields:
 
   - key: location
     type: text
+    title:
+      uk: Салон
+      en: Salon
+      ru: Салон
     question:
       uk: У який салон вам зручніше прийти?
       en: Which salon is more convenient for you?
@@ -43,6 +53,10 @@ fields:
 
   - key: specialist
     type: text
+    title:
+      uk: Майстер
+      en: Specialist
+      ru: Мастер
     question:
       uk: До якого майстра ви хочете записатися? Можна «будь-який».
       en: Which specialist would you like? "Anyone" is fine too.
@@ -52,6 +66,10 @@ fields:
 
   - key: date
     type: date
+    title:
+      uk: Дата
+      en: Date
+      ru: Дата
     question:
       uk: На яку дату вас записати?
       en: For which date shall we book you?
@@ -61,12 +79,20 @@ fields:
 
   - key: time
     type: time
+    title:
+      uk: Час
+      en: Time
+      ru: Время
     question:
       uk: О котрій годині вам зручно?
       en: What time suits you?
 
   - key: name
     type: text
+    title:
+      uk: "Ім'я"
+      en: Name
+      ru: Имя
     question:
       uk: Як вас звати? Ім'я та прізвище, будь ласка.
       en: What is your name? First and last name, please.
@@ -78,6 +104,10 @@ fields:
 
   - key: phone
     type: phone
+    title:
+      uk: Телефон
+      en: Phone
+      ru: Телефон
     question:
       uk: Ваш номер телефону для підтвердження запису?
       en: Your phone number to confirm the booking?

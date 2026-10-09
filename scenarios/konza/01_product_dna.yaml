@@ -1,0 +1,243 @@
+# Konza test tenant — Product DNA, the client already sells something.
+# Source: the «Мета-промптинг» section («ИИ пишет промпт для ИИ») of the workshop page
+# factory/tmp/kovcheg/index.html. The owner's decision of 2026-10-08: that section is the
+# product DNA. The 7-item list this file held before was built on a wrong mapping.
+# The section turns a business description into three deep researches: «Рынок и тренды»,
+# «Целевая аудитория», «Конкуренты». Seven fields: the four blanks of the section's request
+# — `product` («Мой бизнес»), `geography` («География: [СТРАНА/РЕГИОН]»), `format` («Формат:
+# [ОНЛАЙН/ОФФЛАЙН]»), `target` («Целевая аудитория: [КТО]») — and the three researches: what
+# the client already knows on each (`market`, `audience`, `competitors`). What they do not
+# know is what the research is run for, so «не знаю» passes in the three research fields.
+# Field keys of the three researches equal the item keys of the factory kind
+# `product_research` (factory/api/services/dna/definitions_v2.json); `product` is the name of
+# the product card there; `geography`, `format` and `target` have no item there (the factory
+# fills those blanks from the brand DNA).
+# One thing and one filter per field, and any one concrete piece passes the filter: the
+# engine sometimes reads an addition as a correction and replaces the whole answer with it,
+# so a field that needs two things (place and format, or three filters) never fills or loops
+# (runs of 2026-10-08; details in 03_brand_dna.yaml). The first, stricter draft is kept in
+# tmp/konza/scenarios-2026-10-08-draft1/.
+# The source's request is in the first person; hints here are in «вы», see 03_brand_dna.yaml.
+# The generic «I want a product DNA» starts this scenario; «I have no product yet» moves
+# the client to product_dna_new (see cancel + the start signs there).
+# TODO(review): all wording (questions, filters, start signs) — check on live dialogues.
+key: product_dna
+title:
+  ru: ДНК готового продукта
+  uk: "ДНК готового продукту"
+  en: "DNA of an existing product"
+language: ru
+description: >-
+  Собираем вводные для трёх глубоких исследований продукта, который клиент уже продаёт: о
+  каком продукте речь, где, в каком формате и кому он продаётся и что клиент уже знает про рынок и тренды, про целевую аудиторию и про
+  конкурентов. Чего он не знает — покажет исследование.
+
+start:
+  questions:
+    - key: wants_product_dna
+      ask: >-
+        Клиент в этом сообщении прямо просит разобрать его продукт или услугу — собрать ДНК
+        продукта? Если он просит только про бренд, ДНК бренда или «ДНК Бизнеса», либо просто
+        рассказывает о себе и отвечает на вопрос бота — ответ «нет».
+      weight: 2
+    - key: has_product
+      ask: Клиент говорит, что у него уже есть продукт или услуга, которые он продаёт?
+      weight: 1
+  threshold: 2            # "wants a product DNA" alone is enough; "has a product" only adds
+
+incompatible_with: [product_dna_new]
+
+fields:
+  - key: product
+    type: text
+    title:
+      ru: Продукт
+      uk: "Продукт"
+      en: "Product"
+    question:
+      ru: >-
+        Мой бизнес: что вы продаёте? Опишите продукт/услугу своими словами. Если продуктов
+        несколько — тот, под который делаем исследование.
+      uk: "Мій бізнес: що ви продаєте? Опишіть продукт/послугу своїми словами. Якщо продуктів кілька — той, під який робимо дослідження."
+      en: "My business: what do you sell? Describe the product/service in your own words. If there are several products — the one the research is for."
+    description: >-
+      Продукт, под который делается исследование: что это и для кого (например «курс
+      послушания для щенков: шесть занятий на площадке, группа до пяти собак»). Одного слова
+      «курс» или «услуга» мало — нужно, о чём он.
+    filters:
+      - key: concrete_product
+        ask: >-
+          Клиент назвал конкретный продукт или услугу, которые можно купить, а не только
+          общую сферу деятельности?
+        "yes": Да — назван продукт или услуга. Также «да», если клиент добавляет конкретную деталь о своём продукте — из чего он состоит, формат, цену.
+        "no": Нет — названо только занятие или сфера («занимаюсь дрессировкой собак», «маркетинг», «психология», «помогаю людям»), либо только вид продукта одним словом («курс», «услуга», «консультация») без того, о чём он, либо непонятно, за что платят.
+
+  - key: geography
+    type: text
+    title:
+      ru: География
+      uk: "Географія"
+      en: "Geography"
+    question:
+      ru: "География: страна/регион."
+      uk: "Географія: країна/регіон."
+      en: "Geography: country/region."
+    description: >-
+      Где продаётся этот продукт: страна, регион или город (например «Львов» или «вся
+      Украина»).
+    ask_after: [product]
+    filters:
+      - key: named_place
+        ask: Клиент назвал страну, регион или город, где он это продаёт?
+
+  - key: format
+    type: text
+    title:
+      ru: Формат
+      uk: "Формат"
+      en: "Format"
+    question:
+      ru: "Формат: онлайн/оффлайн."
+      uk: "Формат: онлайн/офлайн."
+      en: "Format: online/offline."
+    description: >-
+      В каком формате продаётся этот продукт: онлайн, офлайн или и так и так (например
+      «офлайн, на площадке»).
+    ask_after: [product]
+    filters:
+      - key: online_or_offline
+        ask: Клиент сказал, онлайн это, офлайн или и то и другое?
+
+  - key: target
+    type: text
+    title:
+      ru: "Целевая аудитория: кто"
+      uk: "Цільова аудиторія: хто"
+      en: "Target audience: who"
+    question:
+      ru: "Целевая аудитория: кто покупает этот продукт?"
+      uk: "Цільова аудиторія: хто купує цей продукт?"
+      en: "Target audience: who buys this product?"
+    description: >-
+      Кто покупает этот продукт: человек по конкретным признакам — возраст, пол, профессия,
+      доход, ситуация (например «владельцы щенков 3–8 месяцев, завели собаку впервые»).
+      Ответом считается только то, что клиент сказал о своих покупателях: попутное
+      упоминание внутри описания продукта (например «курс для щенков») этот пункт не
+      закрывает.
+    ask_after: [product]
+    filters:
+      - key: concrete_audience
+        ask: >-
+          Клиент описал, кто именно покупает, конкретными признаками (возраст, пол, профессия,
+          доход, ситуация, проблема), а не ответил «все» или «кому интересно»?
+        "no": Нет — «все», «кому интересно», «всем, у кого есть собака» — без признаков, по которым такого человека можно отличить.
+
+  - key: market
+    type: text
+    title:
+      ru: Рынок и тренды
+      uk: "Ринок і тренди"
+      en: "Market and trends"
+    question:
+      ru: >-
+        Рынок и тренды: что вы уже знаете про объем, деньги, хайп или тренд, риски? Если не
+        знаете — так и скажите, это покажет исследование.
+      uk: "Ринок і тренди: що ви вже знаєте про обсяг, гроші, хайп чи тренд, ризики? Якщо не знаєте — так і скажіть, це покаже дослідження."
+      en: "Market and trends: what do you already know about the size, the money, hype or trend, the risks? If you don't know — just say so, the research will show it."
+    description: >-
+      Что клиент сам знает о рынке своего продукта: объём, деньги, хайп это или тренд, риски
+      (например «в городе около десяти школ, курс стоит от 3000 до 8000 гривен, после 2022
+      года собак в квартирах стало заметно больше; риск — зимой спрос падает вдвое»). Только
+      то, что он знает сам. Ответ «не знаю» тоже считается ответом.
+    ask_after: [product]
+    filters:
+      - key: fact_or_unknown
+        ask: >-
+          Клиент назвал хотя бы один конкретный факт о рынке — объём, деньги, тренд или риск,
+          — а не только общие слова?
+        "yes": Да — есть конкретный факт. Также «да», если клиент прямо сказал, что не знает.
+        "no": Нет — только общие слова («рынок большой», «спрос есть», «всё растёт») без фактов.
+
+  - key: audience
+    type: text
+    title:
+      ru: "Целевая аудитория: боли и язык"
+      uk: "Цільова аудиторія: болі та мова"
+      en: "Target audience: pains and language"
+    question:
+      ru: >-
+        Целевая аудитория: что вы уже знаете про боли, барьеры, драйверы, язык клиента? Какими
+        словами клиенты сами говорят о своей проблеме? Если не знаете — так и скажите, это
+        покажет исследование.
+      uk: "Цільова аудиторія: що ви вже знаєте про болі, бар'єри, драйвери, мову клієнта? Якими словами клієнти самі говорять про свою проблему? Якщо не знаєте — так і скажіть, це покаже дослідження."
+      en: "Target audience: what do you already know about the client's pains, barriers, drivers and language? In what words do clients themselves talk about their problem? If you don't know — just say so, the research will show it."
+    description: >-
+      Что клиент сам знает о тех, кто покупает: их боли, барьеры (что мешает купить), драйверы
+      (что подталкивает купить) и язык клиента — какими словами они сами говорят (например
+      «пишут „тянет поводок так, что боюсь выходить на улицу“; мешает цена и то, что надо
+      ездить на площадку; приходят после первой погрызенной мебели»). Только то, что он видел
+      или слышал от клиентов. Ответ «не знаю, у клиентов не спрашивал» тоже считается ответом.
+    ask_after: [target]
+    filters:
+      - key: heard_from_clients
+        ask: >-
+          Клиент привёл хотя бы одну боль, барьер или слова клиентов — простыми словами, как
+          то, что он видел или слышал от реальных людей?
+        "yes": Да — есть хотя бы одна боль, барьер или фраза клиента простыми словами. Также «да», если клиент прямо сказал, что не знает или что у клиентов он этого не спрашивал.
+        "no": Нет — только общие слова или термины («повышение эффективности», «им нужен результат»), либо догадка («может быть», «наверное», «возможно», «думаю») без того, откуда клиент это знает. Одни такие слова не значат «не знаю» — нужно, чтобы клиент сам сказал, что не знает или не спрашивал.
+
+  - key: competitors
+    type: text
+    title:
+      ru: Конкуренты
+      uk: "Конкуренти"
+      en: "Competitors"
+    question:
+      ru: >-
+        Конкуренты: кого вы уже знаете, какие у них сильные/слабые стороны и чего у них нет?
+        Если не знаете — так и скажите, это покажет исследование.
+      uk: "Конкуренти: кого ви вже знаєте, які в них сильні/слабкі сторони і чого в них немає? Якщо не знаєте — так і скажіть, це покаже дослідження."
+      en: "Competitors: whom do you already know, what are their strengths/weaknesses and what don't they have? If you don't know — just say so, the research will show it."
+    description: >-
+      Что клиент сам знает о конкурентах: карта (кто они), их сильные и слабые стороны и GAP
+      — чего у них нет, а клиентам нужно (например «две большие школы с площадками в центре:
+      у них известное имя, но группы по 15 собак; на дом к щенку не выезжает никто»). Ответ
+      «не знаю» тоже считается ответом.
+    ask_after: [product]
+    filters:
+      - key: named_competitor
+        ask: >-
+          Клиент назвал хотя бы одного конкурента — по имени или по типу — либо сказал что-то
+          конкретное о сильных или слабых сторонах тех, кто продаёт похожее?
+        "yes": Да — конкурент назван или о конкурентах сказано что-то конкретное. Также «да», если клиент прямо сказал, что конкурентов не знает.
+        "no": Нет — только общие слова («конкурентов много», «у всех одно и то же») без единого названного.
+
+completion: all_fields
+
+confirm:
+  question:
+    ru: Это ваша ДНК продукта — так, как вы её рассказали. Всё верно, можно сохранять?
+    uk: "Це ваша ДНК продукту — так, як ви її розповіли. Усе правильно, можна зберігати?"
+    en: "This is your product DNA — as you told it. Is everything correct, can it be saved?"
+
+resume:
+  mode: always
+
+cancel:
+  description: >-
+    Клиент говорит, что разбор продукта ему не нужен, не хочет отвечать на вопросы или просит
+    прекратить. Также если клиент говорит, что продукта или услуги у него пока нет и
+    продавать ему нечего.
+
+actions:
+  - on: completed
+    do: http_post
+    endpoint: results_api
+  - on: silence
+    after_minutes: 15
+    do: http_post
+    endpoint: results_api
+    status: incomplete
+  - on: cancelled
+    do: http_post
+    endpoint: results_api

@@ -7,10 +7,12 @@ key: prepaid_order
 title:
   uk: Замовлення з передоплатою
   en: Prepaid order
+  ru: Заказ с предоплатой
 language: uk
 description:
-  uk: Клієнт замовляє товар з каталогу з доставкою та оплачує його наперед переказом на картку чи рахунок.
-  en: The client orders an item from the catalog with delivery and pays in advance by a card or bank transfer.
+  uk: Бот оформлює замовлення, просить квитанцію і сам звіряє суму та отримувача.
+  en: The bot takes the order, asks for a receipt and checks the amount and the recipient itself.
+  ru: Бот оформляет заказ, просит квитанцию и сам сверяет сумму и получателя.
 
 start:
   questions:
@@ -25,6 +27,10 @@ start:
 fields:
   - key: product
     type: catalog
+    title:
+      uk: Товар
+      en: Product
+      ru: Товар
     question:
       uk: Який товар ви хочете замовити?
       en: Which item would you like to order?
@@ -34,6 +40,10 @@ fields:
 
   - key: quantity
     type: number
+    title:
+      uk: Кількість
+      en: Quantity
+      ru: Количество
     question:
       uk: Скільки штук?
       en: How many?
@@ -44,6 +54,10 @@ fields:
 
   - key: name
     type: text
+    title:
+      uk: "Ім'я"
+      en: Name
+      ru: Имя
     question:
       uk: Ім'я та прізвище отримувача?
       en: The recipient's first and last name?
@@ -55,12 +69,20 @@ fields:
 
   - key: phone
     type: phone
+    title:
+      uk: Телефон
+      en: Phone
+      ru: Телефон
     question:
       uk: Номер телефону отримувача?
       en: The recipient's phone number?
 
   - key: delivery
     type: text
+    title:
+      uk: Доставка
+      en: Delivery
+      ru: Доставка
     question:
       uk: Куди доставити? Місто та відділення пошти.
       en: Where should we deliver? The city and the post office.
@@ -72,6 +94,10 @@ fields:
 
   - key: receipt
     type: receipt
+    title:
+      uk: Квитанція
+      en: Receipt
+      ru: Квитанция
     question:
       uk: Надішліть, будь ласка, квитанцію про оплату (скриншот або фото).
       en: Please send the payment receipt (a screenshot or a photo).

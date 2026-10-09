@@ -4,10 +4,12 @@ key: offer_interview
 title:
   uk: "Інтерв'ю: пропозиція та позиціонування"
   en: "Interview: offer and positioning"
+  ru: "Интервью: предложение и позиционирование"
 language: uk
 description:
-  uk: Збираємо відповіді клієнта про його нішу, аудиторію, пропозицію, ціну та позиціонування.
-  en: We collect the client's answers about their niche, audience, offer, price and positioning.
+  uk: Бот розпитує клієнта про його справу, відповіді приходять вам готовою анкетою.
+  en: The bot asks the client about their business, and you get the answers as a ready form.
+  ru: Бот расспрашивает клиента о его деле, ответы приходят вам готовой анкетой.
 
 start:
   questions:
@@ -23,6 +25,10 @@ start:
 fields:
   - key: niche
     type: text
+    title:
+      uk: Ніша
+      en: Niche
+      ru: Ниша
     question:
       uk: Чим ви займаєтесь? Яка у вас ніша?
       en: What do you do? What is your niche?
@@ -37,6 +43,10 @@ fields:
 
   - key: audience
     type: text
+    title:
+      uk: Аудиторія
+      en: Audience
+      ru: Аудитория
     question:
       uk: Хто ваші клієнти? Для кого ваша пропозиція?
       en: Who are your clients? Who is your offer for?
@@ -48,12 +58,20 @@ fields:
 
   - key: main_offer
     type: text
+    title:
+      uk: Пропозиція
+      en: Offer
+      ru: Предложение
     question:
       uk: Що саме ви продаєте? Яка ваша головна послуга чи продукт?
       en: What exactly do you sell? What is your main service or product?
 
   - key: price
     type: text
+    title:
+      uk: Ціна
+      en: Price
+      ru: Цена
     question:
       uk: Скільки коштує ваша головна послуга чи продукт?
       en: How much does your main service or product cost?
@@ -65,6 +83,10 @@ fields:
 
   - key: positioning
     type: text
+    title:
+      uk: Позиціонування
+      en: Positioning
+      ru: Позиционирование
     question:
       uk: Чим ви відрізняєтесь від конкурентів? Чому клієнти обирають саме вас?
       en: How are you different from competitors? Why do clients choose you?

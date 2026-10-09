@@ -4,10 +4,12 @@ key: group_booking
 title:
   uk: Груповий запис
   en: Group booking
+  ru: Групповая запись
 language: uk
 description:
-  uk: Клієнт записує кількох людей одночасно (подруги, мама з донькою, весільний образ).
-  en: The client books several people at once (friends, a mother and a daughter, a wedding party).
+  uk: Кілька гостей в одній заявці — подруги, родина, компанія.
+  en: Several guests in one request — friends, a family, a party.
+  ru: "Несколько гостей в одной заявке — подруги, семья, компания."
 
 start:
   questions:
@@ -21,6 +23,10 @@ start:
 fields:
   - key: guests
     type: list
+    title:
+      uk: Гості
+      en: Guests
+      ru: Гости
     question:
       uk: Хто прийде і на які послуги? Напишіть ім'я та послугу для кожної людини.
       en: Who is coming and for which services? Give a name and a service for each person.
@@ -39,6 +45,10 @@ fields:
 
   - key: date
     type: date
+    title:
+      uk: Дата
+      en: Date
+      ru: Дата
     question:
       uk: На яку дату вас записати?
       en: For which date?
@@ -47,18 +57,30 @@ fields:
 
   - key: time
     type: time
+    title:
+      uk: Час
+      en: Time
+      ru: Время
     question:
       uk: О котрій годині вам зручно почати?
       en: What time would you like to start?
 
   - key: name
     type: text
+    title:
+      uk: "Ім'я"
+      en: Name
+      ru: Имя
     question:
       uk: На чиє ім'я оформити запис?
       en: Whose name should the booking be under?
 
   - key: phone
     type: phone
+    title:
+      uk: Телефон
+      en: Phone
+      ru: Телефон
     question:
       uk: Ваш номер телефону для підтвердження?
       en: Your phone number for the confirmation?
