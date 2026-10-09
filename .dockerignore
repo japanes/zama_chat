@@ -1,0 +1,14 @@
+# The backend image is built from the project root (backend/Dockerfile) and takes only
+# what it copies. The admin has its own: admin/.dockerignore.
+*
+!backend
+!scenarios
+!docs/legacy-prompts
+
+backend/.venv
+backend/tests
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache
+**/.mypy_cache
+**/*.egg-info

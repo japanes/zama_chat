@@ -1,0 +1,118 @@
+name: zama_chat
+
+# A server: `docker compose -f docker-compose.prod.yml up -d --build` starts everything
+# from built images — the database, the search, the API, the jobs worker and the admin.
+# Nothing but .env is taken from this folder at run time.
+# With COMPOSE_FILE=docker-compose.prod.yml in .env plain `docker compose …` and `make …`
+# work with this file.
+#
+# Only the admin and the API are reachable, and only from the server itself by default
+# (BIND_ADDR): put a web server with HTTPS in front of them. The database and the search
+# have no ports at all.
+
+x-backend: &backend
+  image: zama_chat-backend
+  build:
+    context: .
+    dockerfile: backend/Dockerfile
+  env_file: .env
+  environment:
+    # inside Docker the neighbours are called by their service names, not localhost
+    DATABASE_URL: postgresql+asyncpg://zama:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/zama
+    ELASTICSEARCH_URL: http://elasticsearch:9200
+    QDRANT_URL: http://qdrant:6333
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: zama
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: zama
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zama -d zama"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  # no password: it has no port and is seen only by the API and the worker
+  elasticsearch:
+    build:
+      context: ./docker/elasticsearch
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: ${ES_JAVA_OPTS:--Xms1g -Xmx1g}
+    volumes:
+      - esdata:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  qdrant:
+    # TODO(review): version (the code uses POST /points/query — Qdrant 1.10+)
+    image: qdrant/qdrant:v1.13.6
+    volumes:
+      - qdrantdata:/qdrant/storage
+    restart: unless-stopped
+
+  # runs once on every start and exits; the API and the worker wait for it
+  migrate:
+    <<: *backend
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    <<: *backend
+    ports:
+      - "${BIND_ADDR:-127.0.0.1}:${API_PORT:-8090}:8090"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as r; r.urlopen('http://localhost:8090/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+      start_interval: 2s
+    restart: unless-stopped
+
+  worker:
+    <<: *backend
+    command: ["zama", "worker"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  admin:
+    build:
+      context: ./admin
+    environment:
+      NUXT_BACKEND_URL: http://api:8090
+    ports:
+      - "${BIND_ADDR:-127.0.0.1}:${ADMIN_PORT:-3120}:3120"
+    depends_on:
+      - api
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3120/').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+      start_interval: 2s
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  esdata:
+  qdrantdata:
