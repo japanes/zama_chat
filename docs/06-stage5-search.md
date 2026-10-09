@@ -2,7 +2,7 @@
 
 Тесты проходят (прогон 2026-10-02), кроме 5 тестов морфологии ES: они идут только при
 запущенном Elasticsearch. Elasticsearch и Qdrant поднимаются
-отдельно: `make up-search` (профиль `search` в `docker-compose.yml`).
+вместе со всем остальным: `make up` (`docker-compose.yml`).
 
 ## Что сделано
 
@@ -93,10 +93,9 @@
 ## Как попробовать
 
 ```bash
-make up-search                     # ES + Qdrant
-make migrate
-zama models add openai/text-embedding-3-large --from-gateway --kind embedding
-zama models assign embed openai/text-embedding-3-large
+make up                            # всё, вместе с ES и Qdrant; миграции применяются сами
+make zama c="models add openai/text-embedding-3-large --from-gateway --kind embedding"
+make zama c="models assign embed openai/text-embedding-3-large"
 # админка → Каталог → Импорт CSV; Поиск → «Проверить»
 ```
 
