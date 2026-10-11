@@ -51,6 +51,17 @@
 
     <div class="p-3 space-y-1 border-t border-slate-800">
       <NuxtLink
+        to="/docs"
+        :title="collapsed ? t('nav.docs') : undefined"
+        class="flex items-center gap-3 h-11 px-3 rounded-button text-[15px] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        :class="inDocs ? 'bg-slate-700 text-white font-semibold' : 'hover:bg-slate-800 hover:text-white'"
+        :aria-current="inDocs ? 'page' : undefined"
+        @click="emit('navigate')"
+      >
+        <UiIcon name="docs" />
+        <span v-if="!collapsed" class="truncate">{{ t('nav.docs') }}</span>
+      </NuxtLink>
+      <NuxtLink
         :to="hubLink"
         :title="collapsed ? t('nav.settings') : undefined"
         class="relative flex items-center gap-3 h-11 px-3 rounded-button text-[15px] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
@@ -101,6 +112,9 @@ interface Item {
   count?: number
   active?: boolean
 }
+
+// the documentation is one for every tenant: /docs
+const inDocs = computed(() => isActive('/docs'))
 
 function isActive(to: string) {
   return route.path === to || route.path.startsWith(`${to}/`)

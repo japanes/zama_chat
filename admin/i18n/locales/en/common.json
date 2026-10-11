@@ -75,7 +75,8 @@
     "decisions": "Decisions",
     "inbox": "Inbox",
     "bot_settings": "Bot settings",
-    "waiting": "Waiting for you: {n}"
+    "waiting": "Waiting for you: {n}",
+    "docs": "Documentation"
   },
   "auth": {
     "another_email": "Use another email",

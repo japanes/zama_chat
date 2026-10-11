@@ -1,0 +1,14 @@
+{
+  "docs": {
+    "title": "Documentation",
+    "sub": "How things are set up and how to work with them.",
+    "download": "Download this page",
+    "missing": "There is no such page in the documentation.",
+    "items": {
+      "scenario_file": {
+        "title": "The scenario file",
+        "sub": "How to write a scenario as a text file and upload it: every setting and a ready example."
+      }
+    }
+  }
+}

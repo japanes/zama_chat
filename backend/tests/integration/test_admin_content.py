@@ -10,7 +10,7 @@ from app.prompts.store import active_prompts
 from tests.admin_helpers import admin_headers
 from tests.conftest import chat_reply
 from tests.factories import make_model, make_tenant
-from tests.scenario_helpers import interview_data
+from tests.scenario_helpers import interview_data, scenario_doc_example
 
 pytestmark = pytest.mark.db
 
@@ -249,14 +249,13 @@ async def test_templates_are_for_those_who_edit_scenarios(client, services, tena
 async def test_the_example_of_the_format_description_is_uploaded_and_works_at_once(
     client, services, adm, tenant
 ):
-    url = f"/v1/admin/tenants/{tenant.tenant_id}/scenario-format"
-    doc = (await client.get(url, headers=adm)).json()
-    assert doc["text"].startswith("# ")
-    assert "key: consultation_request" in doc["example"]
+    # the file the documentation gives out («download an example»)
+    example = scenario_doc_example("uk")
+    assert "key: consultation_request" in example
 
     # what «upload a file» of the admin sends: the text of the file and where to switch on
-    body = {"yaml": doc["example"], "enable_in_channels": [str(tenant.channel_id)]}
-    source = {"yaml": doc["example"]}
+    body = {"yaml": example, "enable_in_channels": [str(tenant.channel_id)]}
+    source = {"yaml": example}
     checked = (await client.post(_url(tenant, "/check"), json=source, headers=adm)).json()
     assert checked["valid"] is True and checked["unchanged"] is False
     saved = (await client.post(_url(tenant), json=body, headers=adm)).json()
@@ -275,8 +274,8 @@ async def test_the_example_of_the_format_description_is_uploaded_and_works_at_on
     assert checked["unchanged"] is True
     again = (await client.post(_url(tenant), json=body, headers=adm)).json()
     assert again["created"] is False and again["scenario"]["version"] == 1
-    changed = {"yaml": doc["example"].replace("hours: 48", "hours: 24")}
-    assert changed["yaml"] != doc["example"]
+    changed = {"yaml": example.replace("hours: 48", "hours: 24")}
+    assert changed["yaml"] != example
     checked = (await client.post(_url(tenant, "/check"), json=changed, headers=adm)).json()
     assert checked["unchanged"] is False
     newer = (await client.post(_url(tenant), json=changed, headers=adm)).json()
@@ -292,15 +291,6 @@ async def test_a_file_in_json_and_a_file_with_a_mark_of_its_encoding_are_taken(
     resp = await client.post(_url(tenant, "/check"), json={"yaml": with_mark}, headers=adm)
     assert resp.json()["valid"] is True, resp.text
     assert resp.json()["key"] == "interview"
-
-
-async def test_the_format_description_is_for_those_who_edit_scenarios(client, services, tenant):
-    operator = await admin_headers(
-        services, "op@example.com", tenant_id=tenant.tenant_id, role=UserRole.OPERATOR
-    )
-    url = f"/v1/admin/tenants/{tenant.tenant_id}/scenario-format"
-    assert (await client.get(url, headers=operator)).status_code == 403
-    assert (await client.get(url)).status_code == 401
 
 
 # --- a draft from a description in words ---------------------------------------------------

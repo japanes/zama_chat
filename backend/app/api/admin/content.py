@@ -25,7 +25,6 @@ from app.db.models import Channel, ChannelScenario, Prompt, Scenario, UserRole
 from app.errors import AppError, Conflict, NotFound
 from app.prompts.store import activate_version, save_version
 from app.scenarios.draft import DESCRIPTION_LIMIT, draft_scenario
-from app.scenarios.format import read_format
 from app.scenarios.loader import parse_yaml, prepare, tenant_languages
 from app.scenarios.store import (
     definition_json,
@@ -396,15 +395,6 @@ async def scenario_templates(access: TenantAdmin, services: ServicesDep) -> dict
     """Ready scenarios to start a new one from. A template becomes a draft in the editor
     and is saved as the tenant's own scenario; nothing is saved here."""
     return {"items": list_templates(services.settings.scenario_templates_dir)}
-
-
-@router.get("/tenants/{tenant_id}/scenario-format")
-async def scenario_format(access: TenantAdmin, services: ServicesDep) -> dict[str, Any]:
-    """How to write a scenario file: {text (Markdown), example (a complete YAML file)}."""
-    found = read_format(services.settings.scenario_templates_dir)
-    if found is None:
-        raise NotFound("scenario.format_missing")
-    return found
 
 
 class ScenarioDraftIn(BaseModel):

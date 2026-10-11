@@ -1,5 +1,6 @@
 """Scenario definitions, views and decision sets for scenario tests."""
 
+import re
 import uuid
 from datetime import datetime
 from typing import Any
@@ -25,7 +26,25 @@ from app.scenarios.store import (
     enable_in_channel,
     save_scenario,
 )
+from app.settings import PROJECT_ROOT
 from tests.turn_ctx import T0
+
+# The admin's documentation of the scenario file: one text per language of the interface,
+# shown at /docs/scenario-file. Its complete example is the YAML block after a mark.
+DOCS_DIR = PROJECT_ROOT / "admin" / "docs"
+DOC_EXAMPLE = re.compile(r"<!-- example-file -->\s*```yaml\n(.*?\n)```", re.DOTALL)
+
+
+def scenario_doc(language: str) -> str:
+    return (DOCS_DIR / language / "scenario-file.md").read_text(encoding="utf-8")
+
+
+def scenario_doc_example(language: str) -> str:
+    """The file «download an example» of the documentation gives out."""
+    found = DOC_EXAMPLE.search(scenario_doc(language))
+    assert found is not None, f"no example file in the {language} documentation"
+    return found.group(1)
+
 
 # FakeDecider answers for a turn with scenarios: nothing fires, every filter passes.
 # A test overrides single keys (exact keys win over the patterns).

@@ -104,7 +104,7 @@
               <button type="button" class="link" @click="switchMode('yaml')">{{ t('editor.dev.yaml') }}</button>
               <button type="button" class="link" @click="switchMode('json')">JSON</button>
               <button type="button" class="link" @click="downloadFile">{{ t('editor.dev.download') }}</button>
-              <NuxtLink :to="`${base}/scenarios/new/format`" class="link">{{ t('editor.dev.format') }}</NuxtLink>
+              <NuxtLink to="/docs/scenario-file" class="link">{{ t('editor.dev.format') }}</NuxtLink>
               <button type="button" class="link" :aria-expanded="showKeys" @click="showKeys = !showKeys">
                 {{ t(showKeys ? 'editor.dev.keys_hide' : 'editor.dev.keys') }}
               </button>

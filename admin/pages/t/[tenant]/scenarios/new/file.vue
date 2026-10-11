@@ -92,7 +92,7 @@
       <p class="text-sm text-slate-600 dark:text-slate-300 max-w-[72ch]">{{ t('editor.file.how_sub') }}</p>
       <p class="text-sm text-slate-600 dark:text-slate-300 max-w-[72ch]">{{ t('editor.file.how_existing') }}</p>
       <div class="flex flex-wrap gap-2.5">
-        <NuxtLink :to="`${base}/scenarios/new/format`" class="btn-secondary">{{ t('editor.file.format') }}</NuxtLink>
+        <NuxtLink to="/docs/scenario-file" class="btn-secondary">{{ t('editor.file.format') }}</NuxtLink>
         <button type="button" class="btn-secondary" :disabled="fetching" @click="example">{{ t('editor.file.example') }}</button>
       </div>
     </section>
@@ -100,6 +100,7 @@
 </template>
 
 <script setup lang="ts">
+import { loadDoc } from '~/utils/docs'
 import { downloadText } from '~/utils/download'
 import { pickText } from '~/utils/texts'
 
@@ -345,11 +346,12 @@ async function run() {
 
 // --- the example file --------------------------------------------------------------------
 
+// the complete example of the documentation, in the language of the interface
 async function example() {
   fetching.value = true
   try {
-    const res = await api<{ example: string }>(path('/scenario-format'))
-    downloadText('scenario-example.yaml', res.example, 'text/yaml')
+    const doc = await loadDoc('scenario-file', locale.value)
+    downloadText('scenario-example.yaml', doc?.example || '', 'text/yaml')
   } catch (e) {
     toast.error(errorText(e))
   } finally {

@@ -75,7 +75,8 @@
     "decisions": "Решения",
     "inbox": "Входящие",
     "bot_settings": "Настройки бота",
-    "waiting": "Ждут вас: {n}"
+    "waiting": "Ждут вас: {n}",
+    "docs": "Документация"
   },
   "auth": {
     "another_email": "Другая почта",

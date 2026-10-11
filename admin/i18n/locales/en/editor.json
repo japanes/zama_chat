@@ -365,10 +365,7 @@
       "how_sub": "A file is plain text: the bot's questions, the checks of the answers and what to do with the result. The format description has every setting and a ready example.",
       "how_existing": "The file of a scenario you already have: open the scenario, then «For developers» → «download as a file».",
       "format": "Format description",
-      "format_title": "File format",
       "example": "Download an example",
-      "format_download": "Download the description",
-      "format_language": "The description is written in Russian.",
       "card_title": "From a file",
       "card_sub": "A scenario written as a text file. It is checked and starts working at once.",
       "err": {
