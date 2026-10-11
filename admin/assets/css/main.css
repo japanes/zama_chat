@@ -207,6 +207,56 @@
     @apply badge bg-[#eeebf8] text-[#5b4b9a] dark:bg-violet-500/15 dark:text-violet-300;
   }
 
+  /* --- a document: Markdown shown as a page (the description of the scenario file) --- */
+  .doc {
+    @apply text-[15px] leading-relaxed text-slate-800 dark:text-slate-200;
+  }
+  .doc h1 {
+    @apply text-[28px] leading-tight font-bold text-slate-900 dark:text-white;
+  }
+  .doc h2 {
+    @apply mt-9 mb-3 pt-6 border-t border-slate-200 dark:border-slate-700 text-xl font-bold text-slate-900 dark:text-white;
+  }
+  .doc h3 {
+    @apply mt-7 mb-2 text-[17px] font-semibold text-slate-900 dark:text-white;
+  }
+  .doc p,
+  .doc ul,
+  .doc ol,
+  .doc pre,
+  .doc table {
+    @apply my-3;
+  }
+  .doc ul {
+    @apply list-disc pl-6 space-y-1;
+  }
+  .doc ol {
+    @apply list-decimal pl-6 space-y-1;
+  }
+  .doc a {
+    @apply font-medium text-primary-dark hover:underline dark:text-primary-light;
+  }
+  .doc code {
+    @apply font-mono text-[13px] rounded bg-slate-100 dark:bg-slate-900 px-1 py-0.5;
+  }
+  .doc pre {
+    @apply rounded-input bg-slate-100 dark:bg-slate-900 p-3.5 overflow-x-auto;
+  }
+  .doc pre code {
+    @apply p-0 bg-transparent leading-5;
+  }
+  /* a wide table scrolls inside itself, the page does not */
+  .doc table {
+    @apply block overflow-x-auto border-collapse text-sm;
+  }
+  .doc th,
+  .doc td {
+    @apply border border-slate-200 dark:border-slate-700 px-3 py-2 text-left align-top;
+  }
+  .doc th {
+    @apply bg-slate-50 dark:bg-slate-900 font-semibold text-slate-900 dark:text-white;
+  }
+
   /* --- alerts --- */
   .alert {
     @apply rounded-input border px-4 py-3 text-sm;

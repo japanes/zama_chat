@@ -25,8 +25,14 @@ from app.db.models import Channel, ChannelScenario, Prompt, Scenario, UserRole
 from app.errors import AppError, Conflict, NotFound
 from app.prompts.store import activate_version, save_version
 from app.scenarios.draft import DESCRIPTION_LIMIT, draft_scenario
+from app.scenarios.format import read_format
 from app.scenarios.loader import parse_yaml, prepare, tenant_languages
-from app.scenarios.store import definition_json, enable_in_channel, save_scenario
+from app.scenarios.store import (
+    definition_json,
+    enable_in_channel,
+    is_working_version,
+    save_scenario,
+)
 from app.scenarios.templates import list_templates
 
 router = APIRouter(prefix="/v1/admin", tags=["admin-content"])
@@ -392,6 +398,15 @@ async def scenario_templates(access: TenantAdmin, services: ServicesDep) -> dict
     return {"items": list_templates(services.settings.scenario_templates_dir)}
 
 
+@router.get("/tenants/{tenant_id}/scenario-format")
+async def scenario_format(access: TenantAdmin, services: ServicesDep) -> dict[str, Any]:
+    """How to write a scenario file: {text (Markdown), example (a complete YAML file)}."""
+    found = read_format(services.settings.scenario_templates_dir)
+    if found is None:
+        raise NotFound("scenario.format_missing")
+    return found
+
+
 class ScenarioDraftIn(BaseModel):
     # what the bot must do, in the person's own words
     description: str = Field(min_length=1, max_length=DESCRIPTION_LIMIT)
@@ -415,19 +430,22 @@ async def draft_scenario_route(
 async def check_scenario(
     body: ScenarioSource, access: TenantAdmin, services: ServicesDep
 ) -> dict[str, Any]:
-    """Check without saving: {valid, error, warnings, definition (normalized)}."""
+    """Check without saving: {valid, error, warnings, definition (normalized), unchanged
+    (the working version is the same: saving would change nothing)}."""
     async with services.sm() as session:
         tenant = await get_tenant(session, access.tenant_id)
-    try:
-        defn, warnings = prepare(body.data(), tenant_languages(tenant))
-    except AppError as exc:
-        return {"valid": False, "error": exc.to_dict(), "warnings": [], "definition": None}
+        try:
+            defn, warnings = prepare(body.data(), tenant_languages(tenant))
+        except AppError as exc:
+            return {"valid": False, "error": exc.to_dict(), "warnings": [], "definition": None}
+        unchanged = await is_working_version(session, access.tenant_id, defn)
     return {
         "valid": True,
         "error": None,
         "warnings": warnings,
         "key": defn.key,
         "definition": definition_json(defn),
+        "unchanged": unchanged,
     }
 
 

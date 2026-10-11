@@ -355,8 +355,13 @@ def parse_definition(data: Any) -> ScenarioDef:
     try:
         return ScenarioDef.model_validate(data)
     except ValidationError as exc:
+        # `type` (missing, extra_forbidden…) lets the admin say it in the person's language
         errors = [
-            {"loc": ".".join(str(p) for p in err.get("loc", ())), "msg": err.get("msg", "")}
+            {
+                "loc": ".".join(str(p) for p in err.get("loc", ())),
+                "msg": err.get("msg", ""),
+                "type": err.get("type", ""),
+            }
             for err in exc.errors()
         ]
         raise AppError("scenario.invalid", {"errors": errors}) from exc

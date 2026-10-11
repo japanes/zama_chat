@@ -1,7 +1,8 @@
 <template>
   <div class="max-w-[980px] mx-auto space-y-7">
     <!-- Where a new scenario starts: describe it in words, take a ready one, or a blank.
-         Each way ends in the editor with a draft that is not saved yet. -->
+         Each way ends in the editor with a draft that is not saved yet. A scenario written
+         as a file goes its own way: it is uploaded and works without the editor. -->
     <header class="space-y-1.5">
       <NuxtLink :to="`${base}/scenarios`" class="link inline-flex items-center gap-1.5 text-sm">
         <UiIcon name="chevron-left" :size="16" /> {{ t('editor.all') }}
@@ -68,6 +69,13 @@
             <p class="mt-1 text-sm text-slate-600 dark:text-slate-300">{{ t('editor.new.blank_sub') }}</p>
           </div>
           <NuxtLink :to="`${base}/scenarios/new/edit`" class="btn-secondary w-full mt-auto">{{ t('editor.new.blank_button') }}</NuxtLink>
+        </li>
+        <li class="card card-body flex flex-col gap-3 border-dashed">
+          <div>
+            <h3 class="text-[17px] font-semibold text-slate-900 dark:text-white">{{ t('editor.file.card_title') }}</h3>
+            <p class="mt-1 text-sm text-slate-600 dark:text-slate-300">{{ t('editor.file.card_sub') }}</p>
+          </div>
+          <NuxtLink :to="`${base}/scenarios/new/file`" class="btn-secondary w-full mt-auto">{{ t('editor.file.button') }}</NuxtLink>
         </li>
       </ul>
     </section>

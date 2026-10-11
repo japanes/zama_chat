@@ -5,9 +5,14 @@
         <h1 class="page-title">{{ t('nav.scenarios') }}</h1>
         <p class="page-sub">{{ t('editor.list.sub') }}</p>
       </div>
-      <NuxtLink v-if="can('admin')" :to="`${base}/scenarios/new`" class="btn-primary">
-        <UiIcon name="plus" :size="16" /> {{ t('scenarios.new') }}
-      </NuxtLink>
+      <div v-if="can('admin')" class="flex flex-wrap gap-2.5">
+        <NuxtLink :to="`${base}/scenarios/new/file`" class="btn-secondary">
+          <UiIcon name="upload" :size="16" /> {{ t('editor.file.button') }}
+        </NuxtLink>
+        <NuxtLink :to="`${base}/scenarios/new`" class="btn-primary">
+          <UiIcon name="plus" :size="16" /> {{ t('scenarios.new') }}
+        </NuxtLink>
+      </div>
     </div>
 
     <UiState :loading="loading" :error="error" :has-data="loaded" :retry="load">

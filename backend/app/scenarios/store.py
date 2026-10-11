@@ -186,6 +186,20 @@ def scenario_title(defn: ScenarioDef) -> str:
     return defn.text(defn.title, defn.language).text
 
 
+async def is_working_version(
+    session: AsyncSession, tenant_id: uuid.UUID, defn: ScenarioDef
+) -> bool:
+    """The definition is the working version as it is: saving it would change nothing."""
+    active = (
+        await session.execute(
+            select(Scenario.definition).where(
+                Scenario.tenant_id == tenant_id, Scenario.key == defn.key, Scenario.is_active
+            )
+        )
+    ).scalar_one_or_none()
+    return active is not None and active == definition_json(defn)
+
+
 async def save_scenario(
     session: AsyncSession,
     tenant_id: uuid.UUID,

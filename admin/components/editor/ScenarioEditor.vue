@@ -103,6 +103,8 @@
               <span>{{ t('editor.dev.title') }}:</span>
               <button type="button" class="link" @click="switchMode('yaml')">{{ t('editor.dev.yaml') }}</button>
               <button type="button" class="link" @click="switchMode('json')">JSON</button>
+              <button type="button" class="link" @click="downloadFile">{{ t('editor.dev.download') }}</button>
+              <NuxtLink :to="`${base}/scenarios/new/format`" class="link">{{ t('editor.dev.format') }}</NuxtLink>
               <button type="button" class="link" :aria-expanded="showKeys" @click="showKeys = !showKeys">
                 {{ t(showKeys ? 'editor.dev.keys_hide' : 'editor.dev.keys') }}
               </button>
@@ -214,6 +216,7 @@
 <script setup lang="ts">
 import yaml from 'js-yaml'
 import { EDITOR_CONTEXT, languageName } from '~/composables/useEditorContext'
+import { downloadText } from '~/utils/download'
 import {
   KEY_RE,
   NOTIFY_ACTIONS,
@@ -436,6 +439,10 @@ function setKey(key: string) {
 
 // --- form ⇄ text: the text is parsed only when leaving it ----------------------------
 
+function asYaml(): string {
+  return yaml.dump(cleanDefinition(def.value), { lineWidth: 100, noRefs: true })
+}
+
 function switchMode(next: Mode) {
   if (next === mode.value) return
   if (mode.value !== 'form') {
@@ -444,10 +451,15 @@ function switchMode(next: Mode) {
     def.value = toForm(parsed)
     if (!langs.value.includes(lang.value)) lang.value = def.value.language
   }
-  if (next === 'yaml') source.value = yaml.dump(cleanDefinition(def.value), { lineWidth: 100, noRefs: true })
+  if (next === 'yaml') source.value = asYaml()
   if (next === 'json') source.value = JSON.stringify(cleanDefinition(def.value), null, 2)
   parseError.value = null
   mode.value = next
+}
+
+// the scenario as a file: what «upload a file» takes back after it was edited by hand
+function downloadFile() {
+  downloadText(`${def.value.key || 'scenario'}.yaml`, asYaml(), 'text/yaml')
 }
 
 function parseSource(): any | null {
