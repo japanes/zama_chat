@@ -12,7 +12,8 @@ From stage 2 a RespondPlan (scenarios/plan.py) adds `scenario_step` to the user 
 answer the client's own question first (if any), then the next scenario question /
 the clarification / "everything is collected". The rules for it are the prompt
 `scenario_step` (prompts/builtin.py). A bare greeting in the middle of a scenario goes
-the normal way, so the bot greets back and asks the next question.
+the normal way, so the bot greets back and asks the next question. With the card of the
+dialogue (`known`) go the rules of the prompt `scenario_card`.
 """
 
 from dataclasses import dataclass
@@ -26,6 +27,8 @@ from app.db.models import LlmRole, MessageRole
 from app.logging import get_logger
 from app.operator import variants as op_variants
 from app.prompts.builtin import (
+    SCENARIO_CARD,
+    SCENARIO_CARD_KEY,
     SCENARIO_STEP,
     SCENARIO_STEP_KEY,
     SEARCH_CONTEXT,
@@ -50,6 +53,7 @@ PROMPT_KEYS = (
     USER_KEY,
     *SERVICE_KEYS.values(),
     SCENARIO_STEP_KEY,
+    SCENARIO_CARD_KEY,
     SEARCH_CONTEXT_KEY,
 )
 # service types answered the normal way when a scenario step is due
@@ -156,6 +160,14 @@ def scenario_rules(prompts: dict[str, PromptText]) -> list[str]:
     return list(SCENARIO_STEP["rules"])
 
 
+def step_rules(prompts: dict[str, PromptText], plan: "RespondPlan") -> list[str]:
+    """The rules of the scenario step; with the card — and the card's rules."""
+    rules = scenario_rules(prompts)
+    if plan.known:
+        rules += prompt_rules(prompts, SCENARIO_CARD_KEY, SCENARIO_CARD)
+    return rules
+
+
 def pick_prompt(
     route: Route, prompts: dict[str, PromptText], plan: "RespondPlan | None" = None
 ) -> tuple[PromptText, bool]:  # (prompt, is_service)
@@ -197,7 +209,7 @@ async def respond(
         messages = service_messages(ctx, prompt, rewritten, reply_language)
     else:
         if plan is not None:
-            step_data = plan.to_prompt(scenario_rules(prompts))
+            step_data = plan.to_prompt(step_rules(prompts, plan))
         messages = answer_messages(
             ctx,
             prompts[SYSTEM_KEY],
@@ -219,6 +231,9 @@ async def respond(
     if step_data is not None:
         rules = prompts.get(SCENARIO_STEP_KEY)
         info["scenario_step_version"] = rules.version if rules is not None else None
+        if "known" in step_data:
+            card_rules = prompts.get(SCENARIO_CARD_KEY)
+            info["scenario_card_version"] = card_rules.version if card_rules else None
     info["service"] = is_service
     if search is not None and search.searched:
         info["context"] = len(search.context)

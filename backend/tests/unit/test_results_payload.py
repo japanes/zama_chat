@@ -44,6 +44,8 @@ def test_collected_splits_fields_partial_and_missing():
         "missing": ["offer", "positioning"],
         "refs": {},
         "normalized": {},
+        "hidden": [],
+        "closed": [],
     }
 
 
@@ -54,6 +56,8 @@ def test_collected_of_nothing():
         "missing": ["niche", "offer", "positioning"],
         "refs": {},
         "normalized": {},
+        "hidden": [],
+        "closed": [],
     }
 
 

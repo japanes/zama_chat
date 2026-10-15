@@ -18,7 +18,18 @@
       "recheck": "To recheck",
       "stuck": "Stuck",
       "review": "In review",
-      "normalized": "as data"
+      "normalized": "as data",
+      "hidden": "Not asked: does not apply",
+      "closed": "Closed after failed answers",
+      "added": "Added {at}",
+      "question": "Question",
+      "asked": "The bot asked",
+      "show_yes": "Condition: ask",
+      "show_no": "Condition: do not ask",
+      "show_unknown": "the check gave no full answer",
+      "yes": "yes",
+      "no": "no",
+      "unsure": "no answer"
     },
     "fields": "Fields",
     "finished": "Finished",
@@ -42,7 +53,8 @@
     "waiting_for": "Waiting for",
     "waiting": {
       "event": "an event from an external system",
-      "receipt_review": "a person to check the receipt"
+      "receipt_review": "a person to check the receipt",
+      "fields": "new questions from an outside server"
     },
     "external": "Last external event",
     "external_data": "Event data"

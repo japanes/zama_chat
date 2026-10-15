@@ -15,6 +15,11 @@ window.
   POST /v1/runs/{id}/skip      close the asked question without an answer
   POST /v1/runs/{id}/confirm   the «yes, everything is correct» given in the caller's
                                interface
+  POST /v1/runs/{id}/fields    new questions for a run of a `completion: by_caller`
+                               scenario (a running one or one that waits for them); the bot
+                               asks the first of them in its own words (a bot turn, paid
+                               like any) or word for word (`added.wording: as_sent`)
+  POST /v1/runs/{id}/finish    «no more questions»: a `by_caller` run completes, silently
 
 Auth: `Authorization: Bearer <api key>`. The key belongs to one channel: only scenarios
 switched on in that channel start, only runs of that channel are seen.
@@ -22,8 +27,12 @@ switched on in that channel start, only runs of that channel are seen.
 A contact has one conversation, a conversation one open run per scenario — a caller that
 needs several dialogues of one scenario uses one contact per dialogue.
 
-Changes of a run outside a turn (start / skip / confirm) take the conversation lease like
-POST /v1/events does and write through scenarios/outside.py.
+Changes of a run outside a turn (start / skip / confirm / fields / finish) take the
+conversation lease like POST /v1/events does and write through scenarios/outside.py.
+
+A choice question with `options_from: caller` has no options in the file: they come with
+POST /v1/runs/start (`options`) and live with the run (scenario_runs.extra), like the
+added questions do.
 """
 
 import uuid
@@ -32,7 +41,7 @@ from decimal import Decimal
 from typing import Any
 
 from fastapi import APIRouter
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -40,7 +49,9 @@ from app.api.deps import ApiClient, ApiClientDep, ServicesDep
 from app.api.v1.messages import ContactIn, MessageIn, MessageOut, post_message
 from app.core.ingest import upsert_contact, upsert_conversation
 from app.core.language import REPLY_LANGUAGE_PIN, normalize_code
+from app.core.pipeline import ask_pipeline
 from app.core.tenant_settings import effective_settings
+from app.core.turn import run_turn
 from app.db.base import new_id
 from app.db.models import (
     OPEN_STATUSES,
@@ -64,12 +75,32 @@ from app.decisions.engine import DecideContext, DecisionSet
 from app.errors import AppError, Conflict, NotFound
 from app.scenarios import fields as fl
 from app.scenarios.checks import CheckItem, answers_fit, ask_filters
-from app.scenarios.events import SKIPPED
-from app.scenarios.outside import Change, confirmed, lock_run, settle, under_lease, write_run
+from app.scenarios.events import FIELDS_ADDED, PAUSED, SKIPPED
+from app.scenarios.outside import (
+    WAITING_FIELDS,
+    Change,
+    back_status,
+    confirmed,
+    lock_run,
+    settle,
+    under_lease,
+    waiting_say,
+    write_run,
+)
 from app.scenarios.plan import CONFIRM_QUESTION
 from app.scenarios.questions import CONFIRM
-from app.scenarios.schema import ActionEvent, FieldType, ScenarioDef, parse_definition
-from app.scenarios.store import load_definition
+from app.scenarios.schema import (
+    ActionEvent,
+    AddedFields,
+    Completion,
+    FieldDef,
+    FieldType,
+    Option,
+    ScenarioDef,
+    check_definition,
+    parse_definition,
+)
+from app.scenarios.store import ADDED_AT, effective_definition, load_run_definition
 from app.services import Services
 
 router = APIRouter(prefix="/v1", tags=["runs"])
@@ -79,6 +110,11 @@ TALKING = (RunStatus.FOCUS, RunStatus.PAUSED)
 
 
 # --- what the caller gets -----------------------------------------------------------------
+
+
+class OptionOut(BaseModel):
+    key: str
+    label: str
 
 
 class FieldOut(BaseModel):
@@ -93,6 +129,16 @@ class FieldOut(BaseModel):
     skipped: bool
     reasks: int
     stuck: bool
+    # how the bot asked it: its message before the answer
+    asked: str | None = None
+    # show_if said the question does not apply: not asked, what was said is kept
+    hidden: bool = False
+    # an added question closed after too many failed answers, with what the client said
+    closed: bool = False
+    # a choice question: its options (from the file or from POST /v1/runs/start)
+    options: list[OptionOut] | None = None
+    # an added question (POST /v1/runs/{id}/fields): when it came
+    added_at: datetime | None = None
 
 
 class RunOut(BaseModel):
@@ -104,6 +150,9 @@ class RunOut(BaseModel):
     status: str
     # the question the bot asked last: a field key, "@confirm" or null
     asking: str | None
+    # status waiting: "event" (POST /v1/events), "receipt_review", "fields" (a by_caller run
+    # asked everything it has and waits for POST /v1/runs/{id}/fields or /finish)
+    waiting_for: str | None = None
     language: str
     needs_confirm: bool
     confirmed: bool
@@ -169,9 +218,26 @@ def _confirm_question(defn: ScenarioDef, language: str) -> str | None:
     return CONFIRM_QUESTION.get(language, CONFIRM_QUESTION["en"])
 
 
+def _options(defn: ScenarioDef, f: FieldDef, language: str) -> list[OptionOut] | None:
+    if f.type != FieldType.CHOICE:
+        return None
+    return [OptionOut(key=o.key, label=_text(defn, o.label, language) or o.key) for o in f.options]
+
+
+def _added_at(run: ScenarioRun) -> dict[str, datetime]:
+    out = {}
+    for raw in (run.extra or {}).get("fields") or []:
+        at = raw.get(ADDED_AT)
+        if isinstance(at, str):
+            out[str(raw["key"])] = datetime.fromisoformat(at)
+    return out
+
+
 def run_out(run: ScenarioRun, defn: ScenarioDef) -> RunOut:
     language = run.reply_language or defn.language
     states = fl.load_states(defn, run.fields)
+    added = _added_at(run)
+    data = dict(run.data or {})
     return RunOut(
         id=run.id,
         scenario=run.scenario_key,
@@ -179,6 +245,7 @@ def run_out(run: ScenarioRun, defn: ScenarioDef) -> RunOut:
         title=_text(defn, defn.title, language) or defn.key,
         status=run.status,
         asking=run.asking,
+        waiting_for=data.get("waiting_for") if run.status == RunStatus.WAITING else None,
         language=language,
         needs_confirm=defn.needs_confirm,
         confirmed=confirmed(defn, dict(run.data or {})),
@@ -194,6 +261,11 @@ def run_out(run: ScenarioRun, defn: ScenarioDef) -> RunOut:
                 skipped=states[f.key].skipped,
                 reasks=states[f.key].reasks,
                 stuck=states[f.key].stuck,
+                asked=states[f.key].asked,
+                hidden=states[f.key].hidden,
+                closed=states[f.key].closed,
+                options=_options(defn, f, language),
+                added_at=added.get(f.key),
             )
             for f in defn.fields
         ],
@@ -277,7 +349,7 @@ async def _state(
             run = await _run_of(session, conversation_id, scenario)
         if run is None:
             return StateOut(conversation_id=conversation_id, run=None)
-        defn = await load_definition(session, run.scenario_id)
+        defn = await load_run_definition(session, run)
         rows = await _messages(session, conversation_id, run.started_at, messages)
         return StateOut(conversation_id=conversation_id, run=run_out(run, defn), messages=rows)
 
@@ -310,7 +382,51 @@ class StartIn(BaseModel):
     language: str | None = Field(default=None, max_length=32)
     # questions the caller already has answers to: closed without an answer, never asked
     skip: list[str] = Field(default_factory=list, max_length=200)
+    # the options of the choice questions with `options_from: caller`, by question key;
+    # required for each of them (not skipped)
+    options: dict[str, list["OptionIn"]] = Field(default_factory=dict, max_length=50)
     messages: int = Field(default=0, ge=0, le=500)
+
+
+class OptionIn(BaseModel):
+    key: str = Field(min_length=1, max_length=64)
+    # what the client sees; the bot also reads it when it is asked about an option
+    label: str = Field(min_length=1, max_length=1000)
+
+
+StartIn.model_rebuild()
+
+# options of one question given at the start
+OPTIONS_MIN, OPTIONS_MAX = 1, 10
+
+
+def _start_options(defn: ScenarioDef, body: StartIn) -> dict[str, list[dict[str, str]]]:
+    """The caller's options, checked: only for `options_from: caller` questions, each of
+    them has 1–10, keys unique."""
+    caller = set(defn.caller_options)
+    wrong = sorted(k for k in body.options if k not in caller)
+    if wrong:
+        raise AppError("run.options_not_allowed", {"fields": wrong}, status=422)
+    missing = sorted(k for k in caller if k not in body.options and k not in body.skip)
+    if missing:
+        raise AppError("run.options_missing", {"fields": missing}, status=422)
+    out: dict[str, list[dict[str, str]]] = {}
+    for key, options in body.options.items():
+        if not OPTIONS_MIN <= len(options) <= OPTIONS_MAX:
+            raise AppError(
+                "run.options_count",
+                {"field": key, "min": OPTIONS_MIN, "max": OPTIONS_MAX, "given": len(options)},
+                status=422,
+            )
+        keys = [o.key for o in options]
+        if len(set(keys)) != len(keys):
+            raise AppError("run.options_duplicate", {"field": key}, status=422)
+        try:
+            # a bad key («a b») fails as it would in the file
+            out[key] = [Option.model_validate(o.model_dump()).model_dump() for o in options]
+        except ValidationError as exc:
+            raise AppError("run.options_invalid", {"field": key}, status=422) from exc
+    return out
 
 
 async def _channel_scenario(session: AsyncSession, client: ApiClient, key: str) -> Scenario:
@@ -613,6 +729,7 @@ async def start_run(body: StartIn, client: ApiClientDep, services: ServicesDep) 
         unknown = [key for key in body.skip if key not in defn.field_keys]
         if unknown:
             raise AppError("run.unknown_fields", {"fields": unknown}, status=422)
+        options = _start_options(defn, body)
         language = await _run_language(session, client, body.language)
         contact = await upsert_contact(
             session,
@@ -630,7 +747,9 @@ async def start_run(body: StartIn, client: ApiClientDep, services: ServicesDep) 
         )
 
     async def body_fn(session: AsyncSession, conv: Conversation) -> uuid.UUID:
-        return await _start(session, services, conv, scenario, defn, language, body.skip)
+        return await _start(
+            session, services, conv, scenario, defn, language, body.skip, options=options
+        )
 
     run_id = await under_lease(services, conversation_id, f"api:{uuid.uuid4().hex}", body_fn)
     return await _state(services, conversation_id, run_id=run_id, messages=body.messages)
@@ -644,6 +763,8 @@ async def _start(
     defn: ScenarioDef,
     language: str | None,
     skip: list[str],
+    *,
+    options: dict[str, list[dict[str, str]]] | None = None,
 ) -> uuid.UUID:
     now = services.clock.now()
     open_runs = list(
@@ -669,6 +790,8 @@ async def _start(
         conv.state = {**(conv.state or {}), REPLY_LANGUAGE_PIN: language}
         conv.reply_language = language
     said_in = language or conv.reply_language or defn.language
+    extra: dict[str, Any] = {"options": options} if options else {}
+    defn = effective_definition(defn, extra)
 
     states = fl.load_states(defn, {})
     change = Change()
@@ -689,6 +812,7 @@ async def _start(
         fields={},
         events=[],
         data={},
+        extra=extra,
         delivery_seq=0,
         client_language=conv.client_language,
         reply_language=said_in,
@@ -697,6 +821,10 @@ async def _start(
     )
     data: dict[str, Any] = {}
     _ask_next(run, defn, states, data, change, said_in)
+    if run.asking is None and defn.completion == Completion.BY_CALLER:
+        # every question skipped: it waits for the caller's questions at once
+        await settle(session, run, defn, states, data, change, now)
+        change.say = waiting_say(defn, said_in)
     session.add(run)
     await write_run(session, services, conv, run, defn, states, data, change, now, meta=_META)
     return run.id
@@ -763,7 +891,7 @@ async def run_message(
                     )
                 )
             ).scalar_one_or_none()
-        state = run_out(run, await load_definition(session, run.scenario_id)) if run else None
+        state = run_out(run, await load_run_definition(session, run)) if run else None
         usage = await _usage(session, out.turn_id) if out.turn_id is not None else None
     return RunMessageOut(**out.model_dump(), run=state, usage=usage)
 
@@ -869,7 +997,7 @@ async def _skip(
     assert run is not None
     if run.status not in TALKING:
         raise Conflict("run.not_open", {"status": run.status})
-    defn = await load_definition(session, run.scenario_id)
+    defn = await load_run_definition(session, run)
     key = field_key or run.asking
     if key is None or key == CONFIRM:
         raise Conflict("run.nothing_asked")
@@ -894,6 +1022,8 @@ async def _skip(
         _ask_next(run, defn, states, data, change, run.reply_language or defn.language)
         if run.status != RunStatus.FOCUS:
             change.say = None  # put aside: the question is asked when the run comes back
+    elif run.status == RunStatus.WAITING and data.get("waiting_for") == WAITING_FIELDS:
+        change.say = waiting_say(defn, run.reply_language or defn.language)
     await write_run(session, services, conv, run, defn, states, data, change, now, meta=_META)
 
 
@@ -924,7 +1054,7 @@ async def _confirm(
     run = await lock_run(session, run_id)
     assert run is not None
     data = dict(run.data or {})
-    defn = await load_definition(session, run.scenario_id)
+    defn = await load_run_definition(session, run)
     if run.status in (RunStatus.COMPLETED, RunStatus.WAITING) or (
         run.status in TALKING and defn.needs_confirm and data.get("confirmed_at")
     ):
@@ -943,4 +1073,240 @@ async def _confirm(
     if run.status in TALKING:
         # a receipt is asked after the «yes»
         _ask_next(run, defn, states, data, change, run.reply_language or defn.language)
+    await write_run(session, services, conv, run, defn, states, data, change, now, meta=_META)
+
+
+# --- added questions / finish (completion: by_caller) ------------------------------------------
+
+
+class AddedFilterIn(BaseModel):
+    key: str = Field(min_length=1, max_length=64)
+    # the yes/no question the answer has to pass
+    ask: str | dict[str, str]
+    # what such an answer lacks (the bot says it when it asks again); optional
+    no: str | dict[str, str] | None = None
+
+
+class AddedFieldIn(BaseModel):
+    # unique in the run: neither the scenario's nor an added question has it
+    key: str = Field(min_length=1, max_length=64)
+    # what to ask: the meaning, the bot words it (or sends it as is — `added.wording`)
+    question: str | dict[str, str]
+    # what counts as an answer
+    description: str | dict[str, str] | None = None
+    title: str | dict[str, str] | None = None
+    filters: list[AddedFilterIn] = Field(default_factory=list, max_length=10)
+
+
+class FieldsIn(BaseModel):
+    fields: list[AddedFieldIn] = Field(min_length=1, max_length=20)
+    # take the dialogue: the run in the focus is put aside (paused) and this one asks now;
+    # without it a run that waited goes back paused while another one has the focus
+    focus: bool = False
+    messages: int = Field(default=0, ge=0, le=500)
+
+
+class FieldsOut(StateOut):
+    # the bot turn that asked the question in the bot's own words; null — no model call
+    usage: UsageOut | None = None
+
+
+def _added_def(item: AddedFieldIn) -> FieldDef:
+    raw = item.model_dump(exclude_none=True)
+    try:
+        return FieldDef.model_validate({**raw, "type": FieldType.TEXT})
+    except ValidationError as exc:
+        errors = [
+            {"loc": ".".join(str(p) for p in e.get("loc", ())), "type": e.get("type", "")}
+            for e in exc.errors()
+        ]
+        raise AppError(
+            "run.field_invalid", {"fields": [item.key], "errors": errors}, status=422
+        ) from exc
+
+
+def _stored(f: FieldDef) -> dict[str, Any]:
+    return f.model_dump(mode="json", exclude_none=True, exclude_defaults=True)
+
+
+@router.post("/runs/{run_id}/fields", response_model=FieldsOut)
+async def add_fields(
+    run_id: uuid.UUID, body: FieldsIn, client: ApiClientDep, services: ServicesDep
+) -> FieldsOut:
+    """New text questions for a run of a `completion: by_caller` scenario, asked after the
+    scenario's own: a running run asks them in turn, a run that waits for them goes back to
+    the client. The same question sent again changes nothing; the same key with another
+    text is refused. The bot asks the first new question at once when the run has the
+    focus: in its own words — a bot turn with the card of the dialogue, paid like any turn
+    (`usage`) — or word for word (`added.wording: as_sent`)."""
+    found = await _own_run(services, client, run_id)
+
+    async def body_fn(session: AsyncSession, conv: Conversation) -> bool:
+        return await _add_fields(session, services, conv, run_id, body)
+
+    owner = f"api:{uuid.uuid4().hex}"
+    ask = await under_lease(services, found.conversation_id, owner, body_fn)
+    usage = None
+    if ask:
+        outcome = await run_turn(
+            services,
+            found.conversation_id,
+            owner=owner,
+            wait_seconds=services.settings.http_lease_wait_seconds,
+            pipeline=ask_pipeline,
+            bot_only=True,
+        )
+        if outcome is not None:
+            async with services.sm() as session:
+                usage = await _usage(session, outcome.turn_id)
+    state = await _state(services, found.conversation_id, run_id=run_id, messages=body.messages)
+    return FieldsOut(**state.model_dump(), usage=usage)
+
+
+async def _add_fields(
+    session: AsyncSession,
+    services: Services,
+    conv: Conversation,
+    run_id: uuid.UUID,
+    body: FieldsIn,
+) -> bool:
+    """True — the bot has to word the question now (a bot turn after the lease)."""
+    now = services.clock.now()
+    run = await lock_run(session, run_id)
+    assert run is not None
+    defn = await load_run_definition(session, run)
+    if defn.completion != Completion.BY_CALLER:
+        raise AppError("run.fields_not_allowed", {"completion": str(defn.completion)}, status=422)
+    data = dict(run.data or {})
+    waiting = run.status == RunStatus.WAITING and data.get("waiting_for") == WAITING_FIELDS
+    if run.status not in TALKING and not waiting:
+        raise Conflict("run.not_open", {"status": run.status})
+
+    extra = dict(run.extra or {})
+    stored = list(extra.get("fields") or [])
+    by_key = {str(raw["key"]): {k: v for k, v in raw.items() if k != ADDED_AT} for raw in stored}
+    new: list[dict[str, Any]] = []
+    for item in body.fields:
+        f = _added_def(item)
+        raw = _stored(f)
+        if f.key in by_key:
+            if by_key[f.key] != raw:
+                raise Conflict("run.field_exists", {"field": f.key})
+            continue  # sent again: nothing to do
+        if f.key in defn.field_keys or any(r["key"] == f.key for r in new):
+            raise Conflict("run.field_exists", {"field": f.key})
+        new.append(raw)
+    if not new:
+        return False
+    rules = defn.added or AddedFields()
+    if rules.max_fields is not None and len(stored) + len(new) > rules.max_fields:
+        raise AppError(
+            "run.too_many_fields", {"max": rules.max_fields, "have": len(stored)}, status=422
+        )
+    extra["fields"] = [*stored, *({**raw, ADDED_AT: now.isoformat()} for raw in new)]
+    try:
+        defn = effective_definition(defn, extra)
+        check_definition(defn, [])
+    except ValidationError as exc:
+        keys = [r["key"] for r in new]
+        raise AppError("run.field_invalid", {"fields": keys}, status=422) from exc
+    run.extra = extra
+    states = fl.load_states(defn, run.fields)
+    change = Change()
+    for raw in new:
+        change.add(FIELDS_ADDED, raw["key"])
+
+    took = body.focus and run.status != RunStatus.FOCUS
+    if took:
+        await _pause_focus(session, services, conv, run, now)
+    if waiting or took:
+        for key in ("waiting_for", "waiting_since"):
+            data.pop(key, None)
+        run.status = RunStatus.FOCUS if body.focus else await back_status(session, run)
+    ask = False
+    # a run with a question on the screen asks the new ones in turn
+    if run.status == RunStatus.FOCUS and (waiting or took or run.asking is None):
+        _ask_next(run, defn, states, data, change, run.reply_language or defn.language)
+        if rules.wording == "own_words":
+            change.say = None
+            ask = run.asking is not None
+    await write_run(session, services, conv, run, defn, states, data, change, now, meta=_META)
+    return ask
+
+
+async def _pause_focus(
+    session: AsyncSession,
+    services: Services,
+    conv: Conversation,
+    run: ScenarioRun,
+    now: datetime,
+) -> None:
+    """`focus: true`: the run talking now is put aside, as by the client's «stop»; it gets
+    the dialogue back when this one has asked everything (scenarios/runtime.py pass_focus)."""
+    other = (
+        await session.execute(
+            select(ScenarioRun)
+            .where(
+                ScenarioRun.conversation_id == run.conversation_id,
+                ScenarioRun.status == RunStatus.FOCUS,
+                ScenarioRun.id != run.id,
+            )
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    if other is None:
+        return
+    other_defn = await load_run_definition(session, other)
+    change = Change()
+    change.add(PAUSED)
+    other.status = RunStatus.PAUSED
+    states = fl.load_states(other_defn, other.fields)
+    data = dict(other.data or {})
+    await write_run(
+        session, services, conv, other, other_defn, states, data, change, now, meta=_META
+    )
+
+
+class FinishIn(BaseModel):
+    messages: int = Field(default=0, ge=0, le=500)
+
+
+@router.post("/runs/{run_id}/finish", response_model=StateOut)
+async def finish_run(
+    run_id: uuid.UUID, body: FinishIn, client: ApiClientDep, services: ServicesDep
+) -> StateOut:
+    """«No more questions»: a run of a `completion: by_caller` scenario completes — silently,
+    the bot says nothing — and its actions on `completed` fire (the results go out). A run
+    already completed → nothing changes."""
+    found = await _own_run(services, client, run_id)
+
+    async def body_fn(session: AsyncSession, conv: Conversation) -> None:
+        await _finish(session, services, conv, run_id)
+
+    await under_lease(services, found.conversation_id, f"api:{uuid.uuid4().hex}", body_fn)
+    return await _state(services, found.conversation_id, run_id=run_id, messages=body.messages)
+
+
+async def _finish(
+    session: AsyncSession, services: Services, conv: Conversation, run_id: uuid.UUID
+) -> None:
+    now = services.clock.now()
+    run = await lock_run(session, run_id)
+    assert run is not None
+    defn = await load_run_definition(session, run)
+    if defn.completion != Completion.BY_CALLER:
+        raise AppError("run.finish_not_allowed", {"completion": str(defn.completion)}, status=422)
+    if run.status == RunStatus.COMPLETED:
+        return
+    if run.status not in OPEN_STATUSES:
+        raise Conflict("run.not_open", {"status": run.status})
+    data = dict(run.data or {})
+    for key in ("waiting_for", "waiting_since"):
+        data.pop(key, None)
+    run.status = RunStatus.COMPLETED
+    run.asking = None
+    run.finished_at = now
+    change = Change()
+    change.add(ActionEvent.COMPLETED)
+    states = fl.load_states(defn, run.fields)
     await write_run(session, services, conv, run, defn, states, data, change, now, meta=_META)

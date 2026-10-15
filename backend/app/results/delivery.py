@@ -35,7 +35,7 @@ from app.jobs.worker import Fail, JobContext, Retry
 from app.logging import get_logger
 from app.results.service import build_payload
 from app.scenarios.schema import ScenarioDef
-from app.scenarios.store import load_definition
+from app.scenarios.store import load_run_definition
 
 if TYPE_CHECKING:
     from app.services import Services
@@ -173,7 +173,7 @@ async def resend(
     endpoint = await session.get(Endpoint, old.endpoint_id) if old.endpoint_id else None
     if run is None or endpoint is None:
         return None
-    defn = await load_definition(session, run.scenario_id)
+    defn = await load_run_definition(session, run)
     return await queue_delivery(
         session,
         run,

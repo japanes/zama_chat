@@ -9,6 +9,7 @@ from typing import Any
 from app.db.models import Channel, Contact, RunStatus, ScenarioRun
 from app.scenarios.fields import FILLED, PARTIAL, REVIEW, load_states
 from app.scenarios.schema import ActionEvent, ScenarioDef
+from app.scenarios.store import added_keys
 
 # result status by the event that sends it
 EVENT_STATUS = {
@@ -43,13 +44,18 @@ def collected(defn: ScenarioDef, raw: dict[str, Any] | None) -> dict[str, Any]:
     """fields (accepted answers, the client's words), partial (incomplete or not
     re-checked yet), missing; refs — catalog items' external_id; normalized — the machine
     values of accepted typed fields (ISO date, HH:MM, E.164 phone, e-mail, number, list
-    items, files, the receipt's amount / date / reference)."""
+    items, files, the receipt's amount / date / reference); hidden — not asked, their
+    show_if said they do not apply (not missing; what the client said anyway is in
+    partial); closed — added fields closed after too many failed answers (their words are
+    in partial)."""
     states = load_states(defn, raw)
     fields: dict[str, str] = {}
     partial: dict[str, str] = {}
     missing: list[str] = []
     refs: dict[str, str] = {}
     normalized: dict[str, Any] = {}
+    hidden: list[str] = []
+    closed: list[str] = []
     for f in defn.fields:
         fs = states[f.key]
         if fs.ref and fs.value is not None:
@@ -62,6 +68,11 @@ def collected(defn: ScenarioDef, raw: dict[str, Any] | None) -> dict[str, Any]:
             continue
         if fs.value is not None and fs.state in (PARTIAL, FILLED, REVIEW):
             partial[f.key] = fs.value
+        if fs.hidden and not fs.complete:
+            hidden.append(f.key)
+            continue
+        if fs.closed:
+            closed.append(f.key)
         missing.append(f.key)
     return {
         "fields": fields,
@@ -69,6 +80,8 @@ def collected(defn: ScenarioDef, raw: dict[str, Any] | None) -> dict[str, Any]:
         "missing": missing,
         "refs": refs,
         "normalized": normalized,
+        "hidden": hidden,
+        "closed": closed,
     }
 
 
@@ -104,6 +117,10 @@ def build_payload(
         "missing": data["missing"],
         **({"refs": data["refs"]} if data["refs"] else {}),
         **({"normalized": data["normalized"]} if data["normalized"] else {}),
+        **({"hidden": data["hidden"]} if data["hidden"] else {}),
+        **({"closed": data["closed"]} if data["closed"] else {}),
+        # fields the caller added while the run went (POST /v1/runs/{id}/fields)
+        **({"added": added_keys(run.extra)} if added_keys(run.extra) else {}),
         # an external event the run got (POST /v1/events): name and data
         **({"external": run.data["external"]} if (run.data or {}).get("external") else {}),
         "client_language": run.client_language,

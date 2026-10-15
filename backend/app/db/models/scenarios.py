@@ -101,6 +101,10 @@ class ScenarioRun(IdMixin, TimestampsMixin, Base):
     # stage 6: {"confirmed_at", "waiting_for": event | receipt_review | approval,
     #           "waiting_since", "external": {event data}, "events_seen": [event_id…]}
     data: Mapped[dict[str, Any]] = mapped_column(default=dict, server_default=text("'{}'::jsonb"))
+    # completion by_caller / options_from caller: {"fields": [field definitions + added_at],
+    # "options": {field: [{key, label}]}} — the run's own part of its fields
+    # (scenarios/store.effective_definition)
+    extra: Mapped[dict[str, Any]] = mapped_column(default=dict, server_default=text("'{}'::jsonb"))
     client_language: Mapped[str | None] = mapped_column(String(16))
     reply_language: Mapped[str | None] = mapped_column(String(16))
     started_turn_id: Mapped[uuid.UUID | None] = mapped_column(

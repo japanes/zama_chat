@@ -65,7 +65,10 @@
                 <tbody>
                   <template v-for="g in data.items" :key="g.group">
                     <tr class="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40" @click="toggle(g)">
-                      <td class="code text-xs break-all">{{ g.group }}</td>
+                      <td class="text-xs break-all">
+                        <span v-if="groupLabel(g.group)" class="block text-sm">{{ groupLabel(g.group) }}</span>
+                        <span class="code">{{ g.group }}</span>
+                      </td>
                       <td class="text-right">{{ f.num(g.asked) }}</td>
                       <td class="text-right">{{ pct(g.jev_used, g.asked) }}</td>
                       <td class="text-right">{{ g.jev_confidence !== null ? f.num(g.jev_confidence, 2) : '—' }}</td>
@@ -234,6 +237,12 @@ const open = ref<string | null>(null)
 const sim = ref(0.7)
 
 const { data, loading, error, load } = useLoader(() => api<any>(path('/decisions/stats'), { query: { days: days.value } }))
+
+// `show:<scenario>.<field>.<sign>` — the condition of a question (show_if)
+function groupLabel(group: string): string | null {
+  const m = /^show:([^.]+)\.([^.]+)\.(.+)$/.exec(group)
+  return m ? t('decisions.show_label', { field: m[2], scenario: m[1], sign: m[3] }) : null
+}
 
 function pct(n: number, total: number) {
   if (!total) return '—'

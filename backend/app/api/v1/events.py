@@ -41,7 +41,7 @@ from app.scenarios.outside import (
     write_run,
 )
 from app.scenarios.schema import ActionEvent, EventResult
-from app.scenarios.store import load_definition
+from app.scenarios.store import load_run_definition
 
 router = APIRouter(prefix="/v1", tags=["events"])
 log = get_logger(__name__)
@@ -119,7 +119,7 @@ async def _apply(session, services, conv, body: EventIn, now: datetime) -> dict[
         return _out(run, duplicate=True)
     if run.status != RunStatus.WAITING or data.get("waiting_for") != "event":
         raise Conflict("event.run_not_waiting", {"status": run.status})
-    defn = await load_definition(session, run.scenario_id)
+    defn = await load_run_definition(session, run)
     rule = defn.events.get(body.event)
     if rule is None:
         raise AppError("event.unknown", {"event": body.event, "known": sorted(defn.events)})

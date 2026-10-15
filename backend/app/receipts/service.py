@@ -405,7 +405,7 @@ async def decide(
         settle,
         write_run,
     )
-    from app.scenarios.store import load_definition
+    from app.scenarios.store import load_run_definition
 
     receipt_id = uuid.UUID(str((task.payload or {}).get("receipt_id")))
     receipt = await session.get(Receipt, receipt_id, with_for_update=True)
@@ -425,7 +425,7 @@ async def decide(
         # the run moved on (expired, cancelled): only the receipt is decided
         out["run"] = None
         return out
-    defn = await load_definition(session, run.scenario_id)
+    defn = await load_run_definition(session, run)
     states = fl.load_states(defn, run.fields)
     change = Change()
     apply_receipt_decision(

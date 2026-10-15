@@ -7,6 +7,11 @@
 
 A side question is answered and, in the same message, the bot returns to the next
 scenario question.
+
+`known` is the card of the dialogue: every answer the run has, whole, with how the bot
+asked it — the reply model takes the details of a question from it and from the dialogue,
+and trusts the card when they differ (prompt `scenario_card`). It goes with every reply a
+scenario is in: the run in the focus, else the runs something happened to in this turn.
 """
 
 from dataclasses import dataclass, field
@@ -14,11 +19,15 @@ from typing import Any
 
 from app.db.models import RunStatus
 from app.scenarios.events import PAUSED, RECEIPT_REVIEW
-from app.scenarios.fields import PARTIAL
+from app.scenarios.fields import PARTIAL, FieldState, load_states
 from app.scenarios.questions import CONFIRM
 from app.scenarios.schema import ATTACHMENT_TYPES, ActionEvent, FieldType, ScenarioDef
+from app.scenarios.store import ScenarioView
 from app.scenarios.typed import ISSUE_PREFIX, clarify_text
 from app.scenarios.work import WorkRun, focus_of
+
+# scenario_runs.data.waiting_for of a run whose fields ran out (completion by_caller)
+WAITING_FIELDS = "fields"
 
 # TODO(review): the default «is everything correct?» when the scenario has no own text
 CONFIRM_QUESTION = {
@@ -73,6 +82,10 @@ class ClarifyStep:
 @dataclass
 class RespondPlan:
     scenario: str | None = None  # key of the scenario in focus
+    # the card: [{question, asked?, answer, incomplete?, scenario?}]
+    known: list[dict[str, Any]] = field(default_factory=list)
+    # the focus scenario's own rules for wording a question (scenario file `ask_rules`)
+    ask_rules: list[str] = field(default_factory=list)
     answer_client_question_first: bool = False
     accepted: list[dict[str, str]] = field(default_factory=list)  # [{field, question, answer}]
     ask: AskStep | None = None
@@ -86,6 +99,8 @@ class RespondPlan:
     paused: list[str] = field(default_factory=list)
     # scenario texts are not in the reply language: the reply model translates
     texts_language: str | None = None
+    # a bot turn: the client wrote nothing, the bot speaks first (core/pipeline.py)
+    bot_turn: bool = False
 
     @property
     def asks(self) -> bool:
@@ -97,6 +112,10 @@ class RespondPlan:
             "rules": rules,
             "answer_client_question_first": self.answer_client_question_first,
         }
+        if self.ask_rules and self.asks:
+            out["rules"] = [*rules, *self.ask_rules]
+        if self.known:
+            out["known"] = self.known
         if self.accepted:
             # without the internal field ids
             out["accepted_answers"] = [
@@ -146,6 +165,8 @@ class RespondPlan:
             out["scenario_paused"] = ", ".join(self.paused)
         if self.texts_language:
             out["texts_language"] = self.texts_language
+        if self.bot_turn:
+            out["bot_turn"] = True
         return out
 
     def summary(self) -> dict[str, Any]:
@@ -154,6 +175,7 @@ class RespondPlan:
             "scenario": self.scenario,
             "answer_client_question_first": self.answer_client_question_first,
             "accepted": [a["field"] for a in self.accepted],
+            "known": len(self.known),
             "ask": self.ask.field if self.ask else None,
             "clarify": self.clarify.field if self.clarify else None,
             "confirm": (
@@ -191,6 +213,47 @@ def _missing(run: WorkRun, key: str, texts: _Texts) -> list[str]:
         if item.startswith(ISSUE_PREFIX):
             out.append(clarify_text(item[len(ISSUE_PREFIX) :], fs.issue_params, texts.language))
     return out
+
+
+def _card_rows(
+    defn: ScenarioDef, states: dict[str, FieldState], texts: _Texts, title: str | None
+) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for f in defn.fields:
+        fs = states[f.key]
+        if fs.value is None or fs.skipped:
+            continue
+        row: dict[str, Any] = {"question": texts(defn, f.question)}
+        if fs.asked:
+            row["asked"] = fs.asked
+        row["answer"] = fs.value
+        if not fs.complete:
+            row["incomplete"] = True
+        if title is not None:
+            row["scenario"] = title
+        out.append(row)
+    return out
+
+
+def card(runs: list[WorkRun], texts: _Texts) -> list[dict[str, Any]]:
+    """`known`: the answers of the runs, whole, each with how the bot asked it. Several
+    runs → each entry names its scenario."""
+    out: list[dict[str, Any]] = []
+    for run in runs:
+        defn = run.definition
+        title = texts(defn, defn.title) if len(runs) > 1 else None
+        out += _card_rows(defn, run.states, texts, title)
+    return out
+
+
+def view_card(view: ScenarioView, language: str) -> list[dict[str, Any]]:
+    """The card of the run in the focus before the turn — for the rewrite step, which
+    runs before the scenarios do."""
+    focus = view.focus
+    if focus is None:
+        return []
+    defn = focus.scenario.definition
+    return _card_rows(defn, load_states(defn, focus.fields), _Texts(language), None)
 
 
 def _confirm_step(run: WorkRun, texts: _Texts) -> ConfirmStep:
@@ -259,13 +322,14 @@ def build_plan(
         if ActionEvent.COMPLETED in names:
             plan.completed.append(title)
         if run.status == RunStatus.WAITING:
-            plan.waiting.append(
-                {
-                    "title": title,
-                    "for": run.data.get("waiting_for") or "event",
-                    "new": ActionEvent.WAITING in names or RECEIPT_REVIEW in names,
-                }
-            )
+            waiting: dict[str, Any] = {
+                "title": title,
+                "for": run.data.get("waiting_for") or "event",
+                "new": ActionEvent.WAITING in names or RECEIPT_REVIEW in names,
+            }
+            if waiting["for"] == WAITING_FIELDS and defn.waiting.say is not None:
+                waiting["say"] = texts(defn, defn.waiting.say)
+            plan.waiting.append(waiting)
         if ActionEvent.CANCELLED in names:
             plan.cancelled.append(title)
         if PAUSED in names:
@@ -280,10 +344,14 @@ def build_plan(
     focus = focus_of(runs)
     if focus is not None:
         plan.scenario = focus.key
+        plan.known = card([focus], texts)
         if not wants_human:
             plan.ask, plan.clarify = _ask_step(focus, texts, catalog_options or {}, payment or {})
             if focus.asking == CONFIRM:
                 plan.confirm = _confirm_step(focus, texts)
+            plan.ask_rules = [texts(focus.definition, r) for r in focus.definition.ask_rules or []]
+    else:
+        plan.known = card([r for r in runs if r.events], texts)
     happened = (
         plan.started
         or plan.completed

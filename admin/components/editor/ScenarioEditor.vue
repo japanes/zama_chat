@@ -87,7 +87,7 @@
               <StepStart :def="def" :languages="languages" :readonly="!canEdit" />
             </EditorStep>
             <EditorStep :n="2" :title="t('editor.step.questions')" :summary="summary.questions" :open="open[2]" :problems="problems[2]" @toggle="open[2] = !open[2]">
-              <StepQuestions :def="def" :languages="languages" :readonly="!canEdit" :categories="categories" />
+              <StepQuestions :def="def" :languages="languages" :readonly="!canEdit" :categories="categories" :history-default="defaults.history_messages" />
             </EditorStep>
             <EditorStep :n="3" :title="t('editor.step.confirm')" :summary="summary.confirm" :open="open[3]" @toggle="open[3] = !open[3]">
               <StepConfirm :def="def" :languages="languages" :readonly="!canEdit" />
@@ -263,6 +263,8 @@ const notifiers = ref<{ name: string; kind: string }[]>([])
 const categories = ref<string[]>([])
 // the tenant's scenarios: [{key, title, channels}]
 const allScenarios = ref<any[]>([])
+// what the server gives a scenario that leaves a setting out
+const defaults = ref<{ history_messages?: number }>({})
 const viewing = ref<number | null>(null)
 const mode = ref<Mode>('form')
 const source = ref('')
@@ -366,7 +368,9 @@ const summary = computed(() => {
         : t('editor.sum.next_event')
       : d.completion === 'receipt'
         ? t('editor.sum.next_receipt')
-        : t('editor.sum.next_all')
+        : d.completion === 'by_caller'
+          ? t('editor.sum.next_caller')
+          : t('editor.sum.next_all')
   return {
     start,
     questions: t('editor.sum.questions', { n: d.fields.length }),
@@ -397,11 +401,21 @@ const found = computed<Record<number, string[]>>(() => {
     const name = fname(x)
     if (!KEY_RE.test(x.key || '')) out[2].push(t('editor.problem.bad_key', { name }))
     if (!has(x.question)) out[2].push(t('editor.problem.no_question', { name }))
-    if (x.type === 'choice') {
+    if (x.type === 'choice' && x.options_from !== 'caller') {
       if ((x.options || []).length < 2) out[2].push(t('editor.problem.few_options', { name }))
       else if ((x.options as any[]).some((o) => !has(o.label))) out[2].push(t('editor.problem.option_empty', { name }))
     }
     if ((x.filters as any[]).some((flt) => !has(flt.ask))) out[2].push(t('editor.problem.filter_empty', { name }))
+    if (x.show_if) {
+      ;(x.show_if.questions as any[]).forEach((q, n) => {
+        if (!has(q.ask)) out[2].push(t('editor.problem.show_empty', { name, n: n + 1 }))
+      })
+      if (startThreshold(x.show_if) > startTotal(x.show_if)) out[2].push(t('editor.problem.show_never', { name }))
+    }
+    for (const ref of x.ask_after || []) {
+      const other = (d.fields as any[]).find((f) => f.key === ref)
+      if (other?.show_if) out[2].push(t('editor.problem.after_conditional', { name, ref: fname(other) }))
+    }
   })
 
   if (d.completion === 'external_event') {
@@ -600,7 +614,11 @@ async function loadLists() {
       return fallback
     }
   }
-  allScenarios.value = await quiet(async () => (await api<{ items: any[] }>(path('/scenarios'))).items, [])
+  const list = await quiet(async () => await api<{ items: any[]; defaults?: { history_messages?: number } }>(path('/scenarios')), {
+    items: [] as any[],
+  })
+  allScenarios.value = list.items
+  defaults.value = list.defaults || {}
   if (!canEdit.value) return
   endpoints.value = await quiet(
     async () => (await api<{ items: any[] }>(path('/endpoints'))).items.filter((e) => e.is_active).map((e) => e.name),

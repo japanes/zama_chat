@@ -16,7 +16,15 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import Annotated, Any, Literal
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 from app.core.tenant_settings import LANG_RE
 from app.errors import AppError
@@ -97,6 +105,31 @@ class Start(Strict):
     questions: list[StartQuestion] = Field(min_length=1)
     # start when the sum of weights of "yes" answers >= threshold
     threshold: int | None = Field(default=None, ge=1)
+
+
+class ShowIfQuestion(Strict):
+    """A yes/no question about the client's answers: "does this field apply?"."""
+
+    key: Key
+    ask: LocalizedText
+    weight: int = Field(default=1, ge=1, le=100)
+
+
+class ShowIf(Strict):
+    """When a field is asked: like `start`, the sum of weights of "yes" answers must reach
+    the threshold. Jev answers the questions over the run's answers (scenarios/show.py)."""
+
+    questions: list[ShowIfQuestion] = Field(min_length=1)
+    threshold: int | None = Field(default=None, ge=1)
+    # no answer (or "unsure") that could decide it: ask — the field is asked, skip — not
+    on_unknown: Literal["ask", "skip"] = "ask"
+    # every_turn — checked again after every turn that changed the answers; once — once
+    recheck: Literal["every_turn", "once"] = "every_turn"
+
+    @property
+    def needed(self) -> int:
+        """Explicit threshold; a single question without one → its weight."""
+        return self.threshold if self.threshold is not None else self.questions[0].weight
 
 
 class Filter(Strict):
@@ -222,6 +255,10 @@ class FieldDef(Strict):
     filters: list[Filter] = Field(default_factory=list)
     # asked only after these fields are filled
     ask_after: list[Key] = Field(default_factory=list)
+    # asked only when the answers so far say it applies; no show_if — always asked
+    show_if: ShowIf | None = None
+    # choice only: the options come with POST /v1/runs/start, the file has none
+    options_from: Literal["caller"] | None = None
 
 
 class Completion(StrEnum):
@@ -231,12 +268,16 @@ class Completion(StrEnum):
     external_event — collected (and confirmed) → waiting for an event from outside
                      (POST /v1/events: CRM booked, slot taken…), see `events`;
     receipt        — all fields with a receipt field accepted (by code or an operator).
+    by_caller      — every field is complete → the run waits for new fields from the
+                     caller (POST /v1/runs/{id}/fields) until it says it is done
+                     (POST /v1/runs/{id}/finish).
     """
 
     ALL_FIELDS = "all_fields"
     EXPLICIT_YES = "explicit_yes"
     EXTERNAL_EVENT = "external_event"
     RECEIPT = "receipt"
+    BY_CALLER = "by_caller"
 
 
 class Confirm(Strict):
@@ -264,6 +305,20 @@ class EventRule(Strict):
 class Waiting(Strict):
     # waiting for an event longer than this → abandoned (+ final JSON); None = forever
     hours: float | None = Field(default=None, gt=0)
+    # completion by_caller: what the bot says when the fields ran out (its meaning, in
+    # the bot's words); None — a short acknowledgement
+    say: LocalizedText | None = None
+
+
+class AddedFields(Strict):
+    """completion by_caller: the fields the caller adds to a running run."""
+
+    # own_words — the bot words the added question itself; as_sent — sent word for word
+    wording: Literal["own_words", "as_sent"] = "own_words"
+    # an added field is closed with what the client said after this many failed answers
+    close_after: int = Field(default=3, ge=1, le=20)
+    # at most this many added fields per run; None = no limit
+    max_fields: int | None = Field(default=None, ge=1, le=200)
 
 
 class Resume(Strict):
@@ -325,6 +380,25 @@ class ScenarioDef(Strict):
     resume: Resume = Field(default_factory=Resume)
     cancel: Cancel = Field(default_factory=Cancel)
     actions: list[Action] = Field(default_factory=list)
+    # rules only the reply model sees when it words a question (not extract, not checks)
+    ask_rules: list[LocalizedText] | None = Field(default=None, max_length=50)
+    # how many last messages of the dialogue the bot sees next to the run's answers;
+    # None — the default (settings.history_messages)
+    history_messages: int | None = Field(default=None, ge=1, le=200)
+    # completion by_caller: the fields added while the run goes
+    added: AddedFields | None = None
+
+    # an empty list / a block of defaults says nothing: kept as absent, so a file that writes
+    # it out and one that leaves it out are one version (the editor leaves defaults out)
+    @field_validator("ask_rules")
+    @classmethod
+    def _no_rules(cls, value: list[LocalizedText] | None) -> list[LocalizedText] | None:
+        return value or None
+
+    @field_validator("added")
+    @classmethod
+    def _no_added(cls, value: AddedFields | None) -> AddedFields | None:
+        return None if value == AddedFields() else value
 
     @property
     def needs_confirm(self) -> bool:
@@ -346,6 +420,12 @@ class ScenarioDef(Strict):
     @property
     def field_keys(self) -> list[str]:
         return [f.key for f in self.fields]
+
+    @property
+    def caller_options(self) -> list[str]:
+        """Fields whose options come with POST /v1/runs/start: the scenario is started
+        only so, never by a client's message."""
+        return [f.key for f in self.fields if f.options_from == "caller" and not f.options]
 
     def text(self, value: str | dict[str, str], language: str) -> LocalText:
         return pick_text(value, language, self.language)
@@ -412,6 +492,9 @@ def _texts(defn: ScenarioDef) -> Iterator[tuple[str, str | dict[str, str]]]:
                 value = getattr(flt, name)
                 if value is not None:
                     yield f"fields.{f.key}.filters.{flt.key}.{name}", value
+        if f.show_if is not None:
+            for q in f.show_if.questions:
+                yield f"fields.{f.key}.show_if.{q.key}", q.ask
     if defn.cancel.description is not None:
         yield "cancel.description", defn.cancel.description
     if defn.confirm is not None and defn.confirm.question is not None:
@@ -422,6 +505,10 @@ def _texts(defn: ScenarioDef) -> Iterator[tuple[str, str | dict[str, str]]]:
     for i, action in enumerate(defn.actions):
         if action.do == "message_client" and action.params.get("text"):
             yield f"actions.{i}.text", action.params["text"]
+    for i, rule in enumerate(defn.ask_rules or []):
+        yield f"ask_rules.{i}", rule
+    if defn.waiting.say is not None:
+        yield "waiting.say", defn.waiting.say
 
 
 # typed settings and the type they belong to
@@ -468,6 +555,27 @@ def _check_typed(defn: ScenarioDef, f: FieldDef) -> None:
             raise AppError("scenario.receipt_quantity_field_invalid", {"field": f.key, "ref": ref})
 
 
+def _check_show_if(f: FieldDef) -> None:
+    show = f.show_if
+    if show is None:
+        return
+    keys = [q.key for q in show.questions]
+    if len(set(keys)) != len(keys):
+        raise AppError("scenario.show_if_duplicate", {"field": f.key})
+    if show.threshold is None and len(show.questions) > 1:
+        raise AppError(
+            "scenario.show_if_threshold_required",
+            {"field": f.key, "questions": len(show.questions)},
+        )
+    total = sum(q.weight for q in show.questions)
+    if show.needed > total:
+        # the field could never be asked
+        raise AppError(
+            "scenario.show_if_threshold_too_high",
+            {"field": f.key, "threshold": show.needed, "max": total},
+        )
+
+
 def _check_completion(defn: ScenarioDef) -> None:
     if defn.completion == Completion.RECEIPT and not any(
         f.type == FieldType.RECEIPT for f in defn.fields
@@ -480,6 +588,14 @@ def _check_completion(defn: ScenarioDef) -> None:
         raise AppError("scenario.events_not_allowed", {"mode": str(defn.completion)})
     if defn.waiting.hours is not None and defn.completion != Completion.EXTERNAL_EVENT:
         raise AppError("scenario.events_not_allowed", {"mode": str(defn.completion)})
+    if defn.completion == Completion.BY_CALLER and defn.confirm is not None:
+        # the run never ends by itself: there is no moment to confirm everything
+        raise AppError("scenario.confirm_not_allowed", {"mode": str(defn.completion)})
+    if defn.completion != Completion.BY_CALLER:
+        if defn.waiting.say is not None:
+            raise AppError("scenario.waiting_say_not_allowed", {"mode": str(defn.completion)})
+        if defn.added is not None:
+            raise AppError("scenario.added_not_allowed", {"mode": str(defn.completion)})
     for name, rule in defn.events.items():
         if rule.result == EventResult.REOPEN and not rule.reopen_fields:
             raise AppError("scenario.event_reopen_fields_required", {"event": name})
@@ -530,15 +646,30 @@ def check_definition(
         filter_keys = [flt.key for flt in f.filters]
         if len(set(filter_keys)) != len(filter_keys):
             raise AppError("scenario.filter_duplicate", {"field": f.key})
-        if f.type == FieldType.CHOICE and len(f.options) < 2:
+        if f.options_from is not None:
+            if f.type != FieldType.CHOICE:
+                raise AppError(
+                    "scenario.options_from_not_allowed", {"field": f.key, "type": str(f.type)}
+                )
+            if f.options:
+                # the caller's options replace the file's: both would be a puzzle
+                raise AppError("scenario.options_from_with_options", {"field": f.key})
+        elif f.type == FieldType.CHOICE and len(f.options) < 2:
             raise AppError("scenario.choice_options_missing", {"field": f.key})
         if f.type != FieldType.CHOICE and f.options:
             raise AppError("scenario.options_not_allowed", {"field": f.key, "type": str(f.type)})
+        _check_show_if(f)
         if f.type != FieldType.CATALOG and f.catalog is not None:
             raise AppError("scenario.catalog_not_allowed", {"field": f.key, "type": str(f.type)})
         _check_typed(defn, f)
     if cycle := _cycle(defn):
         raise AppError("scenario.ask_after_cycle", {"fields": cycle})
+    conditional = {f.key for f in defn.fields if f.show_if is not None}
+    for f in defn.fields:
+        for ref in f.ask_after:
+            if ref in conditional:
+                # a hidden field would lock the fields asked after it for good
+                raise AppError("scenario.ask_after_conditional", {"field": f.key, "ref": ref})
 
     start_ids = []
     for q in defn.start.questions:

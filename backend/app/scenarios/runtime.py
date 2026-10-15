@@ -12,12 +12,17 @@
                    value code rejects is re-asked without Jev; partial answers merge, a
                    correction replaces the value and marks the fields depending on it for a
                    re-check, an early answer waits for one;
-  5. filters     — second Jev batch; then the re-check loop until nothing changes;
+  5. filters     — second Jev batch, with the show_if questions of the fields whose
+                   condition is checked now (show.py); then the re-check loop until
+                   nothing changes;
   6. confirm     — the client's «yes» / «no» to «is everything correct?» (confirm:<s>);
   7. files       — attachments of the message fill the attachment / receipt field of the
                    focus; a receipt is read by the vision model and checked (receipts/);
-  8. completion  — all fields complete (and confirmed) → completed, or waiting for an
-                   event (external_event); a receipt in review → waiting;
+  8. completion  — an added field (completion by_caller) the client failed
+                   `added.close_after` times is closed with what the client said; all
+                   fields complete (and confirmed) → completed, or waiting for an event
+                   (external_event) or for new fields (by_caller); a receipt in review →
+                   waiting;
   9. focus       — focus finished / cancelled → the most recent paused run takes it;
                    no focus → a paused run that got data in this turn takes it;
  10. next field  — what the bot asks (or «is everything correct?»); the same field asked
@@ -51,9 +56,9 @@ from app.prompts.store import PromptText
 from app.receipts.service import ReceiptCheck, check_attachment, expected_for
 from app.scenarios import fields as fl
 from app.scenarios.catalog import ask_options, option_label, with_choices
-from app.scenarios.checks import CheckItem, check_filters
-from app.scenarios.events import FOCUSED, PAUSED, RECEIPT_REVIEW
-from app.scenarios.extract import Extracted, Target, extract
+from app.scenarios.checks import CheckItem, ask_filters
+from app.scenarios.events import CLOSED, FOCUSED, PAUSED, RECEIPT_REVIEW
+from app.scenarios.extract import Extracted, Target, extract, last_bot_message
 from app.scenarios.plan import CatalogAsk, RespondPlan, build_plan
 from app.scenarios.questions import (
     CANCEL_PREFIX,
@@ -72,12 +77,14 @@ from app.scenarios.questions import (
 from app.scenarios.schema import (
     ATTACHMENT_TYPES,
     ActionEvent,
+    AddedFields,
     AttachmentSettings,
     Completion,
     FieldDef,
     FieldType,
     ScenarioDef,
 )
+from app.scenarios.show import ShowItem, apply_shows, shows_due
 from app.scenarios.start import Candidate, StartResult, Vote, decide_start
 from app.scenarios.store import ScenarioView, expires_at
 from app.scenarios.typed import DEFAULT_REGION, is_typed, normalize, scan_contacts
@@ -89,6 +96,8 @@ if TYPE_CHECKING:
 log = get_logger(__name__)
 
 MAX_CHECK_ROUNDS = 5
+# scenario_runs.data.waiting_for of a run whose fields are all collected
+WAITING_FOR = {Completion.EXTERNAL_EVENT: "event", Completion.BY_CALLER: "fields"}
 CLOSED_EVENTS = {
     RunStatus.COMPLETED: ActionEvent.COMPLETED,
     RunStatus.CANCELLED: ActionEvent.CANCELLED,
@@ -172,6 +181,8 @@ def start_candidates(
         if run is not None and run.status == RunStatus.WAITING:
             continue
         defn = scenario.definition
+        if run is None and defn.caller_options:
+            continue  # its options come only with POST /v1/runs/start
         votes = []
         for q in defn.start.questions:
             key = start_question_key(defn.key, q)
@@ -302,8 +313,10 @@ def apply_values(
     now: datetime,
     timezone: str = "UTC",
     region: str = DEFAULT_REGION,
+    asked: str | None = None,
 ) -> list[str]:
-    """Returns the fields marked for a re-check by corrections ("scenario.field")."""
+    """Returns the fields marked for a re-check by corrections ("scenario.field").
+    `asked` — the bot's message the client answers: it goes to the field the bot asked."""
     by_id = {r.id: r for r in runs}
     marked: list[str] = []
     for t in targets:
@@ -312,6 +325,8 @@ def apply_values(
             continue
         run = by_id[t.run_id]
         fs = run.states[t.field.key]
+        if asked and run.asking == t.field.key:
+            fs.asked = asked
         early = not fl.ask_after_ready(t.field, run.states)
         if is_typed(t.field):
             # code reads the machine value (ISO date, E.164…); the model's reading is the
@@ -591,10 +606,12 @@ def finish_runs(runs: list[WorkRun], now: datetime | None = None) -> None:
         if not run.confirmed:
             continue  # next_questions asks «is everything correct?»
         run.asking = None
-        if run.definition.completion == Completion.EXTERNAL_EVENT:
+        completion = run.definition.completion
+        if completion in (Completion.EXTERNAL_EVENT, Completion.BY_CALLER):
             run.status = RunStatus.WAITING
             run.data.update(
-                waiting_for="event", waiting_since=(now or run.last_activity_at).isoformat()
+                waiting_for=WAITING_FOR[completion],
+                waiting_since=(now or run.last_activity_at).isoformat(),
             )
             run.add(ActionEvent.WAITING)
         else:
@@ -621,6 +638,23 @@ def pass_focus(runs: list[WorkRun]) -> WorkRun | None:
     run.status = RunStatus.FOCUS
     run.add(FOCUSED)
     return run
+
+
+def close_failed(runs: list[WorkRun], now: datetime) -> None:
+    """The added field the focus asked and the client failed `added.close_after` times in
+    a row is closed with what the client said. Before the completion: a run with nothing
+    left to ask waits in this very turn."""
+    for run in runs:
+        if run.status != RunStatus.FOCUS:
+            continue
+        nxt = fl.next_field(run.definition, run.states, confirmed=run.confirmed)
+        if nxt is None or nxt.key not in run.added or run.asking != nxt.key:
+            continue
+        fs = run.states[nxt.key]
+        if fs.reasks + 1 < (run.definition.added or AddedFields()).close_after:
+            continue
+        fl.set_closed(fs, now)
+        run.add(CLOSED, nxt.key)
 
 
 def next_questions(runs: list[WorkRun], *, ask: bool = True) -> None:
@@ -748,11 +782,15 @@ async def run_scenarios(
         now=now,
         timezone=ctx.settings.timezone,
         region=ctx.settings.phone_region,
+        asked=last_bot_message(ctx) or None,
     )
 
     rounds = 0
+    shown: dict[str, dict[str, Any]] = {}
+    checked: set[tuple[str, str]] = set()
     due = checks_due(runs, first=True)
-    while due and rounds < MAX_CHECK_ROUNDS:
+    shows = shows_due(runs, checked)
+    while (due or shows) and rounds < MAX_CHECK_ROUNDS:
         rounds += 1
         # a value code rejected (typed.py) is asked again without Jev
         items = [
@@ -760,20 +798,36 @@ async def run_scenarios(
             for r, k in due
             if not r.states[k].issue
         ]
-        failed = (
-            await check_filters(services, ctx, items, question_language, trace_step=step)
-            if items
-            else {}
-        )
+        show_items = [ShowItem(r.definition, r.definition.field(k), r.states) for r, k in shows]
+        failed: dict[tuple[str, str], list[str]] = {}
+        decisions_round = None
+        if items or show_items:
+            outcome = await ask_filters(
+                services,
+                ctx.decide_context(),
+                items,
+                question_language,
+                trace_step=step,
+                shows=show_items,
+            )
+            failed, decisions_round = outcome.failed, outcome.decisions
         apply_checks(due, failed, now)
+        shown.update(apply_shows(shows, decisions_round, now))
+        checked.update((r.key, k) for r, k in shows)
         due = checks_due(runs, first=False)
-    if due:
-        log.warning("scenario.recheck_rounds_exceeded", left=[f"{r.key}.{k}" for r, k in due])
+        shows = shows_due(runs, checked)
+    if due or shows:
+        log.warning(
+            "scenario.recheck_rounds_exceeded",
+            left=[f"{r.key}.{k}" for r, k in [*due, *shows]],
+        )
 
     confirm = apply_confirm(focus_before, decisions, now)
     receipts = await check_receipts(services, ctx, runs, prompts.get(RECEIPT_VISION_KEY))
     files = apply_attachments(runs, ctx.attachments, receipts, message_ids=message_ids, now=now)
 
+    if not wants_human:
+        close_failed(runs, now)
     finish_runs(runs, now)
     passed = pass_focus(runs)
     next_questions(runs, ask=not wants_human)
@@ -813,6 +867,7 @@ async def run_scenarios(
         },
         "recheck_marked": marked,
         "check_rounds": rounds,
+        "shows": shown,
         "confirm": confirm,
         "files": files,
         "receipts": [c.trace() for c in receipts],

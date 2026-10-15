@@ -17,6 +17,10 @@ Operator side (stage 4):
 New client messages that arrived while an asynchronous channel turn was thinking make
 the reply stale: it is dropped and the turn runs again with everything (at most
 `turn_restart_limit` times in a row). HTTP turns take only their own message.
+
+A bot turn (`bot_only`) answers no message: the bot speaks first, e.g. asks a field the
+caller has just added (POST /v1/runs/{id}/fields, core/pipeline.py `ask_pipeline`). It
+takes no client message and is never restarted; its model calls are paid like any turn's.
 """
 
 import time
@@ -89,8 +93,10 @@ async def run_turn(
     sandbox: bool = False,
     overrides: Overrides | None = None,
     pipeline: Pipeline | None = None,
+    bot_only: bool = False,
 ) -> TurnOutcome | None:
-    """Run one turn. None when there was nothing to answer (no unprocessed messages)."""
+    """Run one turn. None when there was nothing to answer (no unprocessed messages);
+    `bot_only` — a turn without a client message, always run."""
     settings = services.settings
     pipeline = pipeline or services.extra.get("pipeline") or default_pipeline()
     await lease.acquire(
@@ -112,7 +118,12 @@ async def run_turn(
                 sandbox=sandbox,
                 overrides=overrides,
                 pipeline=pipeline,
-                allow_restart=only_message_id is None and restarts < settings.turn_restart_limit,
+                allow_restart=(
+                    not bot_only
+                    and only_message_id is None
+                    and restarts < settings.turn_restart_limit
+                ),
+                bot_only=bot_only,
             )
             if outcome is None or outcome.status != TurnStatus.SUPERSEDED:
                 return outcome
@@ -133,6 +144,7 @@ async def _one_pass(
     overrides: Overrides | None,
     pipeline: Pipeline,
     allow_restart: bool,
+    bot_only: bool = False,
 ) -> TurnOutcome | None:
     started = time.monotonic()
     ctx = await _take(
@@ -141,6 +153,7 @@ async def _one_pass(
         only_message_id=only_message_id,
         sandbox=sandbox,
         overrides=overrides,
+        bot_only=bot_only,
     )
     if ctx is None:
         return None
@@ -175,6 +188,7 @@ async def _take(
     only_message_id: uuid.UUID | None,
     sandbox: bool,
     overrides: Overrides | None,
+    bot_only: bool = False,
 ) -> TurnContext | None:
     now = services.clock.now()
     async with services.sm() as session, session.begin():
@@ -205,14 +219,18 @@ async def _take(
         if only_message_id is not None:
             cond.append(Message.id == only_message_id)
         pending = (
-            await session.execute(
-                update(Message)
-                .where(*cond)
-                .values(turn_id=turn.id)
-                .returning(Message.id, Message.text, Message.created_at, Message.attachments)
-            )
-        ).all()
-        if not pending:
+            []
+            if bot_only
+            else (
+                await session.execute(
+                    update(Message)
+                    .where(*cond)
+                    .values(turn_id=turn.id)
+                    .returning(Message.id, Message.text, Message.created_at, Message.attachments)
+                )
+            ).all()
+        )
+        if not pending and not bot_only:
             # nothing to answer: the turn row is not worth keeping
             await session.delete(turn)
             return None
@@ -220,7 +238,7 @@ async def _take(
         input_text = "\n".join(r.text for r in pending if r.text).strip()
         turn.input_text = input_text
 
-        history = await _load_history(session, conv.id, turn.id, services.settings.history_messages)
+        history = await load_history(session, conv.id, turn.id, services.settings.history_messages)
         policy = await load_policy(session, conv.tenant_id)
         if overrides is not None:
             policy = policy.with_mode(overrides.decision_mode)
@@ -258,7 +276,7 @@ async def _take(
         )
 
 
-async def _load_history(
+async def load_history(
     session: AsyncSession, conversation_id: uuid.UUID, turn_id: uuid.UUID, limit: int
 ) -> list[HistoryItem]:
     rows = (

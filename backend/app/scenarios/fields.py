@@ -10,6 +10,11 @@
 `needs_recheck`: the answer came before its turn (ask_after not filled yet) or a field it
 depends on was corrected. It is checked again, with context, once ask_after is filled.
 A field is complete only when filled and not waiting for a recheck.
+
+A field is done (not asked any more, the run can go on without it) when it is complete,
+`hidden` (its show_if said it does not apply, scenarios/show.py) or `closed` (an added field
+that failed too many times, closed with what the client said). A hidden field still takes
+answers: what the client says about it is kept.
 """
 
 from dataclasses import asdict, dataclass, field
@@ -49,10 +54,24 @@ class FieldState:
     # closed without an answer (POST /v1/runs/{id}/skip): not asked again, no value, in the
     # result it stays among the missing fields
     skipped: bool = False
+    # how the bot asked it: the bot's message of the turn before the answer
+    asked: str | None = None
+    # show_if said the field does not apply: not asked, answers are still taken
+    hidden: bool = False
+    # the last show_if check: {hidden, answers: {key: true / false / null}, unknown, at};
+    # None — not checked yet
+    show: dict[str, Any] | None = None
+    # an added field closed after too many failed answers, with what the client said
+    closed: bool = False
 
     @property
     def complete(self) -> bool:
         return self.state == FILLED and not self.needs_recheck
+
+    @property
+    def done(self) -> bool:
+        """Not asked any more: complete, does not apply, or closed."""
+        return self.complete or self.hidden or self.closed
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -87,7 +106,7 @@ def next_field(
     after the client confirmed the rest (`confirmed`)."""
     for f in defn.fields:
         fs = states[f.key]
-        if fs.complete or fs.state == REVIEW or not ask_after_ready(f, states):
+        if fs.done or fs.state == REVIEW or not ask_after_ready(f, states):
             continue
         if f.type == FieldType.RECEIPT and not confirmed:
             continue
@@ -97,11 +116,12 @@ def next_field(
 
 def complete_except_receipts(defn: ScenarioDef, states: dict[str, FieldState]) -> bool:
     """Everything the client confirms is collected (a receipt comes after the «yes»)."""
-    return all(states[f.key].complete for f in defn.fields if f.type != FieldType.RECEIPT)
+    return all(states[f.key].done for f in defn.fields if f.type != FieldType.RECEIPT)
 
 
 def all_complete(states: dict[str, FieldState]) -> bool:
-    return all(fs.complete for fs in states.values())
+    """Nothing is left to ask: every field is done."""
+    return all(fs.done for fs in states.values())
 
 
 def dependents(defn: ScenarioDef, key: str) -> list[str]:
@@ -166,6 +186,7 @@ def set_checked(fs: FieldState, failed: list[str], now: datetime) -> bool:
         fs.state = FILLED
         fs.failed_filters = []
         fs.reasks = 0
+        fs.closed = False
     fs.updated_at = now.isoformat()
     return fs.complete and not was_complete
 
@@ -221,6 +242,8 @@ def reset(fs: FieldState, now: datetime) -> None:
     fs.reasks = 0
     fs.stuck = False
     fs.skipped = False
+    fs.closed = False
+    fs.asked = None
     fs.updated_at = now.isoformat()
 
 
@@ -231,9 +254,17 @@ def set_skipped(fs: FieldState, now: datetime) -> None:
     fs.skipped = True
 
 
+def set_closed(fs: FieldState, now: datetime) -> None:
+    """An added field failed too many times: it is not asked again, and unlike
+    set_skipped what the client said for it is kept (partial, with the failed checks)."""
+    fs.closed = True
+    fs.updated_at = now.isoformat()
+
+
 def answers(states: dict[str, FieldState], *, complete_only: bool = True) -> dict[str, str]:
+    """Values of the fields; complete_only — of the complete and the closed ones."""
     return {
         key: fs.value
         for key, fs in states.items()
-        if fs.value is not None and (fs.complete or not complete_only)
+        if fs.value is not None and (fs.complete or fs.closed or not complete_only)
     }

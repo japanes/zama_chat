@@ -34,7 +34,7 @@ from app.operator import tasks as ops
 from app.operator.tasks import task_dict
 from app.receipts.service import decide as decide_receipt
 from app.scenarios.outside import lock_run, under_lease
-from app.scenarios.store import load_definition
+from app.scenarios.store import load_run_definition
 from app.services import Services
 
 router = APIRouter(prefix="/v1/admin/tenants/{tenant_id}", tags=["admin-operator"])
@@ -266,7 +266,7 @@ async def _approve(
     run = await lock_run(session, uuid.UUID(str(payload.get("run_id"))))
     if run is None:
         return {"ran": False}
-    defn = await load_definition(session, run.scenario_id)
+    defn = await load_run_definition(session, run)
     ran = await run_approved(session, services, run, defn, payload, now=now)
     return {"ran": ran}
 

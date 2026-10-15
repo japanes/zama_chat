@@ -64,8 +64,24 @@
         <p class="hint">{{ t('editor.q.ask_hint') }}</p>
       </div>
 
-      <!-- choice: the options -->
+      <!-- choice: where the options come from -->
       <div v-if="field.type === 'choice'">
+        <p class="label">{{ t('editor.q.options_source') }}</p>
+        <div class="flex flex-wrap gap-x-5">
+          <label class="flex items-center gap-2 min-h-[44px]">
+            <input type="radio" class="accent-primary-dark" :name="`${uid}-source`" :checked="field.options_from !== 'caller'" :disabled="readonly" @change="field.options_from = null" />
+            {{ t('editor.q.options_here') }}
+          </label>
+          <label class="flex items-center gap-2 min-h-[44px]">
+            <input type="radio" class="accent-primary-dark" :name="`${uid}-source`" :checked="field.options_from === 'caller'" :disabled="readonly" @change="field.options_from = 'caller'" />
+            {{ t('editor.q.options_caller') }}
+          </label>
+        </div>
+        <p v-if="field.options_from === 'caller'" class="hint">{{ t('editor.q.options_caller_hint') }}</p>
+      </div>
+
+      <!-- choice: the options -->
+      <div v-if="field.type === 'choice' && field.options_from !== 'caller'">
         <p class="label">{{ t('editor.q.options') }}</p>
         <div class="space-y-2">
           <div v-for="(o, i) in (field.options as any[])" :key="i" class="flex flex-wrap items-start gap-2">
@@ -287,12 +303,15 @@
         <p class="hint">{{ t('editor.q.description_hint') }}</p>
       </div>
 
+      <!-- asked only when the answers say it applies -->
+      <ShowIfBlock v-if="field.show_if" :def="def" :show="field.show_if" :languages="languages" :readonly="readonly" @remove="field.show_if = null" />
+
       <!-- asked only after other questions -->
-      <div v-if="others.length && (field.ask_after.length || showAfter)">
+      <div v-if="afterOptions.length && (field.ask_after.length || showAfter)">
         <p class="label">{{ t('editor.q.after') }}</p>
         <div class="flex flex-wrap gap-1.5">
           <button
-            v-for="f in others"
+            v-for="f in afterOptions"
             :key="f.key"
             type="button"
             class="chip"
@@ -305,6 +324,7 @@
           </button>
         </div>
         <p class="hint">{{ t('editor.q.after_hint') }}</p>
+        <p v-if="others.some((f: any) => f.show_if)" class="hint">{{ t('editor.show.after_note') }}</p>
       </div>
 
       <div v-if="ctx?.showKeys.value">
@@ -316,7 +336,17 @@
       <div v-if="!readonly" class="flex flex-wrap gap-2 pt-1">
         <button v-if="!isFile" type="button" class="btn-secondary btn-sm" @click="addFilter">{{ t('editor.q.add_filter') }}</button>
         <button v-if="!hasDescription && !showDescription" type="button" class="btn-secondary btn-sm" @click="showDescription = true">{{ t('editor.q.add_description') }}</button>
-        <button v-if="others.length && !field.ask_after.length && !showAfter" type="button" class="btn-secondary btn-sm" @click="showAfter = true">{{ t('editor.q.add_after') }}</button>
+        <button v-if="afterOptions.length && !field.ask_after.length && !showAfter" type="button" class="btn-secondary btn-sm" @click="showAfter = true">{{ t('editor.q.add_after') }}</button>
+        <button
+          v-if="!field.show_if"
+          type="button"
+          class="btn-secondary btn-sm"
+          :disabled="dependents.length > 0"
+          :title="dependents.length ? t('editor.show.referenced', { names: dependents.join(', ') }) : undefined"
+          @click="field.show_if = newShowIf()"
+        >
+          {{ t('editor.q.add_show_if') }}
+        </button>
         <button type="button" class="btn-ghost btn-sm !text-rose-700 dark:!text-rose-300 ml-auto" @click="emit('remove')">
           <UiIcon name="trash" :size="16" /> {{ t('editor.q.remove') }}
         </button>
@@ -326,7 +356,7 @@
 </template>
 
 <script setup lang="ts">
-import { ATTACHMENT_KINDS, ATTACHMENT_TYPES, FIELD_TYPES, KEY_RE, fieldName, renameField, slugKey, type LText } from '~/utils/scenario'
+import { ATTACHMENT_KINDS, ATTACHMENT_TYPES, FIELD_TYPES, KEY_RE, fieldName, newShowIf, renameField, slugKey, type LText } from '~/utils/scenario'
 import { pickText } from '~/utils/texts'
 
 const props = defineProps<{
@@ -357,6 +387,11 @@ const isFile = computed(() => ATTACHMENT_TYPES.includes(props.field.type))
 const keyOk = computed(() => KEY_RE.test(props.field.key || ''))
 const hasDescription = computed(() => !!pickText(props.field.description).trim())
 const others = computed(() => (props.def.fields as any[]).filter((f) => f.key && f !== props.field))
+// a question asked on a condition can not be waited for: if it is never asked, the one
+// waiting for it would be stuck for good (the server refuses it too)
+const afterOptions = computed(() => others.value.filter((f: any) => !f.show_if || props.field.ask_after.includes(f.key)))
+// the questions that wait for this one: while they do, it can not get a condition
+const dependents = computed(() => others.value.filter((f: any) => (f.ask_after || []).includes(props.field.key)).map(nameOf))
 
 function nameOf(f: any): string {
   return fieldName(f, lang.value, props.def.language) || t('editor.q.untitled')
@@ -368,7 +403,12 @@ function fieldsOf(type: string): any[] {
 // what answer is expected, in a few words for the closed row
 const summary = computed(() => {
   const f = props.field
+  const kind = typeSummary(f)
+  return f.show_if ? `${kind} · ${t('editor.sum.conditional')}` : kind
+})
+function typeSummary(f: any): string {
   const base = t(`editor.type_short.${f.type || 'text'}`)
+  if (f.type === 'choice' && f.options_from === 'caller') return t('editor.sum.choice_caller')
   if (f.type === 'choice') return t('editor.sum.choice', { n: (f.options || []).length })
   if (f.type === 'catalog') return t('editor.sum.catalog', { n: f.catalog?.max_options || 5 })
   if (f.type === 'date' && f.date?.max_days_ahead !== '' && f.date?.max_days_ahead != null) {
@@ -376,7 +416,7 @@ const summary = computed(() => {
   }
   if (f.type === 'list') return t('editor.sum.list', { n: f.items?.max_items || 10 })
   return base
-})
+}
 
 // a new question takes its key from its name, until somebody types the key by hand
 function setTitle(value: LText | null) {

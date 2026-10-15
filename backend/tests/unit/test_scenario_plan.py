@@ -199,6 +199,7 @@ def test_summary_for_the_trace():
         "scenario": "interview",
         "answer_client_question_first": False,
         "accepted": [],
+        "known": 0,
         "ask": "offer",
         "clarify": None,
         "confirm": None,

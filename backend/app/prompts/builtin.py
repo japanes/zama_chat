@@ -4,6 +4,8 @@ and edited / versioned the same way in the admin.
 - extract        — values of scenario fields from the client's message (LLM `extract`),
                    adapted from the legacy check_script_answers;
 - scenario_step  — rules for the reply model when a scenario step is in the reply;
+- scenario_card  — the rule of the dialogue's card (`known` of scenario_step): where the
+                   reply model takes the details of a question from;
 - select_presented — rewrite rules for picking one of the options the bot showed last
                    ("let's take the second one"), adapted from the legacy
                    context_manager_select_service;
@@ -18,6 +20,7 @@ from typing import Any
 
 EXTRACT_KEY = "extract"
 SCENARIO_STEP_KEY = "scenario_step"
+SCENARIO_CARD_KEY = "scenario_card"
 SELECT_PRESENTED_KEY = "select_presented"
 SEARCH_CONTEXT_KEY = "search_context"
 RECEIPT_VISION_KEY = "receipt_vision"
@@ -102,11 +105,35 @@ SCENARIO_STEP: dict[str, Any] = {
         "on (or the receipt is received and being checked) and the client will be told. "
         "Mention the other items only when the client asks about them. Never say it is "
         "booked, paid or done",
+        "An item of 'waiting' with 'for' = 'fields' is not passed on anywhere: the bot "
+        "has asked everything it has for now. For it with 'new' true say one short phrase, "
+        "without a question, and do not say it is passed on or that the client will be "
+        "told. If it has 'say', say the meaning of 'say' in your own words",
         "If 'ask_next.attachment' is true, ask the client to send it as a photo or a file",
         "If 'ask_next.payment' is given, tell the amount to pay ('amount' and 'currency') "
         "before asking for the receipt",
         "Never ask more than one scenario question in one message",
+        "If 'bot_turn' is true, the client has written nothing new: the bot speaks first. "
+        "Ignore 'user_question', do not greet again and do not refer to a message of the "
+        "client; just go on with the scenario step",
     ]
+}
+
+
+# TODO(review): wording; check on real dialogues with make eval
+SCENARIO_CARD: dict[str, Any] = {
+    "rules": [
+        "'known' is the card of the dialogue: the client's answers so far, each with its "
+        "question and how the bot asked it ('asked'); 'incomplete' marks an answer that is "
+        "not accepted yet. Take the details for your question from 'known' and from the "
+        "dialogue; if they differ, trust 'known'. Do not add anything of your own",
+    ],
+    # for the rewrite step (core/rewrite.py, `scenario_card` of its document)
+    "rewrite_rules": [
+        "'scenario_card.answers' are the client's answers so far: the question, how the "
+        "bot asked it ('asked') and the answer. Use them to make a short answer "
+        "self-contained; if they differ from 'dialogue', trust 'scenario_card'",
+    ],
 }
 
 
@@ -211,6 +238,7 @@ def builtin_prompts() -> dict[str, str]:
     return {
         EXTRACT_KEY: json.dumps(EXTRACT, ensure_ascii=False, indent=4),
         SCENARIO_STEP_KEY: json.dumps(SCENARIO_STEP, ensure_ascii=False, indent=4),
+        SCENARIO_CARD_KEY: json.dumps(SCENARIO_CARD, ensure_ascii=False, indent=4),
         SELECT_PRESENTED_KEY: json.dumps(SELECT_PRESENTED, ensure_ascii=False, indent=4),
         SEARCH_CONTEXT_KEY: json.dumps(SEARCH_CONTEXT, ensure_ascii=False, indent=4),
         RECEIPT_VISION_KEY: json.dumps(RECEIPT_VISION, ensure_ascii=False, indent=4),
@@ -218,18 +246,20 @@ def builtin_prompts() -> dict[str, str]:
     }
 
 
-def prompt_rules(prompts: dict[str, Any], key: str, default: dict[str, Any]) -> list[str]:
-    """`rules` of a JSON prompt from the store; the builtin text when it is missing or
-    broken (a broken edit must not stop the bot)."""
+def prompt_rules(
+    prompts: dict[str, Any], key: str, default: dict[str, Any], name: str = "rules"
+) -> list[str]:
+    """`rules` (or another list `name`) of a JSON prompt from the store; the builtin text
+    when it is missing or broken (a broken edit must not stop the bot)."""
     from app.errors import AppError
     from app.prompts.render import parse_json_prompt
 
     prompt = prompts.get(key)
     if prompt is not None:
         try:
-            rules = parse_json_prompt(prompt.body, prompt.key).get("rules")
+            rules = parse_json_prompt(prompt.body, prompt.key).get(name)
         except AppError:
             rules = None
         if isinstance(rules, list) and rules:
             return [str(r) for r in rules]
-    return list(default["rules"])
+    return list(default[name])

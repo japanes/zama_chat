@@ -68,6 +68,7 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "client_question_true": "The message has the client's own question or request.",
         "client_question_false": "The message only answers the bot or gives information.",
         "filter": "About the client's answer to the question «{q}»: {ask}",
+        "show": "About the client's answers in «{title}»: {ask}",
         "confirm": "The bot listed the client's answers for «{title}» and asked whether "
         "everything is correct. What does the client answer?",
         "confirm_yes": "The client confirms: everything is correct, agrees, says yes.",
@@ -97,6 +98,7 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "client_question_true": "У повідомленні є власне питання або прохання клієнта.",
         "client_question_false": "Повідомлення лише відповідає боту або дає інформацію.",
         "filter": "Щодо відповіді клієнта на питання «{q}»: {ask}",
+        "show": "Щодо відповідей клієнта в «{title}»: {ask}",
         "confirm": "Бот перелічив відповіді клієнта для «{title}» і запитав, чи все "
         "правильно. Що відповідає клієнт?",
         "confirm_yes": "Клієнт підтверджує: усе правильно, погоджується, каже «так».",
@@ -125,6 +127,7 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "client_question_true": "В сообщении есть собственный вопрос или просьба клиента.",
         "client_question_false": "Сообщение только отвечает боту или даёт информацию.",
         "filter": "Об ответе клиента на вопрос «{q}»: {ask}",
+        "show": "Об ответах клиента в «{title}»: {ask}",
         "confirm": "Бот перечислил ответы клиента для «{title}» и спросил, всё ли верно. "
         "Что отвечает клиент?",
         "confirm_yes": "Клиент подтверждает: всё верно, соглашается, говорит «да».",
@@ -153,6 +156,11 @@ def filter_key(scenario: str, field_name: str, flt: str) -> str:
     return f"filter:{scenario}.{field_name}.{flt}"
 
 
+def show_key(scenario: str, field_name: str, key: str) -> str:
+    """A show_if question of a field (scenarios/show.py)."""
+    return f"show:{scenario}.{field_name}.{key}"
+
+
 def confirm_key(scenario: str) -> str:
     return f"confirm:{scenario}"
 
@@ -169,9 +177,10 @@ def start_question_key(scenario: str, q: StartQuestion) -> str:
     return start_key(scenario, q.key)
 
 
-def preview(value: str, limit: int = VALUE_PREVIEW) -> str:
+def preview(value: str, limit: int | None = VALUE_PREVIEW) -> str:
+    """Whitespace collapsed; cut to `limit` characters, None — whole."""
     value = " ".join(value.split())
-    return value if len(value) <= limit else value[: limit - 1] + "…"
+    return value if limit is None or len(value) <= limit else value[: limit - 1] + "…"
 
 
 def title_of(defn: ScenarioDef, language: str) -> str:
@@ -293,6 +302,8 @@ def build_questions(view: ScenarioView, language: str) -> ScenarioQuestions:
         run = view.run_for(scenario.key)
         if run is not None and run.status == RunStatus.WAITING:
             continue  # collected, waiting for an event: never started again meanwhile
+        if run is None and scenario.definition.caller_options:
+            continue  # its options come only with POST /v1/runs/start
         for q in scenario.definition.start.questions:
             add(start_question(scenario.definition, q, language))
 
@@ -321,6 +332,12 @@ def build_questions(view: ScenarioView, language: str) -> ScenarioQuestions:
 
 def _field_line(defn: ScenarioDef, f: FieldDef, fs: FieldState, language: str) -> str:
     q = defn.text(f.question, language).text
+    if fs.hidden and not fs.complete:
+        # show_if said it does not apply: the bot does not ask it
+        said = f": «{preview(fs.value)}»" if fs.value is not None else ""
+        return f"- {f.key} «{q}»: not asked: does not apply{said}"
+    if fs.closed:
+        return f"- {f.key} «{q}»: closed after several attempts: «{preview(fs.value or '')}»"
     if fs.value is None:
         return f"- {f.key} «{q}»: no answer yet"
     if fs.state == PARTIAL:

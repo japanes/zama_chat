@@ -66,7 +66,10 @@
       "choice": "a choice of {n} options",
       "catalog": "from the catalog, up to {n} to choose",
       "date": "a date, at most {n} days ahead",
-      "list": "a list, up to {n} items"
+      "list": "a list, up to {n} items",
+      "conditional": "not always",
+      "choice_caller": "a choice, options from an outside server",
+      "next_caller": "The questions ran out — the bot waits for new ones from an outside server until it closes the scenario."
     },
     "start": {
       "lead": "The bot starts this scenario when the client:",
@@ -132,7 +135,23 @@
       "add_description": "A note for the bot",
       "add_after": "Ask only after…",
       "remove": "Delete the question",
-      "remove_confirm": "Delete the question “{name}”? Everything that refers to it goes with it."
+      "remove_confirm": "Delete the question “{name}”? Everything that refers to it goes with it.",
+      "memory": "What the bot remembers when it asks",
+      "memory_hint": "The bot always sees every answer of the client in this scenario — whole, with how it asked. Next to them, the last messages of the chat. When they disagree with the answers, the bot trusts the answers: the client may have corrected themselves.",
+      "history": "How many last chat messages the bot sees",
+      "history_default": "Empty — {n}, as for every scenario.",
+      "history_default_unknown": "Empty — as for every scenario.",
+      "ask_rules": "How to ask",
+      "ask_rules_hint": "Only the bot sees these rules, when it writes a question to the client. They do not affect checking or reading the answers. Empty — the bot asks by its general rules.",
+      "rule_n": "Rule {n}",
+      "rule_placeholder": "For example: ask briefly, in one sentence",
+      "rule_remove": "Remove the rule",
+      "add_rule": "Add a rule",
+      "options_source": "Where the options come from",
+      "options_here": "I set them here",
+      "options_caller": "An outside server sends them at start",
+      "options_caller_hint": "The options come with the start of the scenario (POST /v1/runs/start), each conversation its own. Without them the scenario does not start.",
+      "add_show_if": "Ask only if…"
     },
     "type": {
       "text": "Text",
@@ -173,12 +192,14 @@
       "mode": {
         "all_fields": "At once, when all answers are collected",
         "external_event": "When your system answers (a CRM, a booking system)",
-        "receipt": "When the payment receipt is accepted"
+        "receipt": "When the payment receipt is accepted",
+        "by_caller": "When an outside server says so"
       },
       "mode_hint": {
         "all_fields": "The simplest way: the bot collected everything — you got the request.",
         "external_event": "The bot sends the request and waits: booked, the time is taken, failed.",
-        "receipt": "Needs a question with the answer “A payment receipt”."
+        "receipt": "Needs a question with the answer “A payment receipt”.",
+        "by_caller": "The questions ran out — the bot waits: an outside server may send new questions (POST /v1/runs/…/fields) or close the scenario (POST /v1/runs/…/finish)."
       },
       "events": "What your system may answer",
       "events_hint": "For every answer: what it means and what the bot writes to the client.",
@@ -229,7 +250,19 @@
       "which_question": "Which question",
       "any_question": "Any",
       "approval": "Only after a person approves it in the Inbox",
-      "add_action": "Add an action"
+      "add_action": "Add an action",
+      "caller_say": "What to say when the questions run out",
+      "caller_say_hint": "The bot says it in its own words. Empty — a short acknowledgement, no question.",
+      "added": "Added questions",
+      "added_hint": "Questions an outside server sends while the conversation goes.",
+      "wording": "How the bot asks them",
+      "wording_own_words": "In its own words",
+      "wording_as_sent": "As sent, word for word",
+      "wording_hint": "“In its own words” — the bot words the question itself, from the client's answers.",
+      "close_after": "Close after failed answers",
+      "close_after_hint": "After this many answers fail the check, the question is closed; what the client said is kept. Default: 3.",
+      "max_fields": "At most this many added questions",
+      "max_fields_hint": "Empty — no limit."
     },
     "leave": {
       "cancel": "The client changed their mind — how to tell",
@@ -277,7 +310,10 @@
       "no_receipt": "There is no question with the answer “A payment receipt”.",
       "no_target": "The action “{what}”: choose where to.",
       "no_text": "The action “{what}”: write the text.",
-      "resume_hours": "Set how many hours to wait for the client to come back."
+      "resume_hours": "Set how many hours to wait for the client to come back.",
+      "show_empty": "The question “{name}” has an empty sign {n} in “When to ask this question”.",
+      "show_never": "The question “{name}” is never asked: all signs together do not reach the threshold.",
+      "after_conditional": "The question “{name}” waits for “{ref}”, which is not always asked. Remove “{ref}” from “Ask only after”."
     },
     "versions": {
       "n": "Version {v}",
@@ -382,6 +418,31 @@
         "empty_list": "empty — at least one item is needed"
       },
       "no_language": "No text in the language {language} in {n} places: {paths}"
+    },
+    "show": {
+      "title": "When to ask this question",
+      "remove": "Always ask",
+      "lead": "The bot asks this question only if the client's answers say:",
+      "sign_n": "sign {n}",
+      "placeholder": "For example: did the client risk something, and what was at stake is not said yet?",
+      "remove_sign": "Remove the sign",
+      "hint": "Write a question one can answer “yes” or “no” looking at the client's answers. “Yes” — the question is asked.",
+      "add_sign": "Add a sign",
+      "never": "With these settings the question is never asked: all signs together do not reach the threshold.",
+      "will": "asks",
+      "will_not": "does not ask",
+      "only": "only {sign}",
+      "unknown": "If the check gives no answer",
+      "unknown_ask": "Ask",
+      "unknown_skip": "Do not ask",
+      "unknown_hint": "For example, there are too few answers yet to say “yes” or “no”.",
+      "recheck": "Check",
+      "recheck_every_turn": "After every answer of the client",
+      "recheck_once": "Once",
+      "recheck_hint": "“After every answer” — the question may show up later, when the client tells something new.",
+      "exact_hint": "Every sign has points. The bot adds up the points of the signs answered “yes” and asks the question when the sum is not less than the threshold. “This is enough” means the sign has as many points as the threshold.",
+      "after_note": "Questions that are not always asked are not offered here: if such a question is never asked, this one would wait for it forever.",
+      "referenced": "Other questions wait for this one (“Ask only after”): {names}. Remove it there first."
     }
   }
 }

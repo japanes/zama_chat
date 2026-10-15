@@ -93,6 +93,9 @@ The words `yes`, `no`, `on`, `off` are plain text here. There are only two logic
 | `cancel` | no | How to tell that the client changed their mind — section 9. |
 | `incompatible_with` | no | Scenarios that do not go at the same time as this one — section 9. |
 | `actions` | no | What to do with the result: send it to you, write to the client — section 10. |
+| `ask_rules` | no | How the bot asks: rules for it alone — section 6. |
+| `history_messages` | no | How many last messages of the chat the bot sees next to the answers — section 6. |
+| `added` | no | Questions your system adds to a running conversation — section 8. |
 
 ## 5. `start` — when the scenario starts
 
@@ -146,6 +149,8 @@ fields:
 | `description` | no | What counts as an answer. By this text the bot tells whether a message has an answer to this very question. |
 | `filters` | no | Checks of the answer — see below. |
 | `ask_after` | no | The keys of the questions after which this one is asked. Until they are answered, the bot does not ask this question. |
+| `show_if` | no | When to ask the question: only if the client's answers say it applies — see below. |
+| `options_from` | no | `choice` only: `caller` — your system sends the options at start — see below. |
 
 **How the bot reads answers.** Every message of the client is checked against all the questions that have no answer yet, not only against the last one asked. The client can answer several questions in one message and in any order — the bot counts it and does not ask again. That is why similar questions must have different `description` texts: by them the bot tells which question the client's words belong to.
 
@@ -261,6 +266,57 @@ A check is a «yes / no» question about the client's answer. The answer is acce
 
 Questions of the `attachment` and `receipt` types cannot have checks: pictures are checked by the program, not by a question.
 
+### `show_if` — when to ask the question
+
+The bot asks a question with `show_if` only if the client's answers say it applies to the conversation. It works like `start`: yes/no signs with weights and a threshold. Only the signs are checked not against one message but against all the client's answers in this scenario.
+
+```yaml
+  - key: stakes
+    question: What was at stake?
+    ask_after: [story]
+    show_if:
+      questions:
+        - key: risked
+          ask: Did the client take a risk or could lose something, and what exactly was at stake is not said yet?
+      on_unknown: ask          # the check gave no answer — ask (the default)
+      recheck: every_turn      # check again after every answer (the default)
+```
+
+| Name | What it is |
+|---|---|
+| `questions` | The signs, at least one: `key` + `ask`, the weight `weight` (from 1 to 100, not given — 1). The question in `ask` is about the client's answers and can be answered “yes” or “no”. “Yes” — the question is asked. |
+| `threshold` | The threshold, as in `start`. Required when there is more than one sign, and not bigger than the sum of the weights. |
+| `on_unknown` | If the check gives no answer (too few answers yet, or the check did not answer): `ask` — ask, the default; `skip` — do not ask. |
+| `recheck` | `every_turn` — check again after every answer that changed something: the question may show up later, when the client tells something new; the default. `once` — check once. |
+
+A question that does not apply is not asked, but what the client said about it on their own is kept. In the finished request such questions go in the `hidden` list, not among the empty ones. A question with `show_if` cannot be named in `ask_after`: if it is never asked, the question waiting for it would never be asked either.
+
+### `options_from` — your system sends the options
+
+A `choice` may have no options in the file: your system sends them when it starts the scenario, each conversation its own. Then the file has `options_from: caller` and no `options`, and the request `POST /v1/runs/start` passes the options in `options`: the key of the question → from 1 to 10 options (`key` + `label`). Without them the scenario does not start.
+
+```yaml
+  - key: angle
+    type: choice
+    question: Which option do we take?
+    options_from: caller
+```
+
+### `ask_rules` and `history_messages` — what the bot sees when it asks
+
+When the bot writes a question, it always sees every answer of the client in this scenario — whole, with how it asked them — and the last messages of the chat. When the chat disagrees with the answers, the bot trusts the answers: the client may have corrected themselves (“I was 25… no, 27”).
+
+```yaml
+ask_rules:
+  - Do not assume the event happened. Ask “Was anyone against it?”, not “Who was against it?”.
+history_messages: 12
+```
+
+| Name | What it is |
+|---|---|
+| `ask_rules` | Rules for how to ask. Only the bot sees them, when it writes a question to the client: they do not affect reading and checking the answers. Not given — the bot's general rules. |
+| `history_messages` | How many last messages of the chat the bot sees next to the answers, from 1 to 200. Not given — as for every scenario (a server setting, usually 30). |
+
 ## 7. Confirmation and completion
 
 **`confirm`** — when all the answers are collected, the bot shows them to the client and asks to confirm:
@@ -280,6 +336,7 @@ confirm: {}       # the same with the standard question «Is everything right?»
 | `explicit_yes` | The same, and the client's confirmation is required even if `confirm` is not written. |
 | `external_event` | The answers are collected, then the bot waits for the answer of your system — section 8. |
 | `receipt` | The answers are collected and the receipt is accepted. At least one question of the `receipt` type is needed. |
+| `by_caller` | The answers are collected, then the bot waits for new questions from your system until it closes the scenario — section 8. |
 
 ## 8. The answer of your system: `events` and `waiting`
 
@@ -309,6 +366,31 @@ waiting:
 | `reopen_fields` | The keys of the questions to ask again. Required with `reopen`, not written in the other cases. |
 | `say` | What the bot writes to the client. `{question_key}` is replaced with the client's answer, `{data.name}` — with a value from the data of the event. |
 | `hours` | How many hours to wait for the event. Not given — wait with no time limit. |
+
+### `by_caller` — your system sends new questions
+
+With `completion: by_caller` the scenario does not end when the answers are collected: the bot says one short phrase and waits. Your system may add questions to the running conversation at any time — `POST /v1/runs/{run_id}/fields`, the bot asks them itself. When there will be no more questions, the system closes the scenario — `POST /v1/runs/{run_id}/finish`; the bot writes nothing to the client then.
+
+```yaml
+completion: by_caller
+
+waiting:
+  say: Thank you, that is enough material. I will put it all together now — it will take a little time.
+
+added:
+  wording: own_words          # the bot asks an added question in its own words
+  close_after: 3              # after three failed answers the question is closed
+  max_fields: 20              # at most 20 added questions
+```
+
+| Name | What it is |
+|---|---|
+| `say` | What to say when the questions run out. The bot says it in its own words. Not given — a short acknowledgement with no question. |
+| `wording` | How the bot asks an added question: `own_words` — in its own words, from the client's answers, the default; `as_sent` — word for word, as sent. |
+| `close_after` | After how many failed answers (they did not pass the checks) an added question is closed, from 1 to 20. What the client said is kept. Not given — 3. |
+| `max_fields` | At most this many added questions per conversation, from 1 to 200. Not given — no limit. |
+
+`added` and `waiting.say` are written only with `completion: by_caller`.
 
 ## 9. The client disappeared, changed their mind, started something else
 
@@ -490,8 +572,11 @@ actions:
 - a reference to a question that does not exist (in `ask_after`, `start`, `reopen_fields`, the `field` of an action);
 - questions wait for each other in a circle through `ask_after`;
 - `choice` has fewer than two options; a setting of a type stands with a different type;
+- a `choice` with `options_from: caller` has `options`, or `options_from` stands with another type;
+- `ask_after` names a question with `show_if`; the keys of the signs in `show_if` repeat;
 - the `threshold` is not given with several signs or is bigger than the sum of the weights;
 - `completion: external_event` without `events`, or `events` / `waiting` with another `completion`;
+- `added` or `waiting.say` with a `completion` other than `by_caller`;
 - `resume` with `within_hours` without `hours`;
 - an action lacks what it needs: `endpoint`, `params.notifier` or `params.text`.
 

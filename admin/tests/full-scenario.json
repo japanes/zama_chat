@@ -1,0 +1,103 @@
+{
+  "key": "story_facts",
+  "title": {
+    "ru": "Фактаж",
+    "en": "Facts"
+  },
+  "language": "ru",
+  "start": {
+    "questions": [
+      {
+        "key": "wants_it",
+        "ask": {
+          "ru": "Хочет рассказать?"
+        },
+        "weight": 1
+      }
+    ],
+    "threshold": 1
+  },
+  "fields": [
+    {
+      "key": "story",
+      "type": "text",
+      "question": {
+        "ru": "Расскажите историю"
+      }
+    },
+    {
+      "key": "stakes",
+      "type": "text",
+      "question": {
+        "ru": "Что было на кону?"
+      },
+      "ask_after": [
+        "story"
+      ],
+      "show_if": {
+        "questions": [
+          {
+            "key": "risk",
+            "ask": {
+              "ru": "Человек рисковал?"
+            },
+            "weight": 2
+          },
+          {
+            "key": "unsaid",
+            "ask": {
+              "ru": "Что на кону, не сказано?"
+            },
+            "weight": 1
+          }
+        ],
+        "threshold": 3,
+        "on_unknown": "skip",
+        "recheck": "once"
+      }
+    },
+    {
+      "key": "conflict",
+      "type": "text",
+      "question": {
+        "ru": "Что было против?"
+      },
+      "show_if": {
+        "questions": [
+          {
+            "key": "decision",
+            "ask": {
+              "ru": "Было решение?"
+            },
+            "weight": 1
+          }
+        ]
+      }
+    },
+    {
+      "key": "angle",
+      "type": "choice",
+      "question": {
+        "ru": "Какой ракурс берём?"
+      },
+      "options_from": "caller"
+    }
+  ],
+  "completion": "by_caller",
+  "waiting": {
+    "say": {
+      "ru": "Спасибо, материала достаточно."
+    }
+  },
+  "ask_rules": [
+    {
+      "ru": "Формулировка не должна предполагать наличие события."
+    }
+  ],
+  "history_messages": 12,
+  "added": {
+    "wording": "as_sent",
+    "close_after": 5,
+    "max_fields": 20
+  }
+}

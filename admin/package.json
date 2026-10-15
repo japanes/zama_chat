@@ -7,6 +7,7 @@
     "build": "nuxt build",
     "preview": "nuxt preview",
     "typecheck": "nuxi typecheck",
+    "test": "node --test 'tests/*.test.mjs'",
     "postinstall": "nuxt prepare"
   },
   "dependencies": {

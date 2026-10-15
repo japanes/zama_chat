@@ -16,6 +16,10 @@ EXTERNAL = "external"
 REOPENED = "reopened"
 # a question closed without an answer (POST /v1/runs/{id}/skip)
 SKIPPED = "skipped"
+# an added field closed after too many failed answers, with what the client said
+CLOSED = "field_closed"
+# the caller added fields to the run (POST /v1/runs/{id}/fields)
+FIELDS_ADDED = "fields_added"
 
 
 @dataclass(frozen=True)

@@ -160,7 +160,16 @@
       "receipt_field_required": "“A payment receipt is checked” needs a receipt field",
       "receipt_quantity_field_invalid": "Field {field}: {ref} must be a number field",
       "draft_empty": "The description gave no questions. Write what the bot should find out from the client.",
-      "draft_failed": "The draft did not work out. Try again or describe the task in more detail."
+      "draft_failed": "The draft did not work out. Try again or describe the task in more detail.",
+      "added_not_allowed": "Added questions work only with «when the outside system says» (now «{mode}»)",
+      "ask_after_conditional": "Question {field}: cannot be asked after {ref}: {ref} is asked only on a condition",
+      "confirm_not_allowed": "«Ask the client to confirm» does not work with «{mode}»",
+      "options_from_not_allowed": "Question {field}: options from the outside system work only with a choice (now {type})",
+      "options_from_with_options": "Question {field}: the options come from the outside system — remove the ones written here",
+      "show_if_duplicate": "Question {field}: keys of the conditions repeat",
+      "show_if_threshold_required": "Question {field}: {questions} conditions need a threshold",
+      "show_if_threshold_too_high": "Question {field}: the threshold {threshold} is above the sum of points {max} — the question would never be asked",
+      "waiting_say_not_allowed": "«What to say when the questions run out» works only with «when the outside system says» (now «{mode}»)"
     },
     "tenant": {
       "language_duplicate": "A language is listed twice",
@@ -246,6 +255,31 @@
     "receipt": {
       "decided": "The receipt has already been decided",
       "not_found": "Receipt not found"
+    },
+    "check": {
+      "empty_answer": "Empty answers: {fields}",
+      "field_twice": "Questions sent twice: {fields}",
+      "not_a_text_field": "Only text questions can be checked this way: {fields}",
+      "too_long": "The answers are too long to check at once ({answers})"
+    },
+    "run": {
+      "field_exists": "Question {field} is already in the dialogue with another text",
+      "field_invalid": "Added questions have errors: {fields}",
+      "fields_not_allowed": "Questions can be added only to a scenario that waits for them («when the outside system says»); this one finishes «{completion}»",
+      "finish_not_allowed": "Only a scenario that waits for questions («when the outside system says») is finished this way; this one finishes «{completion}»",
+      "language_not_supported": "Language {language} is not available; available: {languages}",
+      "not_collected": "Not everything is collected yet: {missing}",
+      "not_found": "Dialogue {run_id} not found",
+      "not_open": "The dialogue is not running (status {status})",
+      "nothing_asked": "The bot is asking nothing now",
+      "options_count": "Question {field}: from {min} to {max} options (given {given})",
+      "options_duplicate": "Question {field}: option keys repeat",
+      "options_invalid": "Question {field}: an option has errors",
+      "options_missing": "Options are not given for: {fields}",
+      "options_not_allowed": "These questions take no options at start: {fields}",
+      "other_in_focus": "Another dialogue is running now: {scenario}",
+      "too_many_fields": "At most {max} added questions (already {have})",
+      "unknown_fields": "The scenario has no such questions: {fields}"
     }
   }
 }

@@ -2,7 +2,7 @@
 the channel's scenarios (active versions, in order) and the conversation's open runs."""
 
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -14,7 +14,7 @@ from app.db.base import new_id
 from app.db.models import OPEN_STATUSES, ChannelScenario, RunStatus, Scenario, ScenarioRun
 from app.errors import AppError
 from app.logging import get_logger
-from app.scenarios.schema import ScenarioDef, parse_definition
+from app.scenarios.schema import FieldDef, Option, ScenarioDef, parse_definition
 
 log = get_logger(__name__)
 
@@ -40,6 +40,13 @@ class OpenRun:
     last_activity_at: datetime
     # stage 6: confirmed_at, waiting_for, waiting_since, external, events_seen
     data: dict[str, Any] = field(default_factory=dict)
+    # the run's own fields and options (effective_definition); `scenario.definition`
+    # already has them
+    extra: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def added(self) -> list[str]:
+        return added_keys(self.extra)
 
 
 @dataclass
@@ -93,6 +100,42 @@ def is_expired(
 ) -> bool:
     at = expires_at(defn, last_activity_at, status=status, data=data)
     return at is not None and now >= at
+
+
+# extra["fields"]: field definitions + this key — when the caller added the field
+ADDED_AT = "added_at"
+
+
+def added_keys(extra: dict[str, Any] | None) -> list[str]:
+    """Keys of the fields added while the run goes, in the order they came."""
+    return [str(f["key"]) for f in (extra or {}).get("fields") or []]
+
+
+def effective_definition(defn: ScenarioDef, extra: dict[str, Any] | None) -> ScenarioDef:
+    """The run's fields: the scenario's, with the options the caller gave at the start for
+    `options_from: caller`, then the fields added while the run goes (POST
+    /v1/runs/{id}/fields). Without extra — the scenario as it is."""
+    extra = extra or {}
+    added = extra.get("fields") or []
+    options = extra.get("options") or {}
+    if not added and not options:
+        return defn
+    fields: list[FieldDef] = []
+    for f in defn.fields:
+        given = options.get(f.key)
+        if f.options_from == "caller" and given:
+            f = f.model_copy(update={"options": [Option.model_validate(o) for o in given]})
+        fields.append(f)
+    for raw in added:
+        fields.append(FieldDef.model_validate({k: v for k, v in raw.items() if k != ADDED_AT}))
+    return defn.model_copy(update={"fields": fields})
+
+
+def run_scenario(scenario: LoadedScenario, extra: dict[str, Any] | None) -> LoadedScenario:
+    """The scenario as this run sees it (effective_definition)."""
+    if not extra:
+        return scenario
+    return replace(scenario, definition=effective_definition(scenario.definition, extra))
 
 
 def _loaded(row: Scenario, position: int = 0) -> LoadedScenario | None:
@@ -151,6 +194,12 @@ async def load_view(
         loaded = _loaded(scenario, positions.get(scenario.key, 0))
         if loaded is None:
             continue
+        try:
+            loaded = run_scenario(loaded, run.extra)
+        except ValueError:
+            # checked when added; a broken one must not break turns
+            log.error("scenario.run_extra_broken", run_id=str(run.id))
+            continue
         item = OpenRun(
             id=run.id,
             scenario=loaded,
@@ -161,6 +210,7 @@ async def load_view(
             started_at=run.started_at,
             last_activity_at=run.last_activity_at,
             data=dict(run.data or {}),
+            extra=dict(run.extra or {}),
         )
         if is_expired(
             loaded.definition, run.last_activity_at, now, status=run.status, data=run.data
@@ -176,6 +226,11 @@ async def load_definition(session: AsyncSession, scenario_id: uuid.UUID) -> Scen
     if row is None:
         raise AppError("scenario.not_found", {"id": str(scenario_id)}, status=404)
     return parse_definition(row.definition)
+
+
+async def load_run_definition(session: AsyncSession, run: ScenarioRun) -> ScenarioDef:
+    """The fields of a run as it goes: its scenario version + its own (extra)."""
+    return effective_definition(await load_definition(session, run.scenario_id), run.extra)
 
 
 def definition_json(defn: ScenarioDef) -> dict[str, Any]:

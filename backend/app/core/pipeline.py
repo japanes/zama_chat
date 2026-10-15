@@ -9,6 +9,10 @@
   6. respond  — the reply text (LLM `reply`) with the found context and the scenario step.
 
 A channel without scenarios (and without open runs) goes exactly the stage 1 way.
+
+The scenario in the focus may want more or fewer last messages of the dialogue than the
+default (`history_messages` of its file); the card of the dialogue goes to the rewrite
+and to the reply (scenarios/plan.py, `known`).
 """
 
 from typing import TYPE_CHECKING
@@ -22,18 +26,22 @@ from app.core.language import (
 )
 from app.core.rewrite import PROMPT_KEY as REWRITE_KEY
 from app.core.rewrite import rewrite
-from app.core.routing import route
+from app.core.routing import Route, route
 from app.prompts.builtin import (
     EXTRACT_KEY,
     RECEIPT_VISION_KEY,
+    SCENARIO_CARD,
+    SCENARIO_CARD_KEY,
     SELECT_PRESENTED,
     SELECT_PRESENTED_KEY,
     prompt_rules,
 )
 from app.prompts.store import load_prompts
+from app.scenarios.plan import build_plan, view_card
 from app.scenarios.questions import build_questions
 from app.scenarios.runtime import run_scenarios
-from app.scenarios.store import load_view
+from app.scenarios.store import ScenarioView, load_view
+from app.scenarios.work import WorkRun
 from app.search.presented import with_presented
 from app.search.service import tenant_content
 from app.search.step import UNKNOWN_HANDOVER, SearchOutcome, search_question, search_step
@@ -61,6 +69,7 @@ async def full_pipeline(services: "Services", ctx: TurnContext) -> TurnPlan:
         now=ctx.now,
     )
     ctx.extra["scenarios"] = view
+    await fit_history(services, ctx, view)
     content = await tenant_content(services, ctx.tenant_id)
 
     # the rewritten text is in the reply language known before this message
@@ -72,6 +81,8 @@ async def full_pipeline(services: "Services", ctx: TurnContext) -> TurnPlan:
             prompts[REWRITE_KEY],
             before,
             presented_rules=prompt_rules(prompts, SELECT_PRESENTED_KEY, SELECT_PRESENTED),
+            card=view_card(view, before),
+            card_rules=prompt_rules(prompts, SCENARIO_CARD_KEY, SCENARIO_CARD, "rewrite_rules"),
         )
         step.update(
             llm_call_id=rw.llm_call_id,
@@ -177,6 +188,60 @@ async def full_pipeline(services: "Services", ctx: TurnContext) -> TurnPlan:
         variants=reply.variants,
         writes=[scenarios.write] if scenarios.write is not None else [],
     )
+
+
+async def ask_pipeline(services: "Services", ctx: TurnContext) -> TurnPlan:
+    """A bot turn (core/turn.py, `bot_only`): no client message, the bot speaks first. The
+    run in the focus has its question set already (POST /v1/runs/{id}/fields); the reply
+    model words it from the card and the dialogue. No rewrite, route or extract: there is
+    nothing to read. Nothing to ask → no reply."""
+    prompts = await load_prompts(services.sm, ctx.tenant_id, PROMPT_KEYS, required=REQUIRED_PROMPTS)
+    view = await load_view(
+        services.sm,
+        tenant_id=ctx.tenant_id,
+        channel_id=ctx.channel_id,
+        conversation_id=ctx.conversation_id,
+        now=ctx.now,
+    )
+    ctx.extra["scenarios"] = view
+    await fit_history(services, ctx, view)
+    reply_language = ctx.reply_language or ctx.settings.primary_language
+    runs = [WorkRun.from_open(r) for r in view.runs]
+    plan = build_plan(runs, language=reply_language, client_question=False)
+    if plan is None or not plan.asks:
+        ctx.trace.note("bot_turn", {"asks": False})
+        return TurnPlan(reply_language=reply_language, route={"bot_turn": True})
+    plan.bot_turn = True
+    with ctx.trace.step("scenarios") as step:
+        step["summary"] = {"bot_turn": True, "focus": plan.scenario}
+    reply = await respond_step.respond(
+        services, ctx, prompts, Route(), "", reply_language, plan=plan
+    )
+    return TurnPlan(
+        reply_text=reply.text or None,
+        reply_language=reply_language,
+        route={"bot_turn": True},
+        reply_meta={"prompt_key": reply.prompt_key, "prompt_version": reply.prompt_version},
+        variants=reply.variants,
+    )
+
+
+async def fit_history(services: "Services", ctx: TurnContext, view: ScenarioView) -> None:
+    """The last messages the scenario in the focus wants (`history_messages`): fewer — the
+    loaded history is cut; more — loaded again with its number."""
+    focus = view.focus
+    wanted = focus.scenario.definition.history_messages if focus is not None else None
+    if wanted is None or wanted == len(ctx.history):
+        return
+    if wanted < len(ctx.history):
+        ctx.history = ctx.history[-wanted:]
+    elif len(ctx.history) >= services.settings.history_messages:
+        # the default limit cut it: there may be more
+        from app.core.turn import load_history
+
+        async with services.sm() as session:
+            ctx.history = await load_history(session, ctx.conversation_id, ctx.turn_id, wanted)
+    ctx.trace.note("history", {"messages": len(ctx.history), "wanted": wanted})
 
 
 def _handover(ctx: TurnContext, wants_human: bool, found: SearchOutcome) -> bool:

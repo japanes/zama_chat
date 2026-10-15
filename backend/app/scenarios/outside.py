@@ -1,7 +1,8 @@
 """Changes of a scenario run from outside a turn: an operator's decision on a receipt in
-review, an external event (POST /v1/events). Like a turn and the timers, they take the
-conversation lease first — never in the middle of a turn — and write in one transaction:
-the run, its events → actions, the bot's message to the client, the timers.
+review, an external event (POST /v1/events), the public API of runs (api/v1/runs.py). Like
+a turn and the timers, they take the conversation lease first — never in the middle of a
+turn — and write in one transaction: the run, its events → actions, the bot's message to
+the client, the timers.
 """
 
 import uuid
@@ -37,6 +38,9 @@ log = get_logger(__name__)
 
 # a turn takes 10–30 s; an operator's click or an event waits this long for it
 WAIT_SECONDS = 15.0
+
+# scenario_runs.data.waiting_for of a `completion: by_caller` run that asked everything
+WAITING_FIELDS = "fields"
 
 # TODO(review): the bot's words after a person decided on a receipt
 RECEIPT_TEXTS: dict[str, dict[str, str]] = {
@@ -129,7 +133,8 @@ async def settle(
     now: datetime,
 ) -> None:
     """After an outside change: everything collected (and confirmed) → completed, or
-    waiting for an event; else the run goes back to the client asking the next field."""
+    waiting for an event / for the caller's questions (by_caller); else the run goes back to
+    the client asking the next field."""
     if fl.all_complete(states) and confirmed(defn, data):
         run.asking = None
         if defn.completion == Completion.EXTERNAL_EVENT:
@@ -137,6 +142,11 @@ async def settle(
             data.update(waiting_for="event", waiting_since=now.isoformat())
             data.pop("receipt_id", None)
             change.add(ActionEvent.WAITING)
+        elif defn.completion == Completion.BY_CALLER:
+            if run.status != RunStatus.WAITING:
+                run.status = RunStatus.WAITING
+                data.update(waiting_for=WAITING_FIELDS, waiting_since=now.isoformat())
+                change.add(ActionEvent.WAITING)
         else:
             run.status = RunStatus.COMPLETED
             run.finished_at = now
@@ -227,6 +237,14 @@ async def move_timers(
         tenant_id=run.tenant_id,
         dedupe_key=f"expire:{run.id}",
     )
+
+
+def waiting_say(defn: ScenarioDef, language: str) -> str | None:
+    """What a by_caller run says, word for word, when it starts waiting outside a turn
+    (`waiting.say`); None — nothing (a turn words it, scenarios/plan.py)."""
+    if defn.waiting.say is None:
+        return None
+    return pick_text(defn.waiting.say, language, defn.language).text
 
 
 def language_of(conv: Conversation, run: ScenarioRun, defn: ScenarioDef) -> str:

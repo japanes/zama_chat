@@ -24,6 +24,7 @@ from app.db.models import (
 from app.decisions.engine import DecisionSet
 from app.decisions.fake import FakeDecider
 from app.prompts.seed import seed_prompts
+from app.scenarios.checks import STATE_MAX_TOKENS
 from tests.conftest import chat_reply
 from tests.factories import make_model, make_tenant
 from tests.scenario_helpers import (
@@ -273,6 +274,13 @@ async def test_check_without_filters_asks_nobody(services, client):
     assert decider.calls == []
 
 
+# questions enough for their full answers (4000 characters, ~1333 tokens each) to overflow
+# the decider's state
+_MANY = ["niche", "offer", "positioning"] + [
+    f"extra_{i}" for i in range(STATE_MAX_TOKENS * 3 // 4000 + 2)
+]
+
+
 @pytest.mark.parametrize(
     ("body", "status", "code"),
     [
@@ -293,16 +301,9 @@ async def test_check_without_filters_asks_nobody(services, client):
             422,
             "run.language_not_supported",
         ),
-        # four answers of the full length do not get into the decider's state whole
+        # answers of the full length, more than the decider's state takes whole
         (
-            {
-                "answers": [
-                    {"field": "niche", "value": "я" * 4000},
-                    {"field": "offer", "value": "я" * 4000},
-                    {"field": "positioning", "value": "я" * 4000},
-                    {"field": "extra", "value": "я" * 4000},
-                ]
-            },
+            {"answers": [{"field": key, "value": "я" * 4000} for key in _MANY]},
             422,
             "check.too_long",
         ),
@@ -310,7 +311,11 @@ async def test_check_without_filters_asks_nobody(services, client):
 )
 async def test_check_refuses_what_it_cannot_check(services, client, body, status, code):
     data = interview_data()
-    data["fields"].append({"key": "extra", "question": {"uk": "Ще щось?", "en": "More?"}})
+    data["fields"].extend(
+        {"key": key, "question": {"uk": "Ще щось?", "en": "More?"}}
+        for key in _MANY
+        if key not in {"niche", "offer", "positioning"}
+    )
     bundle = await _setup(services, data)
     decider = _decider(services, {"filter:*": True})
     resp = await _post(client, bundle, "/v1/scenarios/interview/check", **body)
@@ -356,6 +361,12 @@ async def test_start_creates_the_run_and_asks_the_first_question(services, clien
         "skipped": False,
         "reasks": 0,
         "stuck": False,
+        # not answered yet: how the bot asked it is kept with the answer
+        "asked": None,
+        "hidden": False,
+        "closed": False,
+        "options": None,
+        "added_at": None,
     }
     assert [(m["role"], m["text"]) for m in state["messages"]] == [("bot", "What is your niche?")]
     assert fake_llm.calls == 0

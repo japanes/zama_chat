@@ -60,7 +60,9 @@ from app.llm.service import Overrides
 from app.operator.tasks import task_dict
 from app.results.delivery import resend
 from app.results.service import collected
+from app.scenarios.fields import load_states
 from app.scenarios.schema import parse_definition
+from app.scenarios.store import ADDED_AT, effective_definition
 from app.services import Services
 
 router = APIRouter(prefix="/v1/admin/tenants/{tenant_id}", tags=["admin-activity"])
@@ -70,11 +72,28 @@ SANDBOX_PREFIX = "sandbox:"
 MESSAGE_META_KEYS = ("task_id", "variant", "edited", "source", "user_id", "send_error_detail")
 
 
-def _collected(definition: dict[str, Any] | None, fields: dict[str, Any]) -> dict[str, Any]:
+def _collected(
+    definition: dict[str, Any] | None,
+    fields: dict[str, Any],
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     try:
-        defn = parse_definition(definition)
-    except AppError:
+        defn = effective_definition(parse_definition(definition), extra)
+    except (AppError, ValueError):
         return {"fields": {}, "partial": {}, "missing": [], "broken_definition": True}
+    states = load_states(defn, fields)
+    added = {str(f["key"]): f.get(ADDED_AT) for f in (extra or {}).get("fields") or []}
+    card: dict[str, dict[str, Any]] = {}
+    for f in defn.fields:
+        fs = states[f.key]
+        row = {
+            "asked": fs.asked,
+            "show": fs.show,
+            "closed": fs.closed or None,
+            "added_at": added.get(f.key),
+        }
+        if row := {k: v for k, v in row.items() if v is not None}:
+            card[f.key] = row
     return {
         **collected(defn, fields),
         # for a readable progress list: the scenario's name, its fields in order, their
@@ -83,6 +102,13 @@ def _collected(definition: dict[str, Any] | None, fields: dict[str, Any]) -> dic
         "order": [f.key for f in defn.fields],
         "titles": {f.key: f.title for f in defn.fields if f.title is not None},
         "questions": {f.key: f.question for f in defn.fields},
+        # the card: how the bot asked, the show_if checks, added and closed fields
+        "card": card,
+        "show_if": {
+            f.key: f.show_if.model_dump(mode="json", exclude_none=True)
+            for f in defn.fields
+            if f.show_if is not None
+        },
     }
 
 
@@ -128,7 +154,7 @@ def run_dict(r: ScenarioRun, definition: dict[str, Any] | None) -> dict[str, Any
         "finished_at": iso(r.finished_at),
         "last_activity_at": iso(r.last_activity_at),
         "delivery_seq": r.delivery_seq,
-        **_collected(definition, r.fields),
+        **_collected(definition, r.fields, r.extra),
     }
 
 

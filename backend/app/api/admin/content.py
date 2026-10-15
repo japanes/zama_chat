@@ -332,7 +332,11 @@ async def list_scenarios(access: TenantOperator, services: ServicesDep) -> dict[
                     "is_enabled": cs.is_enabled,
                 }
             )
-    return {"items": sorted(items.values(), key=lambda x: x["key"])}
+    return {
+        "items": sorted(items.values(), key=lambda x: x["key"]),
+        # what a scenario gets when its file leaves a setting out (shown in the editor)
+        "defaults": {"history_messages": services.settings.history_messages},
+    }
 
 
 async def _versions(session, tenant_id: uuid.UUID, key: str) -> list[Scenario]:

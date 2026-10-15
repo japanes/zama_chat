@@ -8,6 +8,7 @@ from typing import Any
 
 from app.db.base import new_id
 from app.db.models import OPEN_STATUSES, RunStatus
+from app.scenarios import fields as fl
 from app.scenarios.events import Event
 from app.scenarios.fields import FieldState, load_states
 from app.scenarios.schema import ScenarioDef
@@ -37,6 +38,8 @@ class WorkRun:
     was_all_complete: bool = False
     # the client answered «no» to «is everything correct?» in this turn
     confirm_rejected: bool = False
+    # fields the caller added while the run goes (POST /v1/runs/{id}/fields)
+    added: frozenset[str] = frozenset()
 
     @classmethod
     def from_open(cls, run: OpenRun) -> "WorkRun":
@@ -53,7 +56,8 @@ class WorkRun:
             snapshot={k: (fs.complete, fs.value) for k, fs in states.items()},
             data=copy.deepcopy(run.data),
             data_before=copy.deepcopy(run.data),
-            was_all_complete=all(fs.complete for fs in states.values()),
+            was_all_complete=fl.all_complete(states),
+            added=frozenset(run.added),
         )
 
     @classmethod

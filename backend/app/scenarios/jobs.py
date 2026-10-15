@@ -35,7 +35,7 @@ from app.jobs.worker import JobContext, Retry
 from app.logging import get_logger
 from app.scenarios.events import Event
 from app.scenarios.schema import ActionEvent, ScenarioDef
-from app.scenarios.store import expires_at, load_definition
+from app.scenarios.store import expires_at, load_run_definition
 
 if TYPE_CHECKING:
     from app.services import Services
@@ -71,7 +71,7 @@ async def _with_run(services: "Services", ctx: JobContext, run_id: uuid.UUID, bo
                 ScenarioRun, run_id, with_for_update=True, populate_existing=True
             )
             if run is not None and run.status in OPEN_STATUSES:
-                defn = await load_definition(session, run.scenario_id)
+                defn = await load_run_definition(session, run)
                 await body(session, conv, run, defn)
             lease.release_in(conv)
     except BaseException:

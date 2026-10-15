@@ -3,7 +3,9 @@ questions + the language of the message.
 
 Prompt `rewrite` (prompts/seed.py): a JSON document; the bot fills `dialogue`,
 `selected_line`, `answer_language` and sends it as one user message. Strict JSON schema
-`{question: [str], language: str}`.
+`{question: [str], language: str}`. A scenario in the focus adds `scenario_card`: its
+answers so far with how the bot asked them, and the rule to trust them over the dialogue
+(prompt `scenario_card`, `rewrite_rules`).
 """
 
 from dataclasses import dataclass
@@ -12,7 +14,7 @@ from typing import TYPE_CHECKING, Any
 from app.core.context import TurnContext
 from app.core.language import language_name
 from app.db.models import LlmRole, MessageRole
-from app.prompts.builtin import SELECT_PRESENTED
+from app.prompts.builtin import SCENARIO_CARD, SELECT_PRESENTED
 from app.prompts.render import render_json, to_text
 from app.prompts.store import PromptText
 from app.search.presented import presented, rewrite_view
@@ -63,6 +65,8 @@ def build_messages(
     answer_language: str,
     *,
     presented_rules: list[str] | None = None,
+    card: list[dict[str, Any]] | None = None,
+    card_rules: list[str] | None = None,
 ) -> list[dict]:
     data = render_json(
         prompt.body,
@@ -78,6 +82,11 @@ def build_messages(
     if options:
         data["last_presented_options"] = rewrite_view(options)
         data["last_presented_rules"] = presented_rules or list(SELECT_PRESENTED["rules"])
+    if card:
+        data["scenario_card"] = {
+            "rules": card_rules or list(SCENARIO_CARD["rewrite_rules"]),
+            "answers": card,
+        }
     return [{"role": "user", "content": to_text(data)}]
 
 
@@ -88,6 +97,8 @@ async def rewrite(
     answer_language: str,
     *,
     presented_rules: list[str] | None = None,
+    card: list[dict[str, Any]] | None = None,
+    card_rules: list[str] | None = None,
 ) -> Rewrite:
     """`answer_language` is the reply language known BEFORE this message (the previous
     turn's, or the tenant's first). If this message switches the language, the rewritten
@@ -95,7 +106,14 @@ async def rewrite(
     TODO(review): check on mixed-language dialogues whether a second pass is worth it."""
     result = await services.llm.complete(
         LlmRole.REWRITE,
-        build_messages(ctx, prompt, answer_language, presented_rules=presented_rules),
+        build_messages(
+            ctx,
+            prompt,
+            answer_language,
+            presented_rules=presented_rules,
+            card=card,
+            card_rules=card_rules,
+        ),
         tenant_id=ctx.tenant_id,
         turn_id=ctx.turn_id,
         schema=SCHEMA,

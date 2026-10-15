@@ -21,7 +21,10 @@ export const FIELD_TYPES = [
 export const ATTACHMENT_TYPES = ['attachment', 'receipt']
 export const ATTACHMENT_KINDS = ['image', 'video', 'audio', 'file'] as const
 export const EVENT_RESULTS = ['completed', 'cancelled', 'reopen'] as const
-export const COMPLETIONS = ['all_fields', 'explicit_yes', 'external_event', 'receipt'] as const
+export const COMPLETIONS = ['all_fields', 'explicit_yes', 'external_event', 'receipt', 'by_caller'] as const
+// the defaults of the format (backend scenarios/schema.py): left out when sending
+export const SHOW_IF_DEFAULTS = { on_unknown: 'ask', recheck: 'every_turn' }
+export const ADDED_DEFAULTS = { wording: 'own_words', close_after: 3 }
 export const ACTION_EVENTS = [
   'started',
   'field_filled',
@@ -49,8 +52,17 @@ export function newField(n: number): any {
     options: [],
     filters: [],
     ask_after: [],
+    // asked only when the answers say it applies (null — always asked)
+    show_if: null,
+    // choice only: 'caller' — the options come with the start of a dialogue
+    options_from: null,
     ...typedDefaults(),
   }
+}
+
+// «when to ask this question»: one yes/no question, enough by itself
+export function newShowIf(): any {
+  return { questions: [{ key: 'applies', ask: {}, weight: 1 }], threshold: 1, ...SHOW_IF_DEFAULTS }
 }
 
 // settings of every typed field, so the form can bind to them whatever the type is;
@@ -80,11 +92,14 @@ export function newDefinition(language: string): any {
     completion: 'all_fields',
     confirm: null,
     events_list: [],
-    waiting: { hours: '' },
+    waiting: { hours: '', say: {} },
     incompatible_with: [],
     resume: { mode: 'always' },
     cancel: {},
     actions: [],
+    ask_rules: [],
+    history_messages: '',
+    added: { ...ADDED_DEFAULTS, max_fields: '' },
   }
 }
 
@@ -105,6 +120,47 @@ function text(value: unknown): LText | undefined {
 function compact<T extends Record<string, any>>(obj: T): T {
   for (const k of Object.keys(obj)) if (obj[k] === undefined || obj[k] === null || obj[k] === '') delete obj[k]
   return obj
+}
+
+// texts left after dropping the empty ones; none → left out
+function listOf(values: (LText | undefined)[]): LText[] | undefined {
+  const out = values.filter((v): v is LText => v !== undefined)
+  return out.length ? out : undefined
+}
+
+// a value equal to the format's default is left out: the server fills it in the same way
+function unlessDefault(value: unknown, fallback: unknown): any {
+  return value === undefined || value === null || value === '' || value === fallback ? undefined : value
+}
+
+function cleanShowIf(show: any): any {
+  if (!show || !(show.questions || []).length) return undefined
+  return compact({
+    questions: show.questions.map((q: any) => ({ key: q.key, ask: text(q.ask) ?? {}, weight: Number(q.weight) || 1 })),
+    threshold: num(show.threshold),
+    on_unknown: unlessDefault(show.on_unknown, SHOW_IF_DEFAULTS.on_unknown),
+    recheck: unlessDefault(show.recheck, SHOW_IF_DEFAULTS.recheck),
+  })
+}
+
+// completion by_caller only: what the bot does with the questions the caller adds
+function cleanAdded(d: any): any {
+  if (d.completion !== 'by_caller' || !d.added) return undefined
+  const out = compact({
+    wording: unlessDefault(d.added.wording, ADDED_DEFAULTS.wording),
+    close_after: unlessDefault(num(d.added.close_after), ADDED_DEFAULTS.close_after),
+    max_fields: num(d.added.max_fields),
+  })
+  return Object.keys(out).length ? out : undefined
+}
+
+function cleanWaiting(d: any): any {
+  if (d.completion === 'external_event') return num(d.waiting?.hours) ? { hours: num(d.waiting.hours) } : undefined
+  if (d.completion === 'by_caller') {
+    const say = text(d.waiting?.say)
+    return say ? { say } : undefined
+  }
+  return undefined
 }
 
 // params of an action: only the ones its handler reads (others are kept for the JSON mode)
@@ -141,9 +197,10 @@ export function cleanDefinition(d: any): any {
         question: text(f.question) ?? {},
         description: text(f.description),
         options:
-          f.type === 'choice'
+          f.type === 'choice' && f.options_from !== 'caller'
             ? (f.options || []).map((o: any) => ({ key: o.key, label: text(o.label) ?? {} }))
             : undefined,
+        options_from: f.type === 'choice' && f.options_from === 'caller' ? 'caller' : undefined,
         catalog:
           f.type === 'catalog'
             ? compact({
@@ -156,6 +213,7 @@ export function cleanDefinition(d: any): any {
           ? f.filters.map((x: any) => compact({ key: x.key, ask: text(x.ask) ?? {}, yes: text(x.yes), no: text(x.no) }))
           : undefined,
         ask_after: (f.ask_after || []).length ? [...f.ask_after] : undefined,
+        show_if: cleanShowIf(f.show_if),
       }),
     ),
     completion: d.completion || 'all_fields',
@@ -173,7 +231,7 @@ export function cleanDefinition(d: any): any {
             ]),
           )
         : undefined,
-    waiting: d.completion === 'external_event' && num(d.waiting?.hours) ? { hours: num(d.waiting.hours) } : undefined,
+    waiting: cleanWaiting(d),
     incompatible_with: (d.incompatible_with || []).length ? [...d.incompatible_with] : undefined,
     resume:
       d.resume?.mode === 'within_hours'
@@ -192,6 +250,9 @@ export function cleanDefinition(d: any): any {
         requires_approval: a.requires_approval ? true : undefined,
       }),
     ),
+    ask_rules: listOf((d.ask_rules || []).map(text)),
+    history_messages: num(d.history_messages),
+    added: cleanAdded(d),
   })
 }
 
@@ -214,6 +275,16 @@ export function toForm(d: any): any {
     for (const k of ['amount', 'amount_field', 'quantity_field', 'currency']) f.receipt[k] ??= ''
     f.receipt.recipients ||= []
     f.items.item_fields ||= []
+    f.options_from ??= null
+    if (f.show_if) {
+      f.show_if.questions ||= []
+      for (const q of f.show_if.questions) q.weight ??= 1
+      f.show_if.threshold ??= ''
+      f.show_if.on_unknown ||= SHOW_IF_DEFAULTS.on_unknown
+      f.show_if.recheck ||= SHOW_IF_DEFAULTS.recheck
+    } else {
+      f.show_if = null
+    }
   }
   out.completion ||= 'all_fields'
   out.confirm ??= null
@@ -224,7 +295,7 @@ export function toForm(d: any): any {
     say: e.say ?? {},
   }))
   delete out.events
-  out.waiting = { hours: out.waiting?.hours ?? '' }
+  out.waiting = { hours: out.waiting?.hours ?? '', say: out.waiting?.say ?? {} }
   out.incompatible_with ||= []
   out.resume ||= { mode: 'always' }
   out.cancel ||= {}
@@ -233,6 +304,10 @@ export function toForm(d: any): any {
     a.do ||= 'http_post'
     a.params ||= {}
   }
+  out.ask_rules ||= []
+  out.history_messages ??= ''
+  out.added = { ...ADDED_DEFAULTS, max_fields: '', ...(out.added || {}) }
+  out.added.max_fields ??= ''
   return out
 }
 

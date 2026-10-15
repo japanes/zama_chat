@@ -81,6 +81,48 @@
       </details>
     </div>
 
+    <!-- waiting for the caller: new questions come while the run goes, it ends when the
+         caller says so -->
+    <div v-if="mode === 'by_caller'" class="space-y-4">
+      <div>
+        <label class="label" :for="`${uid}-wsay`">{{ t('editor.next.caller_say') }} <span class="muted font-normal">({{ t('common.optional') }})</span></label>
+        <LocalizedInput v-model="def.waiting.say" :input-id="`${uid}-wsay`" :languages="languages" :main="def.language" multiline optional :readonly="readonly" />
+        <p class="hint">{{ t('editor.next.caller_say_hint') }}</p>
+      </div>
+      <div class="rounded-button border border-slate-200 dark:border-slate-700 p-3 space-y-3">
+        <div>
+          <p class="label !mb-0.5">{{ t('editor.next.added') }}</p>
+          <p class="text-sm muted">{{ t('editor.next.added_hint') }}</p>
+        </div>
+        <fieldset>
+          <legend class="label">{{ t('editor.next.wording') }}</legend>
+          <div class="flex flex-wrap gap-x-5">
+            <label class="flex items-center gap-2 min-h-[44px]">
+              <input v-model="def.added.wording" type="radio" class="accent-primary-dark" value="own_words" :name="`${uid}-wording`" :disabled="readonly" />
+              {{ t('editor.next.wording_own_words') }}
+            </label>
+            <label class="flex items-center gap-2 min-h-[44px]">
+              <input v-model="def.added.wording" type="radio" class="accent-primary-dark" value="as_sent" :name="`${uid}-wording`" :disabled="readonly" />
+              {{ t('editor.next.wording_as_sent') }}
+            </label>
+          </div>
+          <p class="hint">{{ t('editor.next.wording_hint') }}</p>
+        </fieldset>
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label class="label" :for="`${uid}-close`">{{ t('editor.next.close_after') }}</label>
+            <input :id="`${uid}-close`" v-model.number="def.added.close_after" type="number" min="1" max="20" class="input sm:!w-32" :readonly="readonly" />
+            <p class="hint">{{ t('editor.next.close_after_hint') }}</p>
+          </div>
+          <div>
+            <label class="label" :for="`${uid}-max`">{{ t('editor.next.max_fields') }}</label>
+            <input :id="`${uid}-max`" v-model="def.added.max_fields" type="number" min="1" max="200" class="input sm:!w-32" :placeholder="'∞'" :readonly="readonly" />
+            <p class="hint">{{ t('editor.next.max_fields_hint') }}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- actions -->
     <div class="space-y-2.5">
       <div>
@@ -163,7 +205,7 @@
 <script setup lang="ts">
 import { ACTIONS, ACTION_EVENTS, EVENT_RESULTS, NOTIFY_ACTIONS, fieldName } from '~/utils/scenario'
 
-const MODES = ['all_fields', 'external_event', 'receipt'] as const
+const MODES = ['all_fields', 'external_event', 'receipt', 'by_caller'] as const
 type Mode = (typeof MODES)[number]
 
 const props = defineProps<{
