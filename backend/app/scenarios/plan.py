@@ -352,6 +352,11 @@ def build_plan(
             if focus.asking == CONFIRM:
                 plan.confirm = _confirm_step(focus, texts)
             plan.ask_rules = [texts(focus.definition, r) for r in focus.definition.ask_rules or []]
+        if plan.asks:
+            # Another run ran out of questions and gave the conversation back to this one:
+            # the client hears this one's question, not that one's «enough for now» — the
+            # phrase would read as the bot going quiet with a question still to ask.
+            plan.waiting = [w for w in plan.waiting if w["for"] != WAITING_FIELDS]
     else:
         plan.known = card([r for r in runs if r.events], texts)
     happened = (

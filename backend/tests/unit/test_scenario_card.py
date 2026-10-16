@@ -137,6 +137,19 @@ def test_waiting_for_fields_says_what_the_scenario_wants():
     assert plan.waiting == [{"title": "Facts", "for": "fields", "new": True}]
 
 
+def test_waiting_for_fields_is_not_said_when_the_focus_run_asks():
+    data = story_data(waiting={"say": {"uk": "Дякую, досить.", "en": "Thanks, enough."}})
+    facts = work(loaded(make_def(data)), status=RunStatus.WAITING)
+    facts.data["waiting_for"] = WAITING_FIELDS
+    facts.add(ActionEvent.ALL_FIELDS)
+    facts.add(ActionEvent.WAITING)
+    text = work(loaded(make_def()), asking="niche")
+    plan = build_plan([facts, text], language="en", client_question=False)
+    assert plan.ask.field == "niche"
+    assert plan.waiting == []
+    assert "waiting" not in plan.to_prompt(["r"])
+
+
 # --- what the checks see --------------------------------------------------------------------
 
 
