@@ -817,11 +817,18 @@ async def run_scenarios(
     contacts = prefill_contacts(
         runs, ctx.input_text, region=ctx.settings.phone_region, message_ids=message_ids, now=now
     )
+    # Every message of the turn is a button that was taken: its words answer its own
+    # question only, never another step (live run of 2026-10-17: the label of the angle
+    # pressed also filled «what is the text for?»).
+    only_buttons = bool(picked) and set(message_ids) <= {
+        str(p.get("message_id")) for p in ctx.picks
+    }
     targets = [
         t
         for t in extract_targets(runs, decisions, focus_before)
         if f"{t.scenario}.{t.field.key}" not in contacts
         and f"{t.scenario}.{t.field.key}" not in picked
+        and not only_buttons
     ]
     targets, no_choices = await with_choices(services, ctx, targets, rewritten)
     extracted = await extract(

@@ -458,10 +458,10 @@ async def test_questions_are_added_one_after_another_to_a_run_with_the_callers_o
 # --- buttons pressed (MessageIn.pick) ---------------------------------------------------------
 
 
-async def _press(client, bundle, decider, fake_llm, text, pick, *, reply):
+async def _press(client, bundle, decider, fake_llm, text, pick, *, reply, route=None):
     """A button pressed: the route says the message answers nothing (`field:*` — no), so
     only the pick can fill the step; no extract call — rewrite and reply only."""
-    decider.rules = dict(ROUTE_DEFAULTS)
+    decider.rules = {**ROUTE_DEFAULTS, **(route or {})}
     fake_llm.push(
         chat_reply(json.dumps({"question": [text], "language": "uk"}, ensure_ascii=False)),
         chat_reply(reply),
@@ -507,6 +507,25 @@ async def test_a_pressed_button_answers_the_question_asked_without_the_models(
             await session.execute(select(Message.meta).where(Message.text == "Довіра"))
         ).scalar_one()
     assert meta == {"pick": {"field": "goal"}}
+
+
+async def test_a_pressed_button_answers_no_other_step(services, client, fake_llm):
+    """The route takes the label of the angle for the goal as well: the button answers its
+    own question only, no extract call fills the goal with it."""
+    bundle, decider = await _setup(services, TEXT)
+    await _start(client, bundle, scenario="text", options={"angle": ANGLES})
+    run = await _press(
+        client,
+        bundle,
+        decider,
+        fake_llm,
+        ANGLES[1]["label"],
+        {"field": "angle", "option": "savings"},
+        reply="What is the text for?",
+        route={"field:text.goal": True},
+    )
+    assert (_fields(run)["angle"]["value"], _fields(run)["goal"]["value"]) == ("savings", None)
+    assert run["asking"] == "goal"
 
 
 async def test_a_button_of_another_step_or_option_is_not_taken(services, client, fake_llm):
