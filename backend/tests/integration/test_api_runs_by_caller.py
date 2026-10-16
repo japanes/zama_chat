@@ -433,6 +433,28 @@ async def test_choice_options_come_with_the_start(services, client, fake_llm):
     assert (_fields(run)["angle"]["value"], run["asking"]) == ("husband", "goal")
 
 
+async def test_questions_are_added_one_after_another_to_a_run_with_the_callers_options(
+    services, client, fake_llm
+):
+    bundle, _ = await _setup(services, TEXT, facts_data())
+    for scenario, options, keys in (
+        ("text", {"angle": ANGLES}, ["angle", "goal"]),
+        ("facts", None, ["story"]),
+    ):
+        body = {"options": options} if options else {}
+        run = await _start(client, bundle, scenario=scenario, **body)
+        for key in ("q1", "q2"):
+            resp = await _post(
+                client, bundle, f"/v1/runs/{run['id']}/fields", fields=[{**Q1, "key": key}]
+            )
+            assert resp.status_code == 200, resp.text
+        run = resp.json()["run"]
+        assert [f["key"] for f in run["fields"]] == [*keys, "q1", "q2"]
+        if options:
+            assert _fields(run)["angle"]["options"] == ANGLES
+        await _post(client, bundle, f"/v1/runs/{run['id']}/finish")
+
+
 # --- two scenarios of one conversation --------------------------------------------------------
 
 

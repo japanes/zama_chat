@@ -100,7 +100,12 @@ from app.scenarios.schema import (
     check_definition,
     parse_definition,
 )
-from app.scenarios.store import ADDED_AT, effective_definition, load_run_definition
+from app.scenarios.store import (
+    ADDED_AT,
+    effective_definition,
+    load_definition,
+    load_run_definition,
+)
 from app.services import Services
 
 router = APIRouter(prefix="/v1", tags=["runs"])
@@ -1174,7 +1179,8 @@ async def _add_fields(
     now = services.clock.now()
     run = await lock_run(session, run_id)
     assert run is not None
-    defn = await load_run_definition(session, run)
+    base = await load_definition(session, run.scenario_id)
+    defn = effective_definition(base, run.extra)
     if defn.completion != Completion.BY_CALLER:
         raise AppError("run.fields_not_allowed", {"completion": str(defn.completion)}, status=422)
     data = dict(run.data or {})
@@ -1205,8 +1211,10 @@ async def _add_fields(
         )
     extra["fields"] = [*stored, *({**raw, ADDED_AT: now.isoformat()} for raw in new)]
     try:
-        defn = effective_definition(defn, extra)
-        check_definition(defn, [])
+        # checked from the scenario itself: the fields added before once, and without the
+        # caller's options — a field `options_from: caller` holding options is refused as written
+        check_definition(effective_definition(base, {"fields": extra["fields"]}), [])
+        defn = effective_definition(base, extra)
     except ValidationError as exc:
         keys = [r["key"] for r in new]
         raise AppError("run.field_invalid", {"fields": keys}, status=422) from exc
