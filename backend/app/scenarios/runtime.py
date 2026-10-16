@@ -842,6 +842,7 @@ async def run_scenarios(
         wants_human=wants_human,
         catalog_options=catalog_options,
         payment=payment,
+        only_scenario=any(r.definition.only_scenario for r in runs),
     )
     summary = {
         "stop": stopped,

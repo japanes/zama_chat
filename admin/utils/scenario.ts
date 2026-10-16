@@ -97,6 +97,7 @@ export function newDefinition(language: string): any {
     resume: { mode: 'always' },
     cancel: {},
     actions: [],
+    only_scenario: false,
     ask_rules: [],
     history_messages: '',
     added: { ...ADDED_DEFAULTS, max_fields: '' },
@@ -250,6 +251,7 @@ export function cleanDefinition(d: any): any {
         requires_approval: a.requires_approval ? true : undefined,
       }),
     ),
+    only_scenario: d.only_scenario ? true : undefined,
     ask_rules: listOf((d.ask_rules || []).map(text)),
     history_messages: num(d.history_messages),
     added: cleanAdded(d),
@@ -304,6 +306,7 @@ export function toForm(d: any): any {
     a.do ||= 'http_post'
     a.params ||= {}
   }
+  out.only_scenario = !!out.only_scenario
   out.ask_rules ||= []
   out.history_messages ??= ''
   out.added = { ...ADDED_DEFAULTS, max_fields: '', ...(out.added || {}) }

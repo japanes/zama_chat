@@ -92,6 +92,7 @@ The words `yes`, `no`, `on`, `off` are plain text here. There are only two logic
 | `resume` | no | What to do if the client disappeared and came back — section 9. |
 | `cancel` | no | How to tell that the client changed their mind — section 9. |
 | `incompatible_with` | no | Scenarios that do not go at the same time as this one — section 9. |
+| `only_scenario` | no | While the scenario is open, the bot does only it: no general replies, no search, no other scenarios — section 9. |
 | `actions` | no | What to do with the result: send it to you, write to the client — section 10. |
 | `ask_rules` | no | How the bot asks: rules for it alone — section 6. |
 | `history_messages` | no | How many last messages of the chat the bot sees next to the answers — section 6. |
@@ -415,6 +416,19 @@ cancel:
 ```yaml
 incompatible_with: [cancel_booking]
 ```
+
+**`only_scenario`** — while this scenario is open in the conversation (leading it, paused or waiting), the bot does nothing but scenarios:
+
+```yaml
+only_scenario: true           # off by default
+```
+
+- no separate reply to a greeting, a farewell or "who are you";
+- no answer of its own to the client's question: whatever the client writes is an answer to the scenario's questions. A rhetorical question ("Do you see what is going on?") is not taken as a question to the bot, and the bot does not say "I can only help with the company's services";
+- no hand-over to a person, no catalog or knowledge search;
+- other scenarios do not start by themselves. A start by your system (`POST /v1/runs/start`) works as usual.
+
+Everything about the scenario itself stays: answers, their checks, changing an answer, confirmation, "stop" and cancel. Use it when the whole conversation is given to one job — say, an interview where a person tells their story and the bot's general replies only get in the way.
 
 ## 10. `actions` — what to do with the result
 

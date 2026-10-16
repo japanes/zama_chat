@@ -1,5 +1,14 @@
 <template>
   <div class="space-y-2.5">
+    <!-- only_scenario: while a run of it is open, the turn is the scenario's alone -->
+    <div class="rounded-button bg-slate-50 dark:bg-slate-900/40 px-4 py-3.5">
+      <label class="flex items-center gap-2.5 min-h-[44px]">
+        <input v-model="def.only_scenario" type="checkbox" class="checkbox" :disabled="readonly" />
+        <span class="text-[15px] font-medium text-slate-900 dark:text-slate-100">{{ t('editor.q.only_scenario') }}</span>
+      </label>
+      <p class="hint">{{ t('editor.q.only_scenario_hint') }}</p>
+    </div>
+
     <!-- what the bot reads when it words a question: the answers always, the last messages,
          and the scenario's own rules for wording (only the bot that writes sees them) -->
     <div class="rounded-button bg-slate-50 dark:bg-slate-900/40 px-4 py-3.5 space-y-3">

@@ -136,6 +136,8 @@
       "add_after": "Ask only after…",
       "remove": "Delete the question",
       "remove_confirm": "Delete the question “{name}”? Everything that refers to it goes with it.",
+      "only_scenario": "Scenario only",
+      "only_scenario_hint": "While this scenario is open in the conversation, the bot does nothing but its questions: no separate reply to greetings or the client's own questions, no hand-over to a person, no knowledge search, no other scenario starts by itself. Whatever the client writes goes to the answers. Off — the bot runs the scenario and answers everything else as usual.",
       "memory": "What the bot remembers when it asks",
       "memory_hint": "The bot always sees every answer of the client in this scenario — whole, with how it asked. Next to them, the last messages of the chat. When they disagree with the answers, the bot trusts the answers: the client may have corrected themselves.",
       "history": "How many last chat messages the bot sees",

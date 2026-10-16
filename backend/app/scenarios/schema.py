@@ -387,6 +387,11 @@ class ScenarioDef(Strict):
     history_messages: int | None = Field(default=None, ge=1, le=200)
     # completion by_caller: the fields added while the run goes
     added: AddedFields | None = None
+    # while a run of it is open in the conversation, the turn is the scenarios' alone: no
+    # greeting / farewell / identity reply, no hand-over, no catalog or knowledge search,
+    # no other scenario starts by itself, no answer to the client's own question — whatever
+    # the client writes goes to the steps (core/pipeline.py, scenarios/questions.py)
+    only_scenario: bool | None = None
 
     # an empty list / a block of defaults says nothing: kept as absent, so a file that writes
     # it out and one that leaves it out are one version (the editor leaves defaults out)
@@ -399,6 +404,11 @@ class ScenarioDef(Strict):
     @classmethod
     def _no_added(cls, value: AddedFields | None) -> AddedFields | None:
         return None if value == AddedFields() else value
+
+    @field_validator("only_scenario")
+    @classmethod
+    def _no_only(cls, value: bool | None) -> bool | None:
+        return True if value else None
 
     @property
     def needs_confirm(self) -> bool:

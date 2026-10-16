@@ -104,3 +104,29 @@ def test_state_sections_show_the_focus_fields_and_the_last_question():
     assert "- offer «Що ви продаєте?»: no answer yet" in text
     assert text.endswith("The bot's last question was about: niche")
     assert built.sections[1] == ("Other open scenarios", "- Запис (paused)")
+
+
+ONLY = loaded(make_def({**booking_data(), "only_scenario": True}), position=1)
+
+
+def test_only_scenario_asks_no_starts_and_no_client_question():
+    run = open_run(ONLY)
+    built = build_questions(view([INTERVIEW, ONLY], [run]), "uk")
+    assert start_key("interview", "wants_help") not in built.keys
+    assert CLIENT_QUESTION not in built.keys
+    assert field_key("booking", "service") in built.keys
+    assert STOP in built.keys
+
+
+def test_only_scenario_counts_while_it_waits():
+    focus = open_run(INTERVIEW)
+    waiting = open_run(ONLY, RunStatus.WAITING)
+    built = build_questions(view([INTERVIEW, ONLY], [waiting, focus]), "uk")
+    assert CLIENT_QUESTION not in built.keys
+    assert field_key("interview", "offer") in built.keys
+
+
+def test_a_closed_only_scenario_changes_nothing():
+    built = build_questions(view([INTERVIEW, ONLY]), "uk")
+    assert start_key("booking", "wants_booking") in built.keys
+    assert CLIENT_QUESTION in built.keys

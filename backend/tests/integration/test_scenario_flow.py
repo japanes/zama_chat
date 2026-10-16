@@ -211,6 +211,35 @@ async def test_side_question_is_answered_and_the_bot_returns(client, services, f
     assert step["ask_next"] == {"question": "Що ви продаєте?"}
 
 
+async def test_only_scenario_keeps_the_turn_on_the_steps(client, services, fake_llm):
+    """`only_scenario`: a rhetorical question, a greeting, a wish for a person — none of
+    them is asked about, the reply is the next step and nothing else."""
+    env = await _setup(services, interview_data(only_scenario=True), booking_data())
+    await _say(client, env, fake_llm, FIRST, route=START, extract=FIRST_EXTRACT)
+    env.decider.calls.clear()
+    body = await _say(
+        client,
+        env,
+        fake_llm,
+        "А ви розумієте, що взагалі зараз відбувається?",
+        route={
+            "client_question": True,
+            "service_type": "greeting_only",
+            "wants_human": True,
+            "start:*": True,
+        },
+    )
+    asked = env.decider.asked()
+    assert not {"client_question", "service_type", "wants_human"} & set(asked)
+    assert not [k for k in asked if k.startswith("start:")]
+    step = _scenario_step(fake_llm)
+    assert step["answer_client_question_first"] is False
+    assert step["ask_next"] == {"question": "Що ви продаєте?"}
+    assert body["handover"] is False
+    [run] = await runs_of(services.sm, body["conversation_id"])
+    assert run.status == RunStatus.FOCUS
+
+
 async def test_a_failed_filter_is_clarified_and_the_answer_merged(client, services, fake_llm, env):
     body = await _say(
         client,

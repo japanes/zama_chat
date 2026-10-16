@@ -289,14 +289,17 @@ def _asks_data(run: OpenRun) -> bool:
 
 def build_questions(view: ScenarioView, language: str) -> ScenarioQuestions:
     """All scenario questions of this turn, in a stable order (start signs in channel
-    order, then fields, then stop / change_field / client_question)."""
+    order, then fields, then stop / change_field / client_question). While a scenario with
+    `only_scenario` is open, no other scenario starts by itself and the client asks the bot
+    nothing of their own: no start signs, no client_question."""
     found: dict[str, Question] = {}
 
     def add(q: Question) -> None:
         found.setdefault(q.key, q)
 
     focus = view.focus
-    for scenario in view.channel:
+    only = view.only_scenario
+    for scenario in () if only else view.channel:
         if focus is not None and scenario.key == focus.scenario.key:
             continue  # the focus is not a start candidate
         run = view.run_for(scenario.key)
@@ -325,7 +328,8 @@ def build_questions(view: ScenarioView, language: str) -> ScenarioQuestions:
             out.questions.append(change_question(focus, states, language))
         if focus.asking == CONFIRM:
             out.questions.append(confirm_question(focus.scenario.definition, language))
-    out.questions.append(client_question(language))
+    if not only:
+        out.questions.append(client_question(language))
     out.sections = list(state_sections(view, language))
     return out
 

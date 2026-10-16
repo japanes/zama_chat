@@ -65,6 +65,12 @@ class ScenarioView:
     def focus(self) -> OpenRun | None:
         return next((r for r in self.runs if r.status == RunStatus.FOCUS), None)
 
+    @property
+    def only_scenario(self) -> bool:
+        """An open run of a scenario with `only_scenario`: the turn is the scenarios' alone —
+        no general replies, searches or starts by themselves."""
+        return any(r.scenario.definition.only_scenario for r in self.runs)
+
     def run_for(self, key: str) -> OpenRun | None:
         return next((r for r in self.runs if r.scenario.key == key), None)
 

@@ -136,9 +136,13 @@ async def route(
     *,
     extra_questions: Iterable[Question] = (),
     sections: Iterable[tuple[str, str]] = (),
+    general: bool = True,
 ) -> Route:
+    """`general=False` — only the given questions: no service_type, no wants_human (an open
+    scenario with `only_scenario`)."""
     state = render_route_state(rewritten, sections=sections)
-    questions = [*route_questions(ctx.settings.jev_question_language), *extra_questions]
+    own = route_questions(ctx.settings.jev_question_language) if general else []
+    questions = [*own, *extra_questions]
     with ctx.trace.step("route", questions=[q.key for q in questions]) as step:
         decisions = await run_decisions(
             services,

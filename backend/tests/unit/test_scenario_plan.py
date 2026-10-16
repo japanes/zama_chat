@@ -207,3 +207,11 @@ def test_summary_for_the_trace():
         "completed": [],
         "cancelled": [],
     }
+
+
+def test_only_scenario_always_has_a_plan():
+    paused = work(BOOKING, RunStatus.PAUSED)
+    assert build_plan([paused], language="uk", client_question=False) is None
+    plan = build_plan([paused], language="uk", client_question=False, only_scenario=True)
+    assert plan is not None
+    assert not plan.asks

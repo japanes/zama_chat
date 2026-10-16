@@ -207,3 +207,14 @@ def test_message_client_text_missing_a_language_is_a_warning():
             "params": {"path": "actions.0.text", "language": "en"},
         }
     ]
+
+
+def test_only_scenario_off_leaves_the_definition_as_it_was():
+    from app.scenarios.store import definition_json
+    from tests.scenario_helpers import interview_data
+
+    plain = definition_json(parse_definition(interview_data()))
+    assert "only_scenario" not in plain
+    assert definition_json(parse_definition(interview_data(only_scenario=False))) == plain
+    on = definition_json(parse_definition(interview_data(only_scenario=True)))
+    assert on == {**plain, "only_scenario": True}

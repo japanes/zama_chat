@@ -10,6 +10,10 @@
 
 A channel without scenarios (and without open runs) goes exactly the stage 1 way.
 
+An open run of a scenario with `only_scenario` makes the turn the scenarios' alone: the
+route asks no service_type / wants_human, nothing is searched, no other scenario starts by
+itself and there is no client_question — the reply is the scenario step and nothing else.
+
 The scenario in the focus may want more or fewer last messages of the dialogue than the
 default (`history_messages` of its file); the card of the dialogue goes to the rewrite
 and to the reply (scenarios/plan.py, `known`).
@@ -101,8 +105,13 @@ async def full_pipeline(services: "Services", ctx: TurnContext) -> TurnPlan:
         note["pinned"] = True  # the caller of POST /v1/runs/start chose the language
     ctx.trace.note("language", note)
 
-    sq = search_question(content)
+    # an open scenario with `only_scenario`: the turn is the scenarios' alone — no service
+    # replies, no hand-over, no search (scenarios/schema.py)
+    only = view.only_scenario
+    sq = None if only else search_question(content)
     search_questions = [sq] if sq is not None else []
+    if only:
+        ctx.trace.note("only_scenario", True)
 
     if not view.active:
         decided = await route(services, ctx, rw.text, extra_questions=search_questions)
@@ -140,6 +149,7 @@ async def full_pipeline(services: "Services", ctx: TurnContext) -> TurnPlan:
         rw.text,
         extra_questions=[*search_questions, *asked.questions],
         sections=asked.sections,
+        general=not only,
     )
     found = await search_step(services, ctx, rw.text, decided.decisions, reply_language, content)
     # the catalog fields of scenarios take their options from here (scenarios/catalog.py)
@@ -176,6 +186,8 @@ async def full_pipeline(services: "Services", ctx: TurnContext) -> TurnPlan:
     route_info["scenarios"] = {
         k: scenarios.summary[k] for k in ("stop", "start", "started", "focus")
     }
+    if only:
+        route_info["scenarios"]["only_scenario"] = True
     return TurnPlan(
         reply_text=reply.text or None,
         rewritten=rw.text,

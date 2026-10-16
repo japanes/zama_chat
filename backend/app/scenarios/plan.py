@@ -308,9 +308,11 @@ def build_plan(
     wants_human: bool = False,
     catalog_options: dict[str, CatalogAsk] | None = None,
     payment: dict[str, dict[str, Any]] | None = None,
+    only_scenario: bool = False,
 ) -> RespondPlan | None:
     """None when the scenarios have nothing to say in this reply (no focus, nothing
-    started / finished): the reply is an ordinary answer."""
+    started / finished): the reply is an ordinary answer. `only_scenario` (an open run of
+    such a scenario) — never None: there is no ordinary answer in that conversation."""
     texts = _Texts(language)
     plan = RespondPlan(answer_client_question_first=client_question)
     for run in runs:
@@ -360,7 +362,7 @@ def build_plan(
         or plan.accepted
         or any(w["new"] for w in plan.waiting)
     )
-    if focus is None and not happened:
+    if focus is None and not happened and not only_scenario:
         return None
     plan.texts_language = texts.fallback
     return plan
