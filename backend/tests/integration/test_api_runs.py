@@ -9,6 +9,7 @@ import json
 import pytest
 from sqlalchemy import select
 
+from app.api.v1.runs import CHECK_ANSWER_MAX
 from app.core.language import REPLY_LANGUAGE_PIN
 from app.core.pipeline import full_pipeline
 from app.db.models import (
@@ -274,10 +275,10 @@ async def test_check_without_filters_asks_nobody(services, client):
     assert decider.calls == []
 
 
-# questions enough for their full answers (4000 characters, ~1333 tokens each) to overflow
-# the decider's state
+# questions enough for their full answers (CHECK_ANSWER_MAX characters, a third of that in
+# tokens each) to overflow the decider's state
 _MANY = ["niche", "offer", "positioning"] + [
-    f"extra_{i}" for i in range(STATE_MAX_TOKENS * 3 // 4000 + 2)
+    f"extra_{i}" for i in range(STATE_MAX_TOKENS * 3 // CHECK_ANSWER_MAX + 2)
 ]
 
 
@@ -303,7 +304,7 @@ _MANY = ["niche", "offer", "positioning"] + [
         ),
         # answers of the full length, more than the decider's state takes whole
         (
-            {"answers": [{"field": key, "value": "я" * 4000} for key in _MANY]},
+            {"answers": [{"field": key, "value": "я" * CHECK_ANSWER_MAX} for key in _MANY]},
             422,
             "check.too_long",
         ),

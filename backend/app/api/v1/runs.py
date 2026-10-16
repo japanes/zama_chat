@@ -542,7 +542,7 @@ async def scenario_questions(
 # The decider reads an answer of this length whole. In a turn it sees the first
 # checks.ANSWER_PREVIEW characters of what the client said; what a caller collected for a
 # question is longer than a chat reply, and a check of its beginning alone would be no check.
-CHECK_ANSWER_MAX = 4000
+CHECK_ANSWER_MAX = 10_000
 
 
 class CheckAnswer(BaseModel):
