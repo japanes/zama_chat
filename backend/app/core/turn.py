@@ -226,7 +226,13 @@ async def _take(
                     update(Message)
                     .where(*cond)
                     .values(turn_id=turn.id)
-                    .returning(Message.id, Message.text, Message.created_at, Message.attachments)
+                    .returning(
+                        Message.id,
+                        Message.text,
+                        Message.created_at,
+                        Message.attachments,
+                        Message.meta,
+                    )
                 )
             ).all()
         )
@@ -272,6 +278,11 @@ async def _take(
                 for r in pending
                 for a in (r.attachments or [])
                 if isinstance(a, dict) and a.get("url")
+            ],
+            picks=[
+                {**r.meta["pick"], "text": r.text or "", "message_id": str(r.id)}
+                for r in pending
+                if isinstance((r.meta or {}).get("pick"), dict)
             ],
         )
 

@@ -304,6 +304,56 @@ def prefill_contacts(
     return done
 
 
+def prefill_picks(
+    run: WorkRun | None,
+    picks: list[dict[str, Any]],
+    *,
+    message_ids: list[str],
+    now: datetime,
+    asked: str | None = None,
+) -> list[str]:
+    """Code before the model: a button pressed under the question the run in focus
+    asks (MessageIn.pick) answers that question as it says — a choice step takes the
+    option pressed, a text step the button's words. A button of another step, an
+    option the step has not or a run that does not take data is left to the models.
+    The filters check the answer as usual. Returns the fields filled ("scenario.field")."""
+    done: list[str] = []
+    if run is None or not run.takes_data or not run.asking:
+        return done
+    for pick in picks:
+        key = pick.get("field")
+        if key != run.asking or key not in run.definition.field_keys:
+            continue
+        f = run.definition.field(key)
+        if f.type == FieldType.CHOICE:
+            value = str(pick.get("option") or "")
+            if value not in {o.key for o in f.options}:
+                continue
+        elif f.type == FieldType.TEXT:
+            value = str(pick.get("text") or "").strip()
+            if not value:
+                continue
+        else:
+            continue
+        fs = run.states[key]
+        if asked:
+            fs.asked = asked
+        fl.set_answer(
+            fs,
+            value,
+            replace=True,
+            early=not fl.ask_after_ready(f, run.states),
+            message_ids=[m for m in message_ids if m == pick.get("message_id")] or message_ids,
+            now=now,
+        )
+        if key not in run.answered:
+            run.answered.append(key)
+        name = f"{run.key}.{key}"
+        if name not in done:
+            done.append(name)
+    return done
+
+
 def apply_values(
     runs: list[WorkRun],
     targets: list[Target],
@@ -757,6 +807,13 @@ async def run_scenarios(
     stopped = apply_stop(runs, decisions.value(STOP, NONE))
     started = apply_start(view, runs, decisions, now)
 
+    picked = prefill_picks(
+        focus_before,
+        ctx.picks,
+        message_ids=message_ids,
+        now=now,
+        asked=last_bot_message(ctx) or None,
+    )
     contacts = prefill_contacts(
         runs, ctx.input_text, region=ctx.settings.phone_region, message_ids=message_ids, now=now
     )
@@ -764,6 +821,7 @@ async def run_scenarios(
         t
         for t in extract_targets(runs, decisions, focus_before)
         if f"{t.scenario}.{t.field.key}" not in contacts
+        and f"{t.scenario}.{t.field.key}" not in picked
     ]
     targets, no_choices = await with_choices(services, ctx, targets, rewritten)
     extracted = await extract(
@@ -852,6 +910,7 @@ async def run_scenarios(
         "focus": next((r.key for r in runs if r.status == RunStatus.FOCUS), None),
         "focus_passed_to": passed.key if passed else None,
         "contacts": contacts,
+        "picks": picked,
         "extract_targets": [f"{t.scenario}.{t.field.key}" for t in targets],
         "catalog_no_choices": no_choices,
         "catalog_ask": catalog_ask,

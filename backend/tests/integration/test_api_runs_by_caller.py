@@ -455,6 +455,71 @@ async def test_questions_are_added_one_after_another_to_a_run_with_the_callers_o
         await _post(client, bundle, f"/v1/runs/{run['id']}/finish")
 
 
+# --- buttons pressed (MessageIn.pick) ---------------------------------------------------------
+
+
+async def _press(client, bundle, decider, fake_llm, text, pick, *, reply):
+    """A button pressed: the route says the message answers nothing (`field:*` — no), so
+    only the pick can fill the step; no extract call — rewrite and reply only."""
+    decider.rules = dict(ROUTE_DEFAULTS)
+    fake_llm.push(
+        chat_reply(json.dumps({"question": [text], "language": "uk"}, ensure_ascii=False)),
+        chat_reply(reply),
+    )
+    resp = await _post(
+        client, bundle, "/v1/runs/message", contact=CONTACT, text=text, pick=pick, scenario="text"
+    )
+    assert resp.status_code == 200, resp.text
+    assert not fake_llm.script, "unused LLM answers"
+    return resp.json()["run"]
+
+
+async def test_a_pressed_button_answers_the_question_asked_without_the_models(
+    services, client, fake_llm
+):
+    bundle, decider = await _setup(services, TEXT)
+    await _start(client, bundle, scenario="text", options={"angle": ANGLES})
+
+    run = await _press(
+        client,
+        bundle,
+        decider,
+        fake_llm,
+        ANGLES[1]["label"],
+        {"field": "angle", "option": "savings"},
+        reply="What is the text for?",
+    )
+    assert (_fields(run)["angle"]["value"], run["asking"]) == ("savings", "goal")
+
+    # a text step takes the button's words; a button of a step not asked is left alone
+    run = await _press(
+        client,
+        bundle,
+        decider,
+        fake_llm,
+        "Довіра",
+        {"field": "goal"},
+        reply="Thank you.",
+    )
+    assert _fields(run)["goal"]["value"] == "Довіра"
+    async with services.sm() as session:
+        meta = (
+            await session.execute(select(Message.meta).where(Message.text == "Довіра"))
+        ).scalar_one()
+    assert meta == {"pick": {"field": "goal"}}
+
+
+async def test_a_button_of_another_step_or_option_is_not_taken(services, client, fake_llm):
+    bundle, decider = await _setup(services, TEXT)
+    await _start(client, bundle, scenario="text", options={"angle": ANGLES})
+    for pick in ({"field": "goal"}, {"field": "angle", "option": "grandma"}):
+        run = await _press(
+            client, bundle, decider, fake_llm, "Бабуся", pick, reply="Which of the two?"
+        )
+        assert _fields(run)["angle"]["value"] is None and _fields(run)["goal"]["value"] is None
+        assert run["asking"] == "angle"
+
+
 # --- two scenarios of one conversation --------------------------------------------------------
 
 

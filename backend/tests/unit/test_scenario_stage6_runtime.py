@@ -15,8 +15,8 @@ from app.scenarios.plan import CONFIRM_QUESTION, build_plan
 from app.scenarios.questions import CONFIRM, NO, YES, confirm_key
 from app.scenarios.schema import ActionEvent
 from app.scenarios.work import WorkRun
-from tests.scenario_helpers import decisions, open_run, states, view
-from tests.stage6_helpers import CANCEL, ORDER, SALON, UPLOAD
+from tests.scenario_helpers import decisions, loaded, make_def, open_run, states, view
+from tests.stage6_helpers import CANCEL, ORDER, SALON, UPLOAD, salon_data
 from tests.turn_ctx import T0
 
 LATER = T0 + timedelta(minutes=5)
@@ -209,6 +209,65 @@ def test_a_filled_phone_is_not_overwritten_by_code():
     run = salon_collected()
     assert rt.prefill_contacts([run], "0509999999", message_ids=["m1"], now=T0) == []
     assert run.states["phone"].value == "+380671234567"
+
+
+# --- buttons pressed (MessageIn.pick) --------------------------------------------------
+
+KIND = {
+    "key": "kind",
+    "type": "choice",
+    "question": {"uk": "Що робимо?", "en": "What do we do?"},
+    "options": [
+        {"key": "post", "label": {"uk": "Пост", "en": "Post"}},
+        {"key": "video", "label": {"uk": "Відео", "en": "Video"}},
+    ],
+}
+PICKS = loaded(make_def(salon_data(fields=[KIND, *salon_data()["fields"]])), position=0)
+
+
+def pressed(field, option=None, text="Пост"):
+    return {
+        "field": field,
+        **({"option": option} if option else {}),
+        "text": text,
+        "message_id": "m2",
+    }
+
+
+def test_a_pressed_option_answers_the_choice_asked():
+    run = work(PICKS, asking="kind")
+    done = rt.prefill_picks(
+        run, [pressed("kind", "post")], message_ids=["m1", "m2"], now=T0, asked="Що робимо?"
+    )
+    assert done == ["salon.kind"]
+    fs = run.states["kind"]
+    assert (fs.value, fs.asked, fs.message_ids) == ("post", "Що робимо?", ["m2"])
+    assert run.answered == ["kind"]
+
+
+def test_a_pressed_button_answers_a_text_step_with_its_words():
+    run = work(PICKS, asking="service")
+    done = rt.prefill_picks(run, [pressed("service", text=" манікюр ")], message_ids=["m2"], now=T0)
+    assert done == ["salon.service"] and run.states["service"].value == "манікюр"
+
+
+def test_a_button_of_a_step_not_asked_is_left_to_the_models():
+    run = work(PICKS, asking="service")
+    assert rt.prefill_picks(run, [pressed("kind", "post")], message_ids=["m2"], now=T0) == []
+    assert run.states["kind"].value is None and run.answered == []
+
+
+def test_an_option_the_step_has_not_is_left_to_the_models():
+    run = work(PICKS, asking="kind")
+    assert rt.prefill_picks(run, [pressed("kind", "story")], message_ids=["m2"], now=T0) == []
+    assert rt.prefill_picks(run, [pressed("kind")], message_ids=["m2"], now=T0) == []
+    assert run.states["kind"].value is None
+
+
+def test_no_run_in_focus_or_a_waiting_one_takes_no_button():
+    assert rt.prefill_picks(None, [pressed("kind", "post")], message_ids=["m2"], now=T0) == []
+    run = work(PICKS, status=RunStatus.WAITING, asking="kind")
+    assert rt.prefill_picks(run, [pressed("kind", "post")], message_ids=["m2"], now=T0) == []
 
 
 # --- files ------------------------------------------------------------------------------

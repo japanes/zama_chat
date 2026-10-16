@@ -43,6 +43,17 @@ class AttachmentIn(BaseModel):
     title: str | None = Field(default=None, max_length=200)
 
 
+class PickIn(BaseModel):
+    """A button of the caller's screen under the question the bot asks; the message's
+    text is what the button says. The run in focus takes it by code, no model
+    guesses (scenarios/runtime.prefill_picks)."""
+
+    # the step of the run in focus the button answers
+    field: str = Field(min_length=1, max_length=64)
+    # a choice step: the key of the option pressed; other steps take the button's words
+    option: str | None = Field(default=None, min_length=1, max_length=64)
+
+
 class MessageIn(BaseModel):
     contact: ContactIn
     # words, files or both
@@ -50,6 +61,8 @@ class MessageIn(BaseModel):
     attachments: list[AttachmentIn] = Field(default_factory=list, max_length=10)
     # the caller's id of this message: sending it again returns the same reply
     client_message_id: str | None = Field(default=None, min_length=1, max_length=200)
+    # the message is a press of a button under the question being asked
+    pick: PickIn | None = None
 
     @model_validator(mode="after")
     def _not_empty(self) -> "MessageIn":
@@ -88,6 +101,7 @@ async def post_message(body: MessageIn, client: ApiClientDep, services: Services
             external_id=body.client_message_id,
             now=now,
             attachments=body.attachment_dicts(),
+            meta={"pick": body.pick.model_dump(exclude_none=True)} if body.pick else None,
         )
 
     # A repeated client_message_id whose turn is running or done finds nothing to take:

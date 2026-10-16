@@ -66,6 +66,9 @@ class TurnContext:
     extra: dict[str, Any] = field(default_factory=dict)
     # attachments of this turn's client messages: [{type, url, title?, message_id}]
     attachments: list[dict[str, Any]] = field(default_factory=list)
+    # buttons pressed in this turn's client messages (MessageIn.pick):
+    # [{field, option?, text, message_id}]
+    picks: list[dict[str, Any]] = field(default_factory=list)
     # unsure answers whose rule wants a person (below: operator): this turn's reply goes
     # to an operator as variants, like in operator mode
     unsure_operator: list[str] = field(default_factory=list)
