@@ -381,6 +381,27 @@ async def test_start_creates_the_run_and_asks_the_first_question(services, clien
     assert conv.reply_language == "en"
 
 
+@pytest.mark.parametrize(
+    ("language", "speaks", "first"),
+    [
+        # the tenant's rules: ru → uk, uk → uk, any other → en
+        ("ru", "uk", "Яка у вас ніша?"),
+        ("uk", "uk", "Яка у вас ніша?"),
+        ("de", "en", "What is your niche?"),
+    ],
+)
+async def test_start_speaks_what_the_tenant_rule_gives_for_the_client_language(
+    services, client, language, speaks, first
+):
+    bundle = await _setup(services)
+    state = await _start(client, bundle, language=language, messages=10)
+    assert state["run"]["language"] == speaks
+    assert state["messages"][0]["text"] == first
+    async with services.sm() as session:
+        conv = await session.get(Conversation, state["conversation_id"])
+    assert conv.state[REPLY_LANGUAGE_PIN] == speaks
+
+
 async def test_start_again_returns_the_run_as_it_is(services, client):
     bundle = await _setup(services)
     first = await _start(client, bundle)
@@ -421,7 +442,7 @@ async def test_start_closes_the_questions_the_caller_has_answers_to(services, cl
     [
         ({"scenario": "nope"}, 404, "scenario.not_found"),
         ({"scenario": "interview", "skip": ["nope"]}, 422, "run.unknown_fields"),
-        ({"scenario": "interview", "language": "de"}, 422, "run.language_not_supported"),
+        ({"scenario": "interview", "language": "x"}, 422, "run.language_not_supported"),
     ],
 )
 async def test_start_refuses_what_it_does_not_know(services, client, body, status, code):

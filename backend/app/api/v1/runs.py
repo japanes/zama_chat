@@ -48,7 +48,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import ApiClient, ApiClientDep, ServicesDep
 from app.api.v1.messages import ContactIn, MessageIn, MessageOut, post_message
 from app.core.ingest import upsert_contact, upsert_conversation
-from app.core.language import REPLY_LANGUAGE_PIN, normalize_code
+from app.core.language import REPLY_LANGUAGE_PIN, normalize_code, reply_language_for
 from app.core.pipeline import ask_pipeline
 from app.core.tenant_settings import effective_settings
 from app.core.turn import run_turn
@@ -382,8 +382,10 @@ class StartIn(BaseModel):
     contact: ContactIn
     # key of a scenario switched on in the key's channel
     scenario: str = Field(min_length=1, max_length=64)
-    # the language the bot speaks in this conversation, whatever language the client writes
-    # in (one of the tenant's languages). Without it the tenant's rules decide, as in a chat.
+    # the client's language as the caller knows it (the language of its interface). The bot
+    # speaks the language the tenant's rule «client's language → reply language» gives for it,
+    # and keeps it whatever language the client writes in. Without it the tenant's rules decide
+    # by the client's messages, as in a chat.
     language: str | None = Field(default=None, max_length=32)
     # questions the caller already has answers to: closed without an answer, never asked
     skip: list[str] = Field(default_factory=list, max_length=200)
@@ -471,6 +473,27 @@ async def _run_language(session: AsyncSession, client: ApiClient, wanted: str | 
             status=422,
         )
     return code
+
+
+async def _reply_language(
+    session: AsyncSession, client: ApiClient, client_language: str | None
+) -> str | None:
+    """The language the bot speaks to a client whose language the caller passed: the tenant's
+    reply rule for it (ru → uk, «*» → en), as for a client who wrote in that language."""
+    if client_language is None:
+        return None
+    tenant = await session.get(Tenant, client.tenant_id)
+    channel = await session.get(Channel, client.channel_id)
+    assert tenant is not None
+    settings = effective_settings(tenant.settings, channel.settings if channel else None)
+    code = normalize_code(client_language)
+    if code is None:
+        raise AppError(
+            "run.language_not_supported",
+            {"language": client_language, "languages": list(settings.languages)},
+            status=422,
+        )
+    return reply_language_for(code, settings)
 
 
 class ScenarioFilter(BaseModel):
@@ -735,7 +758,7 @@ async def start_run(body: StartIn, client: ApiClientDep, services: ServicesDep) 
         if unknown:
             raise AppError("run.unknown_fields", {"fields": unknown}, status=422)
         options = _start_options(defn, body)
-        language = await _run_language(session, client, body.language)
+        language = await _reply_language(session, client, body.language)
         contact = await upsert_contact(
             session,
             tenant_id=client.tenant_id,
