@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from app.db.models import RunStatus
-from app.scenarios.events import PAUSED, RECEIPT_REVIEW
+from app.scenarios.events import PAUSED, RECEIPT_REVIEW, REOPENED
 from app.scenarios.fields import PARTIAL, FieldState, load_states
 from app.scenarios.questions import CONFIRM
 from app.scenarios.schema import ATTACHMENT_TYPES, ActionEvent, FieldType, ScenarioDef
@@ -97,6 +97,8 @@ class RespondPlan:
     completed: list[str] = field(default_factory=list)
     cancelled: list[str] = field(default_factory=list)
     paused: list[str] = field(default_factory=list)
+    # completed requests the client amends in this turn (runtime.apply_reopen)
+    reopened: list[str] = field(default_factory=list)
     # scenario texts are not in the reply language: the reply model translates
     texts_language: str | None = None
     # a bot turn: the client wrote nothing, the bot speaks first (core/pipeline.py)
@@ -163,6 +165,8 @@ class RespondPlan:
             out["scenario_cancelled"] = ", ".join(self.cancelled)
         if self.paused:
             out["scenario_paused"] = ", ".join(self.paused)
+        if self.reopened:
+            out["scenario_reopened"] = ", ".join(self.reopened)
         if self.texts_language:
             out["texts_language"] = self.texts_language
         if self.bot_turn:
@@ -336,6 +340,8 @@ def build_plan(
             plan.cancelled.append(title)
         if PAUSED in names:
             plan.paused.append(title)
+        if REOPENED in names:
+            plan.reopened.append(title)
         for key in run.filled:
             f = defn.field(key)
             value = run.states[key].value or ""
@@ -364,6 +370,7 @@ def build_plan(
         or plan.completed
         or plan.cancelled
         or plan.paused
+        or plan.reopened
         or plan.accepted
         or any(w["new"] for w in plan.waiting)
     )

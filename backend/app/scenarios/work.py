@@ -40,6 +40,8 @@ class WorkRun:
     confirm_rejected: bool = False
     # fields the caller added while the run goes (POST /v1/runs/{id}/fields)
     added: frozenset[str] = frozenset()
+    # a completed run the client amends in this turn (runtime.apply_reopen)
+    reopened: bool = False
 
     @classmethod
     def from_open(cls, run: OpenRun) -> "WorkRun":
@@ -97,7 +99,9 @@ class WorkRun:
 
     @property
     def closed_now(self) -> bool:
-        return not self.is_open and (self.before is None or self.before in OPEN_STATUSES)
+        return not self.is_open and (
+            self.before is None or self.before in OPEN_STATUSES or self.reopened
+        )
 
     @property
     def changed(self) -> bool:
@@ -121,6 +125,15 @@ class WorkRun:
         return [
             k for k, fs in self.states.items() if fs.value != self.snapshot.get(k, (0, None))[1]
         ]
+
+    def undo_reopen(self) -> None:
+        """The reopened run took nothing new: it stays completed as it was."""
+        self.status = self.before
+        self.reopened = False
+        self.asking = None
+        self.data = copy.deepcopy(self.data_before)
+        self.events.clear()
+        self.filled.clear()
 
     def add(self, name: str, field_name: str | None = None) -> None:
         self.events.append(Event(name, field_name))

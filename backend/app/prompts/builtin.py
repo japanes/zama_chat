@@ -94,6 +94,9 @@ SCENARIO_STEP: dict[str, Any] = {
         "If 'scenario_completed' is given, thank the client and say that everything needed "
         "is collected",
         "If 'scenario_cancelled' is given, confirm it calmly, without persuading",
+        "If 'scenario_reopened' is given, the client amends a request collected earlier in "
+        "this dialogue: say that request is being updated, do not treat it as a new one and "
+        "do not ask again what is already known",
         "If 'texts_language' is given, the scenario texts are in that language: translate "
         "them into the answer language",
         "If 'confirm' is given, show the collected answers from 'confirm.summary' as a short "

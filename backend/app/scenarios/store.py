@@ -18,6 +18,10 @@ from app.scenarios.schema import FieldDef, Option, ScenarioDef, parse_definition
 
 log = get_logger(__name__)
 
+# completed runs a turn looks at for `reopen` (schema.Reopen.hours is at most this)
+REOPEN_MAX_HOURS = 720
+REOPEN_MAX_RUNS = 5
+
 
 @dataclass(frozen=True)
 class LoadedScenario:
@@ -56,6 +60,8 @@ class ScenarioView:
     channel: list[LoadedScenario] = field(default_factory=list)  # enabled, in order
     runs: list[OpenRun] = field(default_factory=list)  # open (focus / paused / waiting)
     expired: list[OpenRun] = field(default_factory=list)  # resume window ran out
+    # completed lately, the client may still amend them (`reopen`); newest first
+    completed: list[OpenRun] = field(default_factory=list)
 
     @property
     def active(self) -> bool:
@@ -73,6 +79,9 @@ class ScenarioView:
 
     def run_for(self, key: str) -> OpenRun | None:
         return next((r for r in self.runs if r.scenario.key == key), None)
+
+    def completed_run(self, run_id: uuid.UUID) -> OpenRun | None:
+        return next((r for r in self.completed if r.id == run_id), None)
 
 
 def expires_at(
@@ -195,36 +204,66 @@ async def load_view(
                 .order_by(ScenarioRun.started_at)
             )
         ).all()
+        completed = (
+            await session.execute(
+                select(ScenarioRun, Scenario)
+                .join(Scenario, Scenario.id == ScenarioRun.scenario_id)
+                .where(
+                    ScenarioRun.conversation_id == conversation_id,
+                    ScenarioRun.status == RunStatus.COMPLETED,
+                    ScenarioRun.finished_at >= now - timedelta(hours=REOPEN_MAX_HOURS),
+                )
+                .order_by(ScenarioRun.finished_at.desc())
+                .limit(REOPEN_MAX_RUNS)
+            )
+        ).all()
     positions = {s.key: s.position for s in view.channel}
     for run, scenario in runs:
-        loaded = _loaded(scenario, positions.get(scenario.key, 0))
-        if loaded is None:
+        item = _open_run(run, scenario, positions)
+        if item is None:
             continue
-        try:
-            loaded = run_scenario(loaded, run.extra)
-        except ValueError:
-            # checked when added; a broken one must not break turns
-            log.error("scenario.run_extra_broken", run_id=str(run.id))
-            continue
-        item = OpenRun(
-            id=run.id,
-            scenario=loaded,
-            status=run.status,
-            fields=dict(run.fields or {}),
-            asking=run.asking,
-            delivery_seq=run.delivery_seq,
-            started_at=run.started_at,
-            last_activity_at=run.last_activity_at,
-            data=dict(run.data or {}),
-            extra=dict(run.extra or {}),
-        )
         if is_expired(
-            loaded.definition, run.last_activity_at, now, status=run.status, data=run.data
+            item.scenario.definition, run.last_activity_at, now, status=run.status, data=run.data
         ):
             view.expired.append(item)
         else:
             view.runs.append(item)
+    busy = {r.scenario.key for r in [*view.runs, *view.expired]}
+    for run, scenario in completed:
+        if scenario.key not in positions or scenario.key in busy:
+            continue  # not in the channel any more / a newer run of it is open
+        busy.add(scenario.key)  # only the newest of a scenario
+        item = _open_run(run, scenario, positions)
+        if item is None or run.finished_at is None:
+            continue
+        hours = item.scenario.definition.reopen_hours
+        if hours and now < run.finished_at + timedelta(hours=hours):
+            view.completed.append(item)
     return view
+
+
+def _open_run(run: ScenarioRun, scenario: Scenario, positions: dict[str, int]) -> OpenRun | None:
+    loaded = _loaded(scenario, positions.get(scenario.key, 0))
+    if loaded is None:
+        return None
+    try:
+        loaded = run_scenario(loaded, run.extra)
+    except ValueError:
+        # checked when added; a broken one must not break turns
+        log.error("scenario.run_extra_broken", run_id=str(run.id))
+        return None
+    return OpenRun(
+        id=run.id,
+        scenario=loaded,
+        status=run.status,
+        fields=dict(run.fields or {}),
+        asking=run.asking,
+        delivery_seq=run.delivery_seq,
+        started_at=run.started_at,
+        last_activity_at=run.last_activity_at,
+        data=dict(run.data or {}),
+        extra=dict(run.extra or {}),
+    )
 
 
 async def load_definition(session: AsyncSession, scenario_id: uuid.UUID) -> ScenarioDef:

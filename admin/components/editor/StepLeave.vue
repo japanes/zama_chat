@@ -42,6 +42,25 @@
       <p class="hint">{{ t('editor.leave.resume_hint') }}</p>
     </fieldset>
 
+    <div v-if="['all_fields', 'explicit_yes'].includes(def.completion)">
+      <label class="label" :for="`${uid}-reopen`">{{ t('editor.leave.reopen') }}</label>
+      <div class="flex flex-wrap items-center gap-2.5">
+        <input
+          :id="`${uid}-reopen`"
+          v-model.number="def.reopen_hours"
+          type="number"
+          min="0"
+          max="720"
+          step="1"
+          class="input !w-24"
+          placeholder="24"
+          :readonly="readonly"
+        />
+        <span>{{ t('editor.hours') }}</span>
+      </div>
+      <p class="hint">{{ t('editor.leave.reopen_hint') }}</p>
+    </div>
+
     <div v-if="others.length">
       <p class="label">{{ t('editor.leave.incompatible') }}</p>
       <div class="flex flex-wrap gap-1.5">

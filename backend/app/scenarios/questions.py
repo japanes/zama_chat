@@ -8,6 +8,8 @@
   client_question               boolean — the message has the client's own question
   confirm:<scenario>            choice  — yes / no / none: the client's answer to «is
                                 everything correct?» (only when the focus asked it)
+  reopen:<scenario>             boolean — the client amends a request completed lately
+                                (ScenarioView.completed, runtime.apply_reopen)
 
 and the state sections Jev sees with them: the scenario in focus with its field states,
 the field the bot asked last, the paused scenarios.
@@ -76,6 +78,12 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "confirm_none": "The client neither confirms nor rejects (asks something else or "
         "the answer is unclear).",
         "asked_confirm": "asked the client to confirm the collected answers",
+        "reopen": "The client's request «{title}» was collected lately with these "
+        "answers: {answers}. Does the client's latest message change or add something to "
+        "this very request (not a new, separate request)?",
+        "reopen_true": "Yes: the client changes or adds to this request.",
+        "reopen_false": "No: the message is not about this request, or it is a new, "
+        "separate request.",
     },
     "uk": {
         "field": "Чи є в останньому повідомленні клієнта відповідь на питання «{q}»?",
@@ -106,6 +114,11 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "confirm_none": "Клієнт не підтверджує і не заперечує (питає інше або відповідь "
         "незрозуміла).",
         "asked_confirm": "попросив клієнта підтвердити зібрані відповіді",
+        "reopen": "Нещодавно було зібрано запит клієнта «{title}» з такими відповідями: "
+        "{answers}. Чи змінює або доповнює клієнт в останньому повідомленні саме цей запит "
+        "(а не робить новий, окремий)?",
+        "reopen_true": "Так: клієнт змінює або доповнює цей запит.",
+        "reopen_false": "Ні: повідомлення не про цей запит або це новий, окремий запит.",
     },
     "ru": {
         "field": "Есть ли в последнем сообщении клиента ответ на вопрос «{q}»?",
@@ -135,6 +148,11 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "confirm_none": "Клиент не подтверждает и не возражает (спрашивает другое или ответ "
         "непонятен).",
         "asked_confirm": "попросил клиента подтвердить собранные ответы",
+        "reopen": "Недавно был собран запрос клиента «{title}» с такими ответами: "
+        "{answers}. Меняет или дополняет клиент в последнем сообщении именно этот запрос "
+        "(а не делает новый, отдельный)?",
+        "reopen_true": "Да: клиент меняет или дополняет этот запрос.",
+        "reopen_false": "Нет: сообщение не об этом запросе или это новый, отдельный запрос.",
     },
 }
 DEFAULT_TEMPLATES = "en"
@@ -163,6 +181,10 @@ def show_key(scenario: str, field_name: str, key: str) -> str:
 
 def confirm_key(scenario: str) -> str:
     return f"confirm:{scenario}"
+
+
+def reopen_key(scenario: str) -> str:
+    return f"reopen:{scenario}"
 
 
 def cancel_option(scenario: str) -> str:
@@ -258,6 +280,23 @@ def confirm_question(defn: ScenarioDef, language: str) -> Question:
     )
 
 
+def reopen_question(run: OpenRun, language: str) -> Question:
+    t = templates(language)
+    defn = run.scenario.definition
+    states = load_states(defn, run.fields)
+    answers = "; ".join(
+        f"«{defn.text(f.question, language).text}» — «{preview(states[f.key].value or '', 120)}»"
+        for f in defn.fields
+        if states[f.key].value is not None and asks_text(f)
+    )
+    return Question(
+        reopen_key(defn.key),
+        DecisionType.BOOLEAN,
+        t["reopen"].format(title=title_of(defn, language), answers=answers or "—"),
+        {"true": t["reopen_true"], "false": t["reopen_false"]},
+    )
+
+
 def asks_text(f: FieldDef) -> bool:
     """Fields the client answers with words (attachments and receipts come as files)."""
     return f.type not in ATTACHMENT_TYPES
@@ -329,6 +368,8 @@ def build_questions(view: ScenarioView, language: str) -> ScenarioQuestions:
         if focus.asking == CONFIRM:
             out.questions.append(confirm_question(focus.scenario.definition, language))
     if not only:
+        # a scenario with only_scenario open: nothing else is taken up by itself
+        out.questions.extend(reopen_question(run, language) for run in view.completed)
         out.questions.append(client_question(language))
     out.sections = list(state_sections(view, language))
     return out

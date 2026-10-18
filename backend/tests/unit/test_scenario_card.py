@@ -293,6 +293,8 @@ def test_a_scenario_without_the_new_names_is_stored_as_before():
         p for p in (PROJECT_ROOT / "scenarios").rglob("*") if p.suffix in SUFFIXES and p.is_file()
     ]
     for data in [interview_data(), *(parse_yaml(p.read_text()) for p in files)]:
+        if _walk_keys(data) & NEW_NAMES or "say" in data.get("waiting", {}):
+            continue  # the file uses the new names itself
         dumped = _dumped(parse_definition(data))
         assert not (_walk_keys(dumped) & NEW_NAMES), data.get("key")
         assert "say" not in dumped.get("waiting", {}), data.get("key")

@@ -95,6 +95,8 @@ export function newDefinition(language: string): any {
     waiting: { hours: '', say: {} },
     incompatible_with: [],
     resume: { mode: 'always' },
+    // '' — the default (24 hours)
+    reopen_hours: '',
     cancel: {},
     actions: [],
     only_scenario: false,
@@ -238,6 +240,7 @@ export function cleanDefinition(d: any): any {
       d.resume?.mode === 'within_hours'
         ? compact({ mode: 'within_hours', hours: d.resume.hours === '' || d.resume.hours == null ? undefined : Number(d.resume.hours) })
         : { mode: 'always' },
+    reopen: ['all_fields', 'explicit_yes'].includes(d.completion) && num(d.reopen_hours) !== undefined ? { hours: num(d.reopen_hours) } : undefined,
     cancel: compact({ description: text(d.cancel?.description) }),
     actions: (d.actions || []).map((a: any) =>
       compact({
@@ -300,6 +303,8 @@ export function toForm(d: any): any {
   out.waiting = { hours: out.waiting?.hours ?? '', say: out.waiting?.say ?? {} }
   out.incompatible_with ||= []
   out.resume ||= { mode: 'always' }
+  out.reopen_hours = out.reopen?.hours ?? ''
+  delete out.reopen
   out.cancel ||= {}
   out.actions ||= []
   for (const a of out.actions) {

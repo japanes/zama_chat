@@ -182,9 +182,14 @@ def open_run(
 
 
 def view(
-    channel: list[LoadedScenario], runs: list[OpenRun] = (), expired: list[OpenRun] = ()
+    channel: list[LoadedScenario],
+    runs: list[OpenRun] = (),
+    expired: list[OpenRun] = (),
+    completed: list[OpenRun] = (),
 ) -> ScenarioView:
-    return ScenarioView(channel=list(channel), runs=list(runs), expired=list(expired))
+    return ScenarioView(
+        channel=list(channel), runs=list(runs), expired=list(expired), completed=list(completed)
+    )
 
 
 def decisions(values: dict[str, Any]) -> DecisionSet:

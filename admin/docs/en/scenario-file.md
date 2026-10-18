@@ -90,6 +90,7 @@ The words `yes`, `no`, `on`, `off` are plain text here. There are only two logic
 | `completion` | no | When the scenario counts as finished — section 7. |
 | `events`, `waiting` | no | The answer of your system (CRM) — section 8. |
 | `resume` | no | What to do if the client disappeared and came back — section 9. |
+| `reopen` | no | The client amends a request already collected — section 9. |
 | `cancel` | no | How to tell that the client changed their mind — section 9. |
 | `incompatible_with` | no | Scenarios that do not go at the same time as this one — section 9. |
 | `only_scenario` | no | While the scenario is open, the bot does only it: no general replies, no search, no other scenarios — section 9. |
@@ -403,6 +404,16 @@ resume:
   hours: 24                   # within_hours — continue only within hours (a booking, an order):
                               # later the scenario is closed as unfinished, a new one starts from scratch
 ```
+
+**`reopen`** — the client amends a request that is already collected. For example, after a collected reschedule they write «change the time too»: the bot takes that same request back to work (its answers are corrected from the new message, not asked again) and completes it again — the `completed` actions fire once more. No new request starts from scratch:
+
+```yaml
+reopen:
+  hours: 48                   # how many hours after the completion the request can be amended, 0 to 720;
+                              # not set — 24, 0 — never
+```
+
+Only with `completion: all_fields` or `explicit_yes`. If the client says they change something but names nothing new, the request stays closed as it was.
 
 **`cancel`** — how to tell that the client changed their mind. Describe it in plain words — the bot compares every message with it and closes the scenario:
 

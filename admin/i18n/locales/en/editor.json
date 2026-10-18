@@ -275,6 +275,8 @@
       "resume_within": "Go on only if no more than this passed:",
       "resume_hours": "How many hours to wait for the client",
       "resume_hint": "A booking makes sense for a day, a questionnaire can be continued in a week. After the limit the scenario is closed as unfinished.",
+      "reopen": "The client amends a request already collected",
+      "reopen_hint": "For example, after a collected reschedule the client writes «change the time too»: the bot changes that same request instead of starting a new one. Works this many hours after the completion; empty — 24, 0 — never.",
       "incompatible": "Do not start while this one is going",
       "incompatible_hint": "For example, a booking and its cancellation: only one of them at a time."
     },

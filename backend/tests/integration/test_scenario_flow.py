@@ -156,6 +156,39 @@ async def test_full_interview_sends_the_signed_result(client, services, fake_llm
     assert item["headers"][SIGNATURE_HEADER] == sign(SECRET, encode_body(delivery.payload))
 
 
+async def test_an_amendment_reopens_the_completed_request(client, services, fake_llm, env):
+    await _say(client, env, fake_llm, FIRST, route=START, extract=FIRST_EXTRACT)
+    body = await _say(client, env, fake_llm, SECOND, route=SECOND_ROUTE, extract=SECOND_EXTRACT)
+    await env.worker.run_due()
+    services.clock.advance(hours=1)
+    amend = {
+        "interview__niche": None,
+        "interview__offer": "весільні та дитячі торти",
+        "interview__positioning": None,
+    }
+    await _say(
+        client,
+        env,
+        fake_llm,
+        "Ой, ще й дитячі торти продаю",
+        route={**START, "reopen:interview": True},
+        extract=amend,
+    )
+    [run] = await runs_of(services.sm, body["conversation_id"])  # no new run
+    assert run.status == RunStatus.COMPLETED
+    assert run.fields["offer"]["value"] == "весільні та дитячі торти"
+    step = _scenario_step(fake_llm)
+    assert step["scenario_reopened"] == "Інтерв'ю"
+    assert step["scenario_completed"] == "Інтерв'ю"
+    assert "scenario_started" not in step
+
+    await env.worker.run_due()
+    first, second = await _sink(client)
+    assert second["body"]["result_id"] == first["body"]["result_id"] == str(run.id)
+    assert second["body"]["seq"] == 2
+    assert second["body"]["fields"]["offer"] == "весільні та дитячі торти"
+
+
 async def test_silence_sends_a_partial_result_then_the_full_one(client, services, fake_llm, env):
     body = await _say(client, env, fake_llm, FIRST, route=START, extract=FIRST_EXTRACT)
     [run] = await runs_of(services.sm, body["conversation_id"])

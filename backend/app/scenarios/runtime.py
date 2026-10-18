@@ -57,7 +57,7 @@ from app.receipts.service import ReceiptCheck, check_attachment, expected_for
 from app.scenarios import fields as fl
 from app.scenarios.catalog import ask_options, option_label, with_choices
 from app.scenarios.checks import CheckItem, ask_filters
-from app.scenarios.events import CLOSED, FOCUSED, PAUSED, RECEIPT_REVIEW
+from app.scenarios.events import CLOSED, FOCUSED, PAUSED, RECEIPT_REVIEW, REOPENED
 from app.scenarios.extract import Extracted, Target, extract, last_bot_message
 from app.scenarios.plan import CatalogAsk, RespondPlan, build_plan
 from app.scenarios.questions import (
@@ -72,6 +72,7 @@ from app.scenarios.questions import (
     YES,
     confirm_key,
     field_key,
+    reopen_key,
     start_question_key,
 )
 from app.scenarios.schema import (
@@ -161,6 +162,34 @@ def apply_stop(runs: list[WorkRun], value: Any) -> str | None:
     return None
 
 
+def apply_reopen(view: ScenarioView, runs: list[WorkRun], decisions: DecisionSet) -> str | None:
+    """The client amends a request completed lately («also change the time»): the newest
+    such run goes back to work with its answers, the message corrects them. Not when a
+    run of it or of an incompatible scenario is open. Returns the scenario key."""
+    open_defs = [r.definition for r in runs if r.is_open]
+    for done in view.completed:  # newest first
+        defn = done.scenario.definition
+        if decisions.value(reopen_key(defn.key)) is not True:
+            continue
+        if open_run(runs, defn.key) is not None or any(
+            incompatible(defn, other) for other in open_defs
+        ):
+            continue
+        run = WorkRun.from_open(done)
+        run.reopened = True
+        run.status = RunStatus.PAUSED if focus_of(runs) is not None else RunStatus.FOCUS
+        run.asking = None
+        run.data.pop("confirmed_at", None)
+        for f in defn.fields:
+            fs = run.states[f.key]
+            if f.show_if is not None and fs.hidden and not fs.complete:
+                fs.show = None  # «does it apply?» is asked again with the new message
+        run.add(REOPENED)
+        runs.append(run)
+        return defn.key
+    return None
+
+
 def start_candidates(
     view: ScenarioView,
     runs: list[WorkRun],
@@ -236,7 +265,8 @@ def extract_targets(
     runs: list[WorkRun], decisions: DecisionSet, focus_before: WorkRun | None
 ) -> list[Target]:
     """Fields to extract: marked by `field:` questions; the corrected one; every field of
-    a run started in this turn."""
+    a run started in this turn; of a reopened run — every field, the answers as
+    corrections."""
     change = decisions.value(CHANGE_FIELD, NONE)
     targets = []
     for run in runs:
@@ -247,9 +277,11 @@ def extract_targets(
             if f.type in ATTACHMENT_TYPES:
                 continue  # filled from the message's files, not from words
             fs = run.states[f.key]
-            correction = run is focus_before and change == f.key and fs.value is not None
+            correction = (
+                (run is focus_before and change == f.key) or run.reopened
+            ) and fs.value is not None
             marked = decisions.value(field_key(defn.key, f.key)) is True and not fs.complete
-            if correction or marked or (run.is_new and not fs.complete):
+            if correction or marked or ((run.is_new or run.reopened) and not fs.complete):
                 targets.append(
                     Target(
                         run.id,
@@ -651,6 +683,9 @@ def finish_runs(runs: list[WorkRun], now: datetime | None = None) -> None:
             run.data.pop("confirmed_at", None)
         if not fl.all_complete(run.states):
             continue
+        if run.reopened and not run.values_changed:
+            run.undo_reopen()  # «also change …» named nothing the run takes
+            continue
         if not run.was_all_complete or run.values_changed:
             run.add(ActionEvent.ALL_FIELDS)
         if not run.confirmed:
@@ -805,6 +840,9 @@ async def run_scenarios(
     expired = expire_runs(view)
 
     stopped = apply_stop(runs, decisions.value(STOP, NONE))
+    # before the starts: the amended request is not started anew
+    if not view.only_scenario:
+        apply_reopen(view, runs, decisions)
     started = apply_start(view, runs, decisions, now)
 
     picked = prefill_picks(
@@ -911,6 +949,7 @@ async def run_scenarios(
     )
     summary = {
         "stop": stopped,
+        "reopened": next((r.key for r in runs if r.reopened), None),
         "start": started.sums,
         "started": started.new,
         "blocked": started.blocked,
@@ -970,7 +1009,9 @@ def _apply(row: ScenarioRun, run: WorkRun, now: datetime, turn_id: str) -> None:
     row.data = dict(run.data)
     if run.events:
         row.events = [*(row.events or []), *(e.log_entry(now, turn_id) for e in run.events)]
-    if not run.is_open and row.finished_at is None:
+    if run.is_open:
+        row.finished_at = None  # a completed run reopened
+    elif row.finished_at is None or run.reopened:
         row.finished_at = now
     row.last_activity_at = now
 
@@ -1091,7 +1132,13 @@ def make_write(
         # partial unique indexes (one focus, one open run per scenario) are checked per
         # statement: first the runs that leave the focus or close, then the focus, then
         # the new runs
-        existing = [r for r in runs if not r.is_new and not _untouched_waiting(r)]
+        existing = [
+            r
+            for r in runs
+            if not r.is_new
+            and not _untouched_waiting(r)
+            and (r.before in OPEN_STATUSES or r.reopened)
+        ]
         groups = [
             [r for r in existing if r.status != RunStatus.FOCUS],
             [r for r in existing if r.status == RunStatus.FOCUS],
@@ -1099,7 +1146,8 @@ def make_write(
         for group in groups:
             for run in group:
                 row = await session.get(ScenarioRun, run.id, with_for_update=True)
-                if row is None or row.status not in OPEN_STATUSES:
+                expected = OPEN_STATUSES if not run.reopened else (run.before,)
+                if row is None or row.status not in expected:
                     log.warning("scenario.run_changed_meanwhile", run_id=str(run.id))
                     continue
                 _apply(row, run, now, turn_id)

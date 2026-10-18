@@ -329,6 +329,15 @@ class Resume(Strict):
     hours: float | None = Field(default=None, gt=0)
 
 
+class Reopen(Strict):
+    """A completed run goes back to work when the client amends it: «also change the
+    time» after the reschedule was collected changes that request, it does not start a
+    new one. Only for completion all_fields / explicit_yes."""
+
+    # within this many hours of the completion; 0 — never reopened
+    hours: float = Field(default=24, ge=0, le=720)
+
+
 class Cancel(Strict):
     description: LocalizedText | None = None
 
@@ -378,6 +387,8 @@ class ScenarioDef(Strict):
     # scenarios that can not be open together with this one (both ways)
     incompatible_with: list[Key] = Field(default_factory=list)
     resume: Resume = Field(default_factory=Resume)
+    # None — the default: reopened within 24 hours (Reopen)
+    reopen: Reopen | None = None
     cancel: Cancel = Field(default_factory=Cancel)
     actions: list[Action] = Field(default_factory=list)
     # rules only the reply model sees when it words a question (not extract, not checks)
@@ -405,10 +416,22 @@ class ScenarioDef(Strict):
     def _no_added(cls, value: AddedFields | None) -> AddedFields | None:
         return None if value == AddedFields() else value
 
+    @field_validator("reopen")
+    @classmethod
+    def _no_reopen(cls, value: Reopen | None) -> Reopen | None:
+        return None if value == Reopen() else value
+
     @field_validator("only_scenario")
     @classmethod
     def _no_only(cls, value: bool | None) -> bool | None:
         return True if value else None
+
+    @property
+    def reopen_hours(self) -> float:
+        """How long after the completion the client may amend a run; 0 — never."""
+        if self.completion not in (Completion.ALL_FIELDS, Completion.EXPLICIT_YES):
+            return 0
+        return (self.reopen or Reopen()).hours
 
     @property
     def needs_confirm(self) -> bool:
