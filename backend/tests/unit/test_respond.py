@@ -6,6 +6,7 @@ from app.core import respond as respond_module
 from app.core.context import HistoryItem
 from app.core.respond import (
     HANDOVER_RULE,
+    NO_GREETING_RULE,
     SERVICE_KEYS,
     SYSTEM_KEY,
     USER_KEY,
@@ -113,6 +114,28 @@ def test_answer_messages():
 def test_answer_messages_with_handover_note():
     messages = answer_messages(make_ctx(), SYSTEM, USER, "Call a manager", "en", wants_human=True)
     assert json.loads(messages[-1]["content"])["handover_note"] == HANDOVER_RULE
+
+
+def test_no_second_greeting_when_the_bot_has_talked():
+    ctx = make_ctx(history=history((MessageRole.CLIENT, "привіт"), (MessageRole.BOT, "Вітаю!")))
+    data = json.loads(answer_messages(ctx, SYSTEM, USER, "q", "uk")[-1]["content"])
+    assert data["greeting"] == NO_GREETING_RULE
+    # the client greets again: the bot may greet back
+    data = json.loads(
+        answer_messages(ctx, SYSTEM, USER, "q", "uk", client_greets=True)[-1]["content"]
+    )
+    assert "greeting" not in data
+
+
+def test_greeting_allowed_in_a_new_or_old_dialogue():
+    first = make_ctx(history=history((MessageRole.CLIENT, "привіт")))
+    data = json.loads(answer_messages(first, SYSTEM, USER, "q", "uk")[-1]["content"])
+    assert "greeting" not in data
+    old = make_ctx(
+        history=[HistoryItem(MessageRole.BOT, "Вітаю!", T0 - timedelta(days=2))],
+    )
+    data = json.loads(answer_messages(old, SYSTEM, USER, "q", "uk")[-1]["content"])
+    assert "greeting" not in data
 
 
 def test_service_messages_use_the_client_text():

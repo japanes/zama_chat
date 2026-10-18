@@ -17,6 +17,7 @@ dialogue (`known`) go the rules of the prompt `scenario_card`.
 """
 
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
 from app.core.context import TurnContext
@@ -68,6 +69,16 @@ HANDOVER_RULE = (
     "this chat soon. If the message also has a question you can answer, answer it too"
 )
 
+# TODO(review): wording; the business description often says "greet with «Good day»",
+# and the model then greets in every reply of the dialogue
+NO_GREETING_RULE = (
+    "The bot has already talked with the client in this dialogue: do not greet again "
+    "and do not open with a greeting phrase, even if the other rules say to greet; "
+    "start straight with the answer"
+)
+# a bot / operator message newer than this means the dialogue is going on
+GREETING_GAP = timedelta(hours=12)
+
 
 @dataclass(frozen=True)
 class Reply:
@@ -102,6 +113,15 @@ def history_messages(ctx: TurnContext) -> list[dict[str, Any]]:
     return out
 
 
+def talked_recently(ctx: TurnContext) -> bool:
+    """The bot or an operator has written in the conversation lately."""
+    return any(
+        item.role in (MessageRole.BOT, MessageRole.OPERATOR)
+        and ctx.now - item.created_at < GREETING_GAP
+        for item in ctx.history
+    )
+
+
 def answer_messages(
     ctx: TurnContext,
     system: PromptText,
@@ -113,7 +133,9 @@ def answer_messages(
     context: list[Any] | None = None,
     search_rules: list[str] | None = None,
     scenario_step: dict[str, Any] | None = None,
+    client_greets: bool = False,
 ) -> list[dict[str, Any]]:
+    """`client_greets` — the client greeted in this message: the bot may greet back."""
     values = prompt_values(ctx, reply_language, rewritten)
     data = render_json(
         user.body,
@@ -130,6 +152,8 @@ def answer_messages(
         data["search_rules"] = search_rules
     if wants_human:
         data["handover_note"] = HANDOVER_RULE
+    if not client_greets and talked_recently(ctx):
+        data["greeting"] = NO_GREETING_RULE
     if scenario_step is not None:
         data["scenario_step"] = scenario_step
     return [
@@ -224,6 +248,7 @@ async def respond(
                 else None
             ),
             scenario_step=step_data,
+            client_greets=route.service_type == "greeting_only",
         )
     # the user prompt carries the turn-specific part; its version is the one to log
     logged = prompt if is_service else prompts[USER_KEY]
