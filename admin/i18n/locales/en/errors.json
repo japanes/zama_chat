@@ -259,8 +259,7 @@
     "check": {
       "empty_answer": "Empty answers: {fields}",
       "field_twice": "Questions sent twice: {fields}",
-      "not_a_text_field": "Only text questions can be checked this way: {fields}",
-      "too_long": "The answers are too long to check at once ({answers})"
+      "not_a_text_field": "Only text questions can be checked this way: {fields}"
     },
     "run": {
       "answer_skipped": "A question is both answered and skipped: {fields}",

@@ -67,6 +67,7 @@ def search_question(content: Content) -> Question | None:
         "Does the bot need to look up company information to answer the client's latest "
         "message? Where?",
         {o: _CRITERIA[o] for o in options},
+        neutral=NONE,
     )
 
 

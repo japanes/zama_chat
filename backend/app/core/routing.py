@@ -15,21 +15,24 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from app.core.context import TurnContext
-from app.core.state_render import own_words_needed, render_route_state
+from app.core.state_render import own_words_needed, render_route_parts
 from app.db.models import DecisionType
 from app.decisions.engine import (
     DecisionSet,
     Question,
-    run_decisions,
+    run_decision_parts,
     trace_answers,
 )
-from app.decisions.limits import CONTEXT_TOKENS, question_tokens
+from app.decisions.limits import part_room
 
 if TYPE_CHECKING:
     from app.services import Services
 
 SERVICE_NONE = "none"
 SERVICE_TYPES = ("none", "greeting_only", "goodbye_only", "not_a_bot", "ethical_violation")
+# a bare greeting / farewell / identity question is the whole message: a part of a long
+# message split for the decider is never one (an ethical violation in a part is one)
+WHOLE_MESSAGE_TYPES = frozenset({"greeting_only", "goodbye_only", "not_a_bot"})
 
 # TODO(review): same texts as the Jev probe (scripts/jev_probe.py); tune after the probe
 ROUTE_QUESTIONS: dict[str, dict[str, Question]] = {
@@ -49,6 +52,8 @@ ROUTE_QUESTIONS: dict[str, dict[str, Question]] = {
                 "ethical_violation": "The message is about unethical, illegal or dangerous "
                 "things (hacking, fraud, drugs, terrorism, extremism and the like).",
             },
+            neutral=SERVICE_NONE,
+            whole_only=WHOLE_MESSAGE_TYPES,
         ),
         "uk": Question(
             "service_type",
@@ -65,6 +70,8 @@ ROUTE_QUESTIONS: dict[str, dict[str, Question]] = {
                 "ethical_violation": "Повідомлення про неетичне, незаконне або небезпечне "
                 "(злам, шахрайство, наркотики, тероризм, екстремізм тощо).",
             },
+            neutral=SERVICE_NONE,
+            whole_only=WHOLE_MESSAGE_TYPES,
         ),
     },
     "wants_human": {
@@ -144,21 +151,20 @@ async def route(
     """`general=False` — only the given questions: no service_type, no wants_human (an open
     scenario with `only_scenario`).
 
-    One batch for every open scenario — the focus and the paused ones alike. The state
-    takes Jev's window less the longest question: a long message is seen whole."""
+    One batch for every open scenario — the focus and the paused ones alike. A message
+    that does not fit Jev's window next to the questions is asked in parts, all the
+    questions with every part: a long message is seen whole, not cut."""
     own = route_questions(ctx.settings.jev_question_language) if general else []
     questions = [*own, *extra_questions]
-    room = CONTEXT_TOKENS - max((question_tokens(q) for q in questions), default=0)
-    state = render_route_state(
-        rewritten, original=ctx.input_text, sections=sections, max_tokens=room
+    parts = render_route_parts(
+        rewritten, original=ctx.input_text, sections=sections, max_tokens=part_room(questions)
     )
     with ctx.trace.step("route", questions=[q.key for q in questions]) as step:
         if own_words_needed(rewritten, ctx.input_text):
             step["own_words"] = True  # the rewrite was shorter: the client's words were the message
-        decisions = await run_decisions(
+        decisions = await run_decision_parts(
             services,
-            state,
-            questions,
+            [(part, questions) for part in parts],
             ctx.decide_context(),
             trace_step=step,
         )

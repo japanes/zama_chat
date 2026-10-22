@@ -24,8 +24,8 @@ from app.db.models import (
 )
 from app.decisions.engine import DecisionSet
 from app.decisions.fake import FakeDecider
+from app.decisions.limits import REQUEST_TOKENS, request_tokens
 from app.prompts.seed import seed_prompts
-from app.scenarios.checks import STATE_MAX_TOKENS
 from tests.conftest import chat_reply
 from tests.factories import make_model, make_tenant
 from tests.scenario_helpers import (
@@ -275,11 +275,9 @@ async def test_check_without_filters_asks_nobody(services, client):
     assert decider.calls == []
 
 
-# questions enough for their full answers (CHECK_ANSWER_MAX characters, a third of that in
-# tokens each) to overflow the decider's state
-_MANY = ["niche", "offer", "positioning"] + [
-    f"extra_{i}" for i in range(STATE_MAX_TOKENS * 3 // CHECK_ANSWER_MAX + 2)
-]
+# questions enough for their full answers (CHECK_ANSWER_MAX Cyrillic characters, about
+# 9 000 tokens each) to overflow one request to the decider
+_MANY = ["niche", "offer", "positioning"] + [f"extra_{i}" for i in range(4)]
 
 
 @pytest.mark.parametrize(
@@ -302,12 +300,6 @@ _MANY = ["niche", "offer", "positioning"] + [
             422,
             "run.language_not_supported",
         ),
-        # answers of the full length, more than the decider's state takes whole
-        (
-            {"answers": [{"field": key, "value": "я" * CHECK_ANSWER_MAX} for key in _MANY]},
-            422,
-            "check.too_long",
-        ),
     ],
 )
 async def test_check_refuses_what_it_cannot_check(services, client, body, status, code):
@@ -322,6 +314,40 @@ async def test_check_refuses_what_it_cannot_check(services, client, body, status
     resp = await _post(client, bundle, "/v1/scenarios/interview/check", **body)
     assert (resp.status_code, resp.json()["error"]["code"]) == (status, code), resp.text
     assert decider.calls == []
+
+
+async def test_answers_longer_than_a_request_are_checked_in_several(services, client):
+    data = interview_data()
+    data["fields"].extend(
+        {
+            "key": key,
+            "question": {"uk": "Ще щось?", "en": "More?"},
+            "filters": [{"key": "ok", "ask": {"uk": "Відповідь по суті?", "en": "To the point?"}}],
+        }
+        for key in _MANY
+        if key not in {"niche", "offer", "positioning"}
+    )
+    bundle = await _setup(services, data)
+    # the last answer fails: its verdict must come back to its own question
+    decider = _decider(
+        services, {"filter:*": lambda q, state: not q.key.startswith("filter:interview.extra_3.")}
+    )
+    answers = {key: "я" * CHECK_ANSWER_MAX for key in _MANY}
+    resp = await _check(client, bundle, answers)
+    assert resp.status_code == 200, resp.text
+    assert len(decider.calls) > 1
+    assert all(request_tokens(state, qs) <= REQUEST_TOKENS for state, qs in decider.calls)
+    # every answer is checked once, whole, next to its own filters
+    asked = decider.asked()
+    assert sorted(asked) == sorted(set(asked)) and len(asked) == len(_MANY) - 1
+    for state, questions in decider.calls:
+        for q in questions:
+            field = q.key.split(".")[1]
+            assert f"[interview.{field}]" in state
+            assert "я" * CHECK_ANSWER_MAX in state
+    results = {r["field"]: r["passed"] for r in resp.json()["results"]}
+    assert results == {key: key != "extra_3" for key in _MANY}
+    assert resp.json()["usage"] is not None
 
 
 async def test_check_only_text_questions(services, client):

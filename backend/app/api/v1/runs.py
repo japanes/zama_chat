@@ -78,7 +78,7 @@ from app.db.models import (
 from app.decisions.engine import DecideContext, DecisionSet
 from app.errors import AppError, Conflict, NotFound
 from app.scenarios import fields as fl
-from app.scenarios.checks import CheckItem, answers_fit, ask_filters
+from app.scenarios.checks import CheckItem, ask_filters
 from app.scenarios.events import FIELDS_ADDED, FOCUSED, PAUSED, SKIPPED
 from app.scenarios.outside import (
     WAITING_FIELDS,
@@ -715,10 +715,8 @@ async def check_answers(
             if v.strip() and k not in values
         },
     )
+    # answers longer than Jev's window go in several requests (checks.ask_filters)
     items = [CheckItem(defn, by_key[k], values[k], states) for k in asked]
-    if not answers_fit(items, code, answer_chars=CHECK_ANSWER_MAX):
-        # the decider would read the last answers cut; fewer answers per call do fit
-        raise AppError("check.too_long", {"answers": len(items)}, status=422)
     check_id = new_id()
     outcome = await ask_filters(
         services, DecideContext(client.tenant_id), items, code, answer_chars=CHECK_ANSWER_MAX
@@ -829,8 +827,6 @@ async def start_run(body: StartIn, client: ApiClientDep, services: ServicesDep) 
         code = language or defn.language
         states = fl.load_states(defn, {})
         items = [CheckItem(defn, defn.field(k), v, states) for k, v in answers.items()]
-        if not answers_fit(items, code, answer_chars=CHECK_ANSWER_MAX):
-            raise AppError("check.too_long", {"answers": len(items)}, status=422)
         outcome = await ask_filters(
             services, DecideContext(client.tenant_id), items, code, answer_chars=CHECK_ANSWER_MAX
         )

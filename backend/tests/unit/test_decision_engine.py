@@ -1,6 +1,7 @@
 """Questions, value coercion, decision rows, FakeDecider strictness, trace view."""
 
 import uuid
+from types import SimpleNamespace
 
 import pytest
 
@@ -11,10 +12,13 @@ from app.decisions.engine import (
     DecisionSet,
     Question,
     decision_row,
+    merge_parts,
     question_keys_unique,
+    run_decision_parts,
     trace_answers,
 )
 from app.decisions.fake import FakeDecider
+from app.decisions.policy import DecisionPolicy
 from tests.decision_helpers import choice, score, yes_no
 
 CTX = DecideContext(tenant_id=uuid.uuid4(), turn_id=uuid.uuid4())
@@ -250,3 +254,103 @@ async def test_fake_decider_unsure_keys():
     assert result.value("field:x.y") is True
     used = {r.key: r.used for r in result.rows}
     assert used == {"filter:x.y.z": False, "wants_human": False, "field:x.y": True}
+
+
+# --- a state asked in parts --------------------------------------------------------------
+
+
+def _part(question: Question, value, confidence=0.9, *, unsure=False):
+    a = Answer(question.key, question.type, value, confidence, DecisionProvider.JEV, "m")
+    a.unsure = unsure
+    return a
+
+
+SERVICE = Question(
+    "service_type",
+    DecisionType.CHOICE,
+    "?",
+    {"none": "n", "greeting_only": "g", "ethical_violation": "e"},
+    neutral="none",
+    whole_only=frozenset({"greeting_only"}),
+)
+
+
+def test_neutral_option_must_be_an_option():
+    with pytest.raises(ValueError, match="neutral"):
+        Question("k", DecisionType.CHOICE, "?", {"a": "a", "b": "b"}, neutral="c")
+    with pytest.raises(ValueError, match="whole_only"):
+        Question("k", DecisionType.CHOICE, "?", {"a": "a"}, whole_only=frozenset({"z"}))
+
+
+def test_yes_in_one_part_is_yes():
+    q = yes_no("field:dna.story")
+    merged = merge_parts(q, [_part(q, False, 0.99), _part(q, True, 0.7), _part(q, False)])
+    assert merged.value is True and merged.confidence == 0.7
+
+
+def test_the_surest_of_several_signals():
+    q = choice("stop", "none", "this", "all")
+    q = Question(q.key, q.type, q.instructions, q.criteria, neutral="none")
+    merged = merge_parts(q, [_part(q, "this", 0.8), _part(q, "all", 0.95), _part(q, "none")])
+    assert merged.value == "all"
+
+
+def test_nothing_found_is_the_least_sure_no():
+    q = yes_no("wants_human")
+    merged = merge_parts(q, [_part(q, False, 0.99), _part(q, False, 0.6)])
+    assert merged.value is False and merged.confidence == 0.6
+
+
+def test_an_unsure_part_makes_the_message_unsure_when_nothing_was_found():
+    q = yes_no("a")
+    merged = merge_parts(q, [_part(q, False), _part(q, True, 0.5, unsure=True)])
+    assert merged.unsure
+    sure_yes = merge_parts(q, [_part(q, True), _part(q, True, 0.5, unsure=True)])
+    assert sure_yes.value is True and not sure_yes.unsure
+
+
+def test_a_part_is_never_a_bare_greeting():
+    merged = merge_parts(SERVICE, [_part(SERVICE, "greeting_only"), _part(SERVICE, "none", 0.8)])
+    assert merged.value == "none" and merged.confidence == 0.8
+    both = merge_parts(
+        SERVICE, [_part(SERVICE, "greeting_only"), _part(SERVICE, "greeting_only", 0.7)]
+    )
+    assert both.value == "none" and both.confidence == 0.7
+
+
+def test_an_ethical_violation_in_a_part_counts():
+    merged = merge_parts(
+        SERVICE, [_part(SERVICE, "none"), _part(SERVICE, "ethical_violation", 0.8)]
+    )
+    assert merged.value == "ethical_violation"
+
+
+def test_one_part_is_its_own_answer():
+    a = _part(SERVICE, "greeting_only")
+    assert merge_parts(SERVICE, [a]) is a
+
+
+async def test_parts_are_asked_at_once_and_merged(monkeypatch):
+    saved = []
+
+    async def save(_sm, rows):
+        saved.extend(rows)
+
+    monkeypatch.setattr("app.decisions.log.save_decisions", save)
+    q = yes_no("field:dna.product")
+    fake = FakeDecider({"field:*": lambda _q, state: "bakery" in state})
+    services = SimpleNamespace(extra={"decider": fake}, sm=None)
+    ctx = DecideContext(tenant_id=uuid.uuid4(), policy=DecisionPolicy())
+    step: dict = {}
+    result = await run_decision_parts(
+        services,
+        [("part 1: born in Kyiv", [q]), ("part 2: opened a bakery", [q])],
+        ctx,
+        trace_step=step,
+    )
+    assert result.value(q.key) is True
+    assert [s for s, _ in fake.calls] == ["part 1: born in Kyiv", "part 2: opened a bakery"]
+    assert len(saved) == 2
+    used = [r for r in saved if r.used]
+    assert len(used) == 1 and used[0].id == result.answers[q.key].decision_id
+    assert step["parts"] == 2 and step["decision_ids"] == [str(used[0].id)]

@@ -15,6 +15,7 @@ from app.core.tenant_settings import TenantSettings
 from app.db.models import DecisionProvider, DecisionType
 from app.decisions.engine import Answer, DecisionSet
 from app.decisions.fake import FakeDecider
+from app.decisions.limits import REQUEST_TOKENS, request_tokens
 from tests.turn_ctx import make_ctx
 
 
@@ -130,15 +131,44 @@ async def test_route_sees_only_the_rewritten_text():
 
 async def test_route_sees_the_whole_message_a_rewrite_has_shortened():
     decider = FakeDecider({"service_type": "none", "wants_human": False})
-    story = "Мене звати Таня. " + "Я двадцять років працюю з людьми. " * 1200 + "Кінець історії."
+    # about 20 000 characters: one request
+    story = "Мене звати Таня. " + "Я двадцять років працюю з людьми. " * 600 + "Кінець історії."
     ctx = make_ctx(input_text=story)
 
     await route(fake_services(decider), ctx, "Хто ви?")
 
-    state, _ = decider.calls[0]
+    ((state, _),) = decider.calls
     assert state.startswith("Client's latest message:\nМене звати Таня.")
     assert "Кінець історії." in state and state.endswith("Хто ви?")
     assert ctx.trace.steps[-1]["own_words"] is True
+
+
+async def test_route_asks_a_message_over_jev_window_in_parts():
+    # about 41 000 characters: more than one request holds
+    story = (
+        "Мене звати Таня. " + "Я двадцять років працюю з людьми. " * 1200 + "Покличте менеджера."
+    )
+
+    def greeting(_q, state):
+        return "greeting_only" if "Мене звати Таня." in state else "none"
+
+    decider = FakeDecider(
+        {"service_type": greeting, "wants_human": lambda _q, state: "менеджера" in state}
+    )
+    ctx = make_ctx(input_text=story)
+
+    result = await route(fake_services(decider), ctx, "Хто ви?")
+
+    assert len(decider.calls) == 2
+    for n, (state, questions) in enumerate(decider.calls, start=1):
+        assert state.startswith(f"Client's latest message, part {n} of 2:\n")
+        assert state.endswith("Хто ви?")
+        assert [q.key for q in questions] == ["service_type", "wants_human"]
+        assert request_tokens(state, questions) <= REQUEST_TOKENS
+    # «a bare greeting» in a part is no greeting; «a manager» in a part is the message's
+    assert result.service_type == "none" and not result.is_service
+    assert result.wants_human is True
+    assert ctx.trace.steps[-1]["parts"] == 2
 
 
 async def test_route_greeting():

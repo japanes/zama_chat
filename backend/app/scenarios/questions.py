@@ -253,7 +253,7 @@ def stop_question(runs: list[OpenRun], focus: OpenRun | None, language: str) -> 
         if defn.cancel.description is not None:
             text += " " + defn.text(defn.cancel.description, language).text
         criteria[cancel_option(defn.key)] = text
-    return Question(STOP, DecisionType.CHOICE, t["stop"], criteria)
+    return Question(STOP, DecisionType.CHOICE, t["stop"], criteria, neutral=NONE)
 
 
 def change_question(focus: OpenRun, states: dict[str, FieldState], language: str) -> Question:
@@ -267,7 +267,7 @@ def change_question(focus: OpenRun, states: dict[str, FieldState], language: str
         criteria[f.key] = t["change_option"].format(
             q=defn.text(f.question, language).text, value=preview(fs.value, 200)
         )
-    return Question(CHANGE_FIELD, DecisionType.CHOICE, t["change"], criteria)
+    return Question(CHANGE_FIELD, DecisionType.CHOICE, t["change"], criteria, neutral=NONE)
 
 
 def confirm_question(defn: ScenarioDef, language: str) -> Question:
@@ -277,6 +277,7 @@ def confirm_question(defn: ScenarioDef, language: str) -> Question:
         DecisionType.CHOICE,
         t["confirm"].format(title=title_of(defn, language)),
         {YES: t["confirm_yes"], NO: t["confirm_no"], NONE: t["confirm_none"]},
+        neutral=NONE,
     )
 
 

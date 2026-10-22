@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import and_, exists, select
 
+from app.core.state_render import split_state
 from app.db.models import (
     CatalogItem,
     DecisionType,
@@ -28,7 +29,8 @@ from app.db.models import (
     KnowledgeChunk,
     KnowledgeSource,
 )
-from app.decisions.engine import Answer, DecideContext, Question, run_decisions
+from app.decisions.engine import Answer, DecideContext, Question, run_decision_parts
+from app.decisions.limits import part_room
 from app.errors import AppError
 from app.llm.openai_client import LLMRequestError, LLMTransportError
 from app.logging import get_logger
@@ -442,8 +444,11 @@ async def refine(
     if not keys:
         return out
     questions = [candidate_question(key, item) for key, (_, item) in keys.items()]
-    state = "Client's request:\n" + request.strip()
-    decisions = await run_decisions(services, state, questions, ctx, trace_step=trace_step)
+    # a request longer than Jev's window goes in parts: a candidate fits when a part says so
+    parts = split_state("Client's request", request, part_room(questions))
+    decisions = await run_decision_parts(
+        services, [(part, questions) for part in parts], ctx, trace_step=trace_step
+    )
     for key, (prefix, item) in keys.items():
         item.match = round(p_fits(decisions.answers.get(key)), 4)
         if item.match >= threshold:
