@@ -128,6 +128,19 @@ async def test_route_sees_only_the_rewritten_text():
     assert result == Route(answers=result.answers)
 
 
+async def test_route_sees_the_whole_message_a_rewrite_has_shortened():
+    decider = FakeDecider({"service_type": "none", "wants_human": False})
+    story = "Мене звати Таня. " + "Я двадцять років працюю з людьми. " * 1200 + "Кінець історії."
+    ctx = make_ctx(input_text=story)
+
+    await route(fake_services(decider), ctx, "Хто ви?")
+
+    state, _ = decider.calls[0]
+    assert state.startswith("Client's latest message:\nХто ви?")
+    assert state.endswith("Кінець історії.")
+    assert ctx.trace.steps[-1]["own_words"] is True
+
+
 async def test_route_greeting():
     decider = FakeDecider({"service_type": "greeting_only", "wants_human": False})
     result = await route(fake_services(decider), make_ctx(input_text="привіт"), "Hello")

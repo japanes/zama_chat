@@ -25,11 +25,41 @@ def test_sections_follow_the_head():
     assert state == "Client's latest message:\nhi\n\nOpen scenarios:\nbooking: focus\n\nX:\ny"
 
 
-def test_client_text_gets_at_most_half_of_the_budget():
+def test_a_long_text_is_not_cut_while_it_fits():
+    # 40 000 characters, a story pasted whole: the old cap kept about 6 000 of them
+    text = "слово " * 6000 + "КІНЕЦЬ"
+    state = render_route_state(text)
+    assert state.endswith("КІНЕЦЬ")
+    assert TRIMMED not in state
+
+
+def test_only_a_text_longer_than_the_budget_is_cut():
     state = render_route_state("word " * 1000, max_tokens=100)
-    head = state.split("\n\n")[0]
-    assert estimate_tokens(head) <= 50 + estimate_tokens("Client's latest message:\n")
+    assert estimate_tokens(state) <= 100 + 2
+    assert state.endswith(TRIMMED)
+
+
+def test_own_words_go_with_a_shorter_rewrite():
+    story = "I was born in Kyiv. " * 50 + "Then I opened a bakery."
+    state = render_route_state("Who am I?", original=story)
+    assert state.startswith("Client's latest message:\nWho am I?\n\n")
+    assert "The same message in the client's own words:\n" in state
+    assert state.endswith("Then I opened a bakery.")
+
+
+def test_a_rewrite_as_long_as_the_words_goes_alone():
+    # «так» → «Так, мій чоловік був проти»: the rewrite has said more, the words add nothing
+    state = render_route_state("Yes, my husband was against it", original="yes")
+    assert state == "Client's latest message:\nYes, my husband was against it"
+
+
+def test_the_rewrite_is_cut_before_the_own_words():
+    story = "word " * 600 + "END"
+    state = render_route_state("retold " * 300, original=story, max_tokens=1200)
+    assert estimate_tokens(state) <= 1200 + 2
+    head, words = state.split("\n\nThe same message in the client's own words:\n")
     assert head.endswith(TRIMMED)
+    assert words.endswith("END")
 
 
 def test_whole_state_fits_the_budget():

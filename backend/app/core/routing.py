@@ -1,4 +1,5 @@
-"""Step 2 — route: one batch of questions to the decider (Jev) about the rewritten text.
+"""Step 2 — route: one batch of questions to the decider (Jev) about the rewritten text —
+and the client's own words, when the rewrite came out shorter (core/state_render.py).
 
 Stage 1 questions: `service_type` (choice) and `wants_human` (boolean). The scenario
 questions (start:*, field:*, stop, change_field, client_question — scenarios/questions.py)
@@ -13,7 +14,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from app.core.context import TurnContext
-from app.core.state_render import render_route_state
+from app.core.state_render import own_words_needed, render_route_state
 from app.db.models import DecisionType
 from app.decisions.engine import (
     DecisionSet,
@@ -21,6 +22,7 @@ from app.decisions.engine import (
     run_decisions,
     trace_answers,
 )
+from app.decisions.limits import CONTEXT_TOKENS, question_tokens
 
 if TYPE_CHECKING:
     from app.services import Services
@@ -139,11 +141,19 @@ async def route(
     general: bool = True,
 ) -> Route:
     """`general=False` — only the given questions: no service_type, no wants_human (an open
-    scenario with `only_scenario`)."""
-    state = render_route_state(rewritten, sections=sections)
+    scenario with `only_scenario`).
+
+    One batch for every open scenario — the focus and the paused ones alike. The state
+    takes Jev's window less the longest question: a long message is seen whole."""
     own = route_questions(ctx.settings.jev_question_language) if general else []
     questions = [*own, *extra_questions]
+    room = CONTEXT_TOKENS - max((question_tokens(q) for q in questions), default=0)
+    state = render_route_state(
+        rewritten, original=ctx.input_text, sections=sections, max_tokens=room
+    )
     with ctx.trace.step("route", questions=[q.key for q in questions]) as step:
+        if own_words_needed(rewritten, ctx.input_text):
+            step["own_words"] = True  # the rewrite was shorter: the client's words went too
         decisions = await run_decisions(
             services,
             state,
