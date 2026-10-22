@@ -54,10 +54,14 @@ class PickIn(BaseModel):
     option: str | None = Field(default=None, min_length=1, max_length=64)
 
 
+# the longest message a caller sends: a whole story told at once
+TEXT_MAX = 40_000
+
+
 class MessageIn(BaseModel):
     contact: ContactIn
     # words, files or both
-    text: str | None = Field(default=None, max_length=8000)
+    text: str | None = Field(default=None, max_length=TEXT_MAX)
     attachments: list[AttachmentIn] = Field(default_factory=list, max_length=10)
     # the caller's id of this message: sending it again returns the same reply
     client_message_id: str | None = Field(default=None, min_length=1, max_length=200)
