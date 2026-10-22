@@ -210,8 +210,8 @@ def start_candidates(
         if run is not None and run.status == RunStatus.WAITING:
             continue
         defn = scenario.definition
-        if run is None and defn.caller_options:
-            continue  # its options come only with POST /v1/runs/start
+        if not defn.asks_start(run is not None):
+            continue  # started only by POST /v1/runs/start
         votes = []
         for q in defn.start.questions:
             key = start_question_key(defn.key, q)
@@ -713,6 +713,13 @@ def pass_focus(runs: list[WorkRun]) -> WorkRun | None:
     paused = [r for r in runs if r.status == RunStatus.PAUSED and not r.paused_now]
     if not paused:
         return None
+    queued = [r for r in paused if r.definition.queue is not None]
+    if queued and not any(r.paused_now for r in runs):
+        # the queue goes in order, whatever the client answered last
+        run = min(queued, key=lambda r: (r.definition.queue, r.started_at))
+        run.status = RunStatus.FOCUS
+        run.add(FOCUSED)
+        return run
     with_data = [r for r in paused if r.answered]
     # the focus finished (completed / cancelled / waiting), not put aside by the client
     lost = any(r.before == RunStatus.FOCUS and r.status != RunStatus.PAUSED for r in runs)

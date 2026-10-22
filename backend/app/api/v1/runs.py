@@ -8,7 +8,9 @@ window.
                                which of them pass the filters of their questions; no run,
                                no conversation, nothing is written but the decisions log
   POST /v1/runs/start          start the given scenario for a contact; the bot asks the
-                               first question without a model call
+                               first question without a model call. With `answers` the
+                               caller's answers are checked first and the bot words its
+                               question itself; with `paused` the run only listens
   POST /v1/runs/message        one client message → the bot's reply, the run after the turn
                                and what the turn cost
   POST /v1/runs/state          the run, its questions and answers, the dialogue's messages
@@ -20,6 +22,8 @@ window.
                                asks the first of them in its own words (a bot turn, paid
                                like any) or word for word (`added.wording: as_sent`)
   POST /v1/runs/{id}/finish    «no more questions»: a `by_caller` run completes, silently
+  POST /v1/runs/{id}/focus     the dialogue goes to this open run; the bot asks its question
+                               in its own words (a bot turn, paid like any)
 
 Auth: `Authorization: Bearer <api key>`. The key belongs to one channel: only scenarios
 switched on in that channel start, only runs of that channel are seen.
@@ -75,7 +79,7 @@ from app.decisions.engine import DecideContext, DecisionSet
 from app.errors import AppError, Conflict, NotFound
 from app.scenarios import fields as fl
 from app.scenarios.checks import CheckItem, answers_fit, ask_filters
-from app.scenarios.events import FIELDS_ADDED, PAUSED, SKIPPED
+from app.scenarios.events import FIELDS_ADDED, FOCUSED, PAUSED, SKIPPED
 from app.scenarios.outside import (
     WAITING_FIELDS,
     Change,
@@ -392,6 +396,14 @@ class StartIn(BaseModel):
     # the options of the choice questions with `options_from: caller`, by question key;
     # required for each of them (not skipped)
     options: dict[str, list["OptionIn"]] = Field(default_factory=dict, max_length=50)
+    # answers the caller already has, by text question key: each goes through the filters of
+    # its question as an answer in the dialogue does. Passed — taken, the question is never
+    # asked; not passed — kept, and the bot asks the client to tell more
+    answers: dict[str, str] = Field(default_factory=dict, max_length=200)
+    # open it paused: it hears every message and takes the answers to its questions, but
+    # asks nothing until it gets the dialogue (its place in the queue, POST
+    # /v1/runs/{id}/focus). Without it a run of another scenario talking now refuses the start
+    paused: bool = False
     messages: int = Field(default=0, ge=0, le=500)
 
 
@@ -746,11 +758,43 @@ async def check_answers(
     )
 
 
-@router.post("/runs/start", response_model=StateOut)
-async def start_run(body: StartIn, client: ApiClientDep, services: ServicesDep) -> StateOut:
+class StartOut(StateOut):
+    # the bot turn that asked the first question in the bot's own words (answers came with
+    # the start); null — the question went as written, or nothing was asked
+    usage: UsageOut | None = None
+    # what checking the answers that came with the start cost; null — none came
+    check_usage: CheckUsage | None = None
+
+
+def _start_answers(defn: ScenarioDef, body: StartIn) -> dict[str, str]:
+    """The answers given with the start, checked: text questions of the scenario, not
+    skipped, not empty."""
+    by_key = {f.key: f for f in defn.fields}
+    unknown = sorted(k for k in body.answers if k not in by_key)
+    if unknown:
+        raise AppError("run.unknown_fields", {"fields": unknown}, status=422)
+    typed = sorted(k for k in body.answers if by_key[k].type != FieldType.TEXT)
+    if typed:
+        raise AppError("check.not_a_text_field", {"fields": typed}, status=422)
+    both = sorted(k for k in body.answers if k in body.skip)
+    if both:
+        raise AppError("run.answer_skipped", {"fields": both}, status=422)
+    values = {k: v.strip() for k, v in body.answers.items()}
+    empty = sorted(k for k, v in values.items() if not v)
+    if empty:
+        raise AppError("check.empty_answer", {"fields": empty}, status=422)
+    return values
+
+
+@router.post("/runs/start", response_model=StartOut)
+async def start_run(body: StartIn, client: ApiClientDep, services: ServicesDep) -> StartOut:
     """Starts the scenario and asks its first question (the scenario's own text, no model
     call). The scenario is already running for this contact → nothing changes, its state is
-    returned: the dialogue goes on from the question it stopped at."""
+    returned: the dialogue goes on from the question it stopped at.
+
+    Answers given with the start are checked first (one batch, like POST
+    /v1/scenarios/{key}/check). The bot then asks in its own words — a bot turn, paid like
+    any (`usage`): what is still missing, or more about an answer that did not pass."""
     async with services.sm() as session, session.begin():
         scenario = await _channel_scenario(session, client, body.scenario)
         defn = parse_definition(scenario.definition)
@@ -758,6 +802,7 @@ async def start_run(body: StartIn, client: ApiClientDep, services: ServicesDep) 
         if unknown:
             raise AppError("run.unknown_fields", {"fields": unknown}, status=422)
         options = _start_options(defn, body)
+        answers = _start_answers(defn, body)
         language = await _reply_language(session, client, body.language)
         contact = await upsert_contact(
             session,
@@ -774,13 +819,63 @@ async def start_run(body: StartIn, client: ApiClientDep, services: ServicesDep) 
             contact_id=contact.id,
         )
 
-    async def body_fn(session: AsyncSession, conv: Conversation) -> uuid.UUID:
+        started = await _run_of(session, conversation_id, defn.key)
+        if started is not None and started.status not in OPEN_STATUSES:
+            started = None
+
+    failed: dict[str, list[str]] = {}
+    check_usage = None
+    if answers and started is None:
+        code = language or defn.language
+        states = fl.load_states(defn, {})
+        items = [CheckItem(defn, defn.field(k), v, states) for k, v in answers.items()]
+        if not answers_fit(items, code, answer_chars=CHECK_ANSWER_MAX):
+            raise AppError("check.too_long", {"answers": len(items)}, status=422)
+        outcome = await ask_filters(
+            services, DecideContext(client.tenant_id), items, code, answer_chars=CHECK_ANSWER_MAX
+        )
+        # a filter no decider answered lets the answer through, as in the dialogue
+        failed = {k: list(outcome.failed[(defn.key, k)]) for k in answers}
+        if outcome.decisions is not None and outcome.decisions.rows:
+            check_usage = _check_usage(outcome.decisions)
+
+    async def body_fn(session: AsyncSession, conv: Conversation) -> tuple[uuid.UUID, bool]:
         return await _start(
-            session, services, conv, scenario, defn, language, body.skip, options=options
+            session,
+            services,
+            conv,
+            scenario,
+            defn,
+            language,
+            body.skip,
+            options=options,
+            answers=answers,
+            failed=failed,
+            paused=body.paused,
         )
 
-    run_id = await under_lease(services, conversation_id, f"api:{uuid.uuid4().hex}", body_fn)
-    return await _state(services, conversation_id, run_id=run_id, messages=body.messages)
+    owner = f"api:{uuid.uuid4().hex}"
+    run_id, ask = await under_lease(services, conversation_id, owner, body_fn)
+    usage = await _bot_turn(services, conversation_id, owner) if ask else None
+    state = await _state(services, conversation_id, run_id=run_id, messages=body.messages)
+    return StartOut(**state.model_dump(), usage=usage, check_usage=check_usage)
+
+
+async def _bot_turn(services: Services, conversation_id: uuid.UUID, owner: str) -> UsageOut | None:
+    """The bot asks the focus's question in its own words, with no client message: a turn
+    with the card of the dialogue, paid like any."""
+    outcome = await run_turn(
+        services,
+        conversation_id,
+        owner=owner,
+        wait_seconds=services.settings.http_lease_wait_seconds,
+        pipeline=ask_pipeline,
+        bot_only=True,
+    )
+    if outcome is None:
+        return None
+    async with services.sm() as session:
+        return await _usage(session, outcome.turn_id)
 
 
 async def _start(
@@ -793,7 +888,12 @@ async def _start(
     skip: list[str],
     *,
     options: dict[str, list[dict[str, str]]] | None = None,
-) -> uuid.UUID:
+    answers: dict[str, str] | None = None,
+    failed: dict[str, list[str]] | None = None,
+    paused: bool = False,
+) -> tuple[uuid.UUID, bool]:
+    """The run started (or the one already open) and whether the bot has to word its
+    question now (a bot turn after the lease)."""
     now = services.clock.now()
     open_runs = list(
         (
@@ -809,9 +909,9 @@ async def _start(
     )
     same = next((r for r in open_runs if r.scenario_key == defn.key), None)
     if same is not None:
-        return same.id
+        return same.id, False
     focus = next((r for r in open_runs if r.status == RunStatus.FOCUS), None)
-    if focus is not None:
+    if focus is not None and not paused:
         raise Conflict("run.other_in_focus", {"scenario": focus.scenario_key})
 
     if language is not None:
@@ -827,6 +927,11 @@ async def _start(
     for key in skip:
         fl.set_skipped(states[key], now)
         change.add(SKIPPED, key)
+    for key, value in (answers or {}).items():
+        fs = states[key]
+        fl.set_answer(fs, value, replace=True, early=False, message_ids=[], now=now)
+        if fl.set_checked(fs, (failed or {}).get(key, []), now):
+            change.add(ActionEvent.FIELD_FILLED, key)
 
     run = ScenarioRun(
         id=new_id(),
@@ -836,7 +941,7 @@ async def _start(
         scenario_id=scenario.id,
         scenario_key=defn.key,
         scenario_version=scenario.version,
-        status=RunStatus.FOCUS,
+        status=RunStatus.PAUSED if paused else RunStatus.FOCUS,
         fields={},
         events=[],
         data={},
@@ -848,14 +953,22 @@ async def _start(
         last_activity_at=now,
     )
     data: dict[str, Any] = {}
-    _ask_next(run, defn, states, data, change, said_in)
-    if run.asking is None and defn.completion == Completion.BY_CALLER:
-        # every question skipped: it waits for the caller's questions at once
-        await settle(session, run, defn, states, data, change, now)
-        change.say = waiting_say(defn, said_in)
+    ask = False
+    if paused:
+        run.asking = None  # it asks when it gets the dialogue
+    else:
+        _ask_next(run, defn, states, data, change, said_in)
+        if run.asking is None and defn.completion == Completion.BY_CALLER:
+            # every question skipped: it waits for the caller's questions at once
+            await settle(session, run, defn, states, data, change, now)
+            change.say = waiting_say(defn, said_in)
+        elif answers and run.asking is not None:
+            # the bot knows some answers: it words the question itself, by the card
+            change.say = None
+            ask = True
     session.add(run)
     await write_run(session, services, conv, run, defn, states, data, change, now, meta=_META)
-    return run.id
+    return run.id, ask
 
 
 _META = {"via": "api"}
@@ -1174,19 +1287,7 @@ async def add_fields(
 
     owner = f"api:{uuid.uuid4().hex}"
     ask = await under_lease(services, found.conversation_id, owner, body_fn)
-    usage = None
-    if ask:
-        outcome = await run_turn(
-            services,
-            found.conversation_id,
-            owner=owner,
-            wait_seconds=services.settings.http_lease_wait_seconds,
-            pipeline=ask_pipeline,
-            bot_only=True,
-        )
-        if outcome is not None:
-            async with services.sm() as session:
-                usage = await _usage(session, outcome.turn_id)
+    usage = await _bot_turn(services, found.conversation_id, owner) if ask else None
     state = await _state(services, found.conversation_id, run_id=run_id, messages=body.messages)
     return FieldsOut(**state.model_dump(), usage=usage)
 
@@ -1296,6 +1397,63 @@ async def _pause_focus(
     await write_run(
         session, services, conv, other, other_defn, states, data, change, now, meta=_META
     )
+
+
+# --- the dialogue to a chosen run ----------------------------------------------------------
+
+
+class FocusIn(BaseModel):
+    messages: int = Field(default=0, ge=0, le=500)
+
+
+class FocusOut(StateOut):
+    # the bot turn that asked the run's question in the bot's own words; null — nothing to
+    # ask, or the run had the dialogue already
+    usage: UsageOut | None = None
+
+
+@router.post("/runs/{run_id}/focus", response_model=FocusOut)
+async def focus_run(
+    run_id: uuid.UUID, body: FocusIn, client: ApiClientDep, services: ServicesDep
+) -> FocusOut:
+    """The dialogue goes to this open run: the run talking now is put aside (paused), as by
+    the client's «stop», and this one asks its question in the bot's own words — a bot turn
+    with the card of the dialogue, paid like any (`usage`). What it already knows it does
+    not ask again. The run has the dialogue already → nothing changes."""
+    found = await _own_run(services, client, run_id)
+
+    async def body_fn(session: AsyncSession, conv: Conversation) -> bool:
+        return await _focus(session, services, conv, run_id)
+
+    owner = f"api:{uuid.uuid4().hex}"
+    ask = await under_lease(services, found.conversation_id, owner, body_fn)
+    usage = await _bot_turn(services, found.conversation_id, owner) if ask else None
+    state = await _state(services, found.conversation_id, run_id=run_id, messages=body.messages)
+    return FocusOut(**state.model_dump(), usage=usage)
+
+
+async def _focus(
+    session: AsyncSession, services: Services, conv: Conversation, run_id: uuid.UUID
+) -> bool:
+    """True — the bot has to word the question now (a bot turn after the lease)."""
+    now = services.clock.now()
+    run = await lock_run(session, run_id)
+    assert run is not None
+    if run.status not in TALKING:
+        raise Conflict("run.not_open", {"status": run.status})
+    if run.status == RunStatus.FOCUS:
+        return False
+    defn = await load_run_definition(session, run)
+    await _pause_focus(session, services, conv, run, now)
+    run.status = RunStatus.FOCUS
+    states = fl.load_states(defn, run.fields)
+    data = dict(run.data or {})
+    change = Change()
+    change.add(FOCUSED)
+    _ask_next(run, defn, states, data, change, run.reply_language or defn.language)
+    change.say = None
+    await write_run(session, services, conv, run, defn, states, data, change, now, meta=_META)
+    return run.asking is not None
 
 
 class FinishIn(BaseModel):

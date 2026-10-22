@@ -140,6 +140,13 @@ def test_a_waiting_run_is_not_a_candidate():
     assert cands == []
 
 
+def test_a_scenario_started_by_the_caller_is_never_a_candidate():
+    caller = loaded(make_def({**booking_data(), "start_by_caller": True}), position=1)
+    assert rt.start_candidates(view([caller]), [], decisions(YES_BOOKING)) == []
+    runs = [work(caller, RunStatus.PAUSED)]
+    assert rt.start_candidates(view([caller]), runs, decisions(YES_BOOKING)) == []
+
+
 # --- extract / apply values -----------------------------------------------------------
 
 
@@ -281,6 +288,27 @@ def test_a_paused_run_that_got_data_takes_a_free_focus():
     run = work(BOOKING, RunStatus.PAUSED)
     run.answered = ["service"]
     assert rt.pass_focus([run]) is run
+
+
+def _queued(key, place, **kw):
+    return work(loaded(make_def(booking_data(key=key, queue=place))), RunStatus.PAUSED, **kw)
+
+
+def test_a_free_focus_goes_to_the_smallest_place_in_the_queue():
+    done = work(INTERVIEW)
+    done.status = RunStatus.COMPLETED
+    third = _queued("market", 3, last_activity_at=LATER)
+    third.answered = ["service"]  # answered last: without a queue it would take the focus
+    second = _queued("offer", 2, last_activity_at=T0)
+    assert rt.pass_focus([done, third, second]) is second
+    assert (second.status, second.event_names()) == (RunStatus.FOCUS, [FOCUSED])
+    assert third.status == RunStatus.PAUSED
+
+
+def test_the_queue_waits_while_the_client_has_put_the_focus_aside():
+    aside = work(INTERVIEW)
+    rt.apply_stop([aside], PAUSE_FOCUS)
+    assert rt.pass_focus([aside, _queued("offer", 2)]) is None
 
 
 def test_next_question_and_stuck():

@@ -344,8 +344,8 @@ def build_questions(view: ScenarioView, language: str) -> ScenarioQuestions:
         run = view.run_for(scenario.key)
         if run is not None and run.status == RunStatus.WAITING:
             continue  # collected, waiting for an event: never started again meanwhile
-        if run is None and scenario.definition.caller_options:
-            continue  # its options come only with POST /v1/runs/start
+        if not scenario.definition.asks_start(run is not None):
+            continue  # started only by POST /v1/runs/start
         for q in scenario.definition.start.questions:
             add(start_question(scenario.definition, q, language))
 

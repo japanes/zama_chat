@@ -90,6 +90,8 @@
     }
   },
   "only_scenario": true,
+  "start_by_caller": true,
+  "queue": 2,
   "ask_rules": [
     {
       "ru": "Формулировка не должна предполагать наличие события."

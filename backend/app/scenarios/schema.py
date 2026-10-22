@@ -403,6 +403,13 @@ class ScenarioDef(Strict):
     # no other scenario starts by itself, no answer to the client's own question — whatever
     # the client writes goes to the steps (core/pipeline.py, scenarios/questions.py)
     only_scenario: bool | None = None
+    # started only by the caller (POST /v1/runs/start), never by the client's words: its
+    # `start` questions are never asked, and an open run of it never takes the dialogue
+    # because of them
+    start_by_caller: bool | None = None
+    # its place in the queue of the conversation's scenarios: when the dialogue is free, the
+    # paused run with the smallest place gets it, not the one the client answered last
+    queue: int | None = Field(default=None, ge=1, le=100)
 
     # an empty list / a block of defaults says nothing: kept as absent, so a file that writes
     # it out and one that leaves it out are one version (the editor leaves defaults out)
@@ -421,7 +428,7 @@ class ScenarioDef(Strict):
     def _no_reopen(cls, value: Reopen | None) -> Reopen | None:
         return None if value == Reopen() else value
 
-    @field_validator("only_scenario")
+    @field_validator("only_scenario", "start_by_caller")
     @classmethod
     def _no_only(cls, value: bool | None) -> bool | None:
         return True if value else None
@@ -459,6 +466,13 @@ class ScenarioDef(Strict):
         """Fields whose options come with POST /v1/runs/start: the scenario is started
         only so, never by a client's message."""
         return [f.key for f in self.fields if f.options_from == "caller" and not f.options]
+
+    def asks_start(self, run_open: bool) -> bool:
+        """Its `start` questions are asked in a turn: not when the caller alone starts it,
+        not while its options can come only with POST /v1/runs/start (no run yet)."""
+        if self.start_by_caller:
+            return False
+        return run_open or not self.caller_options
 
     def text(self, value: str | dict[str, str], language: str) -> LocalText:
         return pick_text(value, language, self.language)

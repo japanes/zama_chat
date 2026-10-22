@@ -100,6 +100,9 @@ export function newDefinition(language: string): any {
     cancel: {},
     actions: [],
     only_scenario: false,
+    start_by_caller: false,
+    // '' — no place in the queue
+    queue: '',
     ask_rules: [],
     history_messages: '',
     added: { ...ADDED_DEFAULTS, max_fields: '' },
@@ -255,6 +258,8 @@ export function cleanDefinition(d: any): any {
       }),
     ),
     only_scenario: d.only_scenario ? true : undefined,
+    start_by_caller: d.start_by_caller ? true : undefined,
+    queue: num(d.queue),
     ask_rules: listOf((d.ask_rules || []).map(text)),
     history_messages: num(d.history_messages),
     added: cleanAdded(d),
@@ -312,6 +317,8 @@ export function toForm(d: any): any {
     a.params ||= {}
   }
   out.only_scenario = !!out.only_scenario
+  out.start_by_caller = !!out.start_by_caller
+  out.queue ??= ''
   out.ask_rules ||= []
   out.history_messages ??= ''
   out.added = { ...ADDED_DEFAULTS, max_fields: '', ...(out.added || {}) }

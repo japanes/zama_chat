@@ -94,6 +94,8 @@ The words `yes`, `no`, `on`, `off` are plain text here. There are only two logic
 | `cancel` | no | How to tell that the client changed their mind — section 9. |
 | `incompatible_with` | no | Scenarios that do not go at the same time as this one — section 9. |
 | `only_scenario` | no | While the scenario is open, the bot does only it: no general replies, no search, no other scenarios — section 9. |
+| `start_by_caller` | no | The scenario starts only by your system, never by the client's words — section 9. |
+| `queue` | no | Its place in the queue of the conversation's scenarios — section 9. |
 | `actions` | no | What to do with the result: send it to you, write to the client — section 10. |
 | `ask_rules` | no | How the bot asks: rules for it alone — section 6. |
 | `history_messages` | no | How many last messages of the chat the bot sees next to the answers — section 6. |
@@ -440,6 +442,32 @@ only_scenario: true           # off by default
 - other scenarios do not start by themselves. A start by your system (`POST /v1/runs/start`) works as usual.
 
 Everything about the scenario itself stays: answers, their checks, changing an answer, confirmation, "stop" and cancel. Use it when the whole conversation is given to one job — say, an interview where a person tells their story and the bot's general replies only get in the way.
+
+**`start_by_caller`** — the scenario starts only by your system (`POST /v1/runs/start`), never by the client's words: its `start` questions are not asked in any conversation.
+
+```yaml
+start_by_caller: true         # off by default
+```
+
+Use it for a scenario your interface opens itself — say, the parts of an interview your system starts in a conversation of its own. Without it a scenario switched on in the channel also starts in the channel's other conversations, when the client says something like its start questions.
+
+**`queue`** — the place of the scenario in the queue of the conversation, from 1 to 100:
+
+```yaml
+queue: 2                      # not set — no place in the queue
+```
+
+Several scenarios can be open in one conversation: one leads it, the others are paused but listen — they take the answers to their questions from every message and ask nothing. When the leading one is finished, the dialogue goes to the paused scenario with the smallest place. Without places it goes to the paused one the client answered last. If the client asked to stop, nobody takes the dialogue by itself.
+
+Your system manages such a conversation with three requests:
+
+| Request | What it does |
+|---|---|
+| `POST /v1/runs/start` with `paused: true` | Opens the scenario paused: it listens, but asks nothing until it gets the dialogue. Without `paused` the start is refused while another scenario leads the conversation. |
+| `POST /v1/runs/start` with `answers` | Answers your system already has, by the key of a text question. Each goes through the checks of its question, as an answer in the chat does. Passed — the question is not asked; not passed — the answer is kept and the bot asks the client to tell more. The bot then asks in its own words; the reply gives what the check cost (`check_usage`) and what the bot's turn cost (`usage`). |
+| `POST /v1/runs/{run_id}/focus` | The dialogue goes to this scenario at once: the leading one is paused, this one asks its question in the bot's own words. What it already knows it does not ask again. |
+
+Example: an interview in 8 parts. The system opens part 1, and parts 2–8 with `paused: true`, places 1 to 8. Answering part 1 the client tells something about part 4 — part 4 takes it. Part 1 is confirmed — part 2 leads. On another screen the client presses «Go through this part» at part 6 — `focus`, part 6 leads; when it is done, the dialogue goes back to part 2.
 
 ## 10. `actions` — what to do with the result
 

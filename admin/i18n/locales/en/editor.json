@@ -96,7 +96,11 @@
       "exact_hide": "Hide the fine tuning",
       "exact_hint": "Every sign has points. The bot adds up the points of the signs it found in the message and starts the scenario when the sum is not less than the threshold. “This is enough” means the sign has as many points as the threshold.",
       "threshold": "Threshold",
-      "of_total": "out of {total} possible points"
+      "of_total": "out of {total} possible points",
+      "by_caller": "Started only by the external server",
+      "by_caller_hint": "The scenario opens only with a POST /v1/runs/start request, never because of the client's words. The signs below are not checked. Once open, it hears every message and records the answers to its questions as usual.",
+      "queue": "Place in the queue",
+      "queue_hint": "When the conversation is free, the paused scenario with the smallest place gets it — even if the client answered another one last. Empty — no place: the conversation goes to the scenario the client answered last."
     },
     "q": {
       "add": "Add a question",

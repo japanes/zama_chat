@@ -263,6 +263,7 @@
       "too_long": "The answers are too long to check at once ({answers})"
     },
     "run": {
+      "answer_skipped": "A question is both answered and skipped: {fields}",
       "field_exists": "Question {field} is already in the dialogue with another text",
       "field_invalid": "Added questions have errors: {fields}",
       "fields_not_allowed": "Questions can be added only to a scenario that waits for them («when the outside system says»); this one finishes «{completion}»",

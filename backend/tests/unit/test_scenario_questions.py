@@ -126,6 +126,17 @@ def test_only_scenario_counts_while_it_waits():
     assert field_key("interview", "offer") in built.keys
 
 
+def test_start_questions_of_a_scenario_started_by_the_caller_are_never_asked():
+    caller = loaded(make_def({**booking_data(), "start_by_caller": True}), position=1)
+    built = build_questions(view([INTERVIEW, caller]), "uk")
+    assert start_key("booking", "wants_booking") not in built.keys
+    assert start_key("interview", "wants_help") in built.keys
+    # an open run of it still hears the message about its fields
+    built = build_questions(view([INTERVIEW, caller], [open_run(caller, RunStatus.PAUSED)]), "uk")
+    assert start_key("booking", "wants_booking") not in built.keys
+    assert field_key("booking", "service") in built.keys
+
+
 def test_a_closed_only_scenario_changes_nothing():
     built = build_questions(view([INTERVIEW, ONLY]), "uk")
     assert start_key("booking", "wants_booking") in built.keys

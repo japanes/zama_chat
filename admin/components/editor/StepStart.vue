@@ -1,5 +1,30 @@
 <template>
   <div class="space-y-3">
+    <!-- start_by_caller: only POST /v1/runs/start opens it; queue: its place among the paused
+         scenarios of the conversation when the dialogue is free -->
+    <div class="rounded-button bg-slate-50 dark:bg-slate-900/40 px-4 py-3.5 space-y-3">
+      <div>
+        <label class="flex items-center gap-2.5 min-h-[44px]">
+          <input v-model="def.start_by_caller" type="checkbox" class="checkbox" :disabled="readonly" />
+          <span class="text-[15px] font-medium text-slate-900 dark:text-slate-100">{{ t('editor.start.by_caller') }}</span>
+        </label>
+        <p class="hint">{{ t('editor.start.by_caller_hint') }}</p>
+      </div>
+      <div>
+        <label class="label" :for="`${uid}-queue`">{{ t('editor.start.queue') }}</label>
+        <input
+          :id="`${uid}-queue`"
+          v-model="def.queue"
+          type="number"
+          min="1"
+          max="100"
+          class="input sm:!w-40"
+          :readonly="readonly"
+        />
+        <p class="hint">{{ t('editor.start.queue_hint') }}</p>
+      </div>
+    </div>
+
     <!-- step 1: the signs that start the scenario. A person picks «this is enough» or
          «only together with another»; the exact points and the threshold are one tap away -->
     <p class="text-slate-600 dark:text-slate-300">{{ t('editor.start.lead') }}</p>
@@ -112,6 +137,7 @@ import { fieldName, setSignEnough, signEnough, signLabel, slugKey, startSets, st
 const props = defineProps<{ def: any; languages: string[]; readonly?: boolean }>()
 const { t } = useI18n()
 const ctx = useEditorContext()
+const uid = useId()
 
 const exact = ref(false)
 const lang = computed(() => ctx?.lang.value || props.def.language)
