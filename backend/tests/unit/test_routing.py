@@ -136,8 +136,8 @@ async def test_route_sees_the_whole_message_a_rewrite_has_shortened():
     await route(fake_services(decider), ctx, "Хто ви?")
 
     state, _ = decider.calls[0]
-    assert state.startswith("Client's latest message:\nХто ви?")
-    assert state.endswith("Кінець історії.")
+    assert state.startswith("Client's latest message:\nМене звати Таня.")
+    assert "Кінець історії." in state and state.endswith("Хто ви?")
     assert ctx.trace.steps[-1]["own_words"] is True
 
 

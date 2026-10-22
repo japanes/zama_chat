@@ -39,12 +39,12 @@ def test_only_a_text_longer_than_the_budget_is_cut():
     assert state.endswith(TRIMMED)
 
 
-def test_own_words_go_with_a_shorter_rewrite():
+def test_own_words_are_the_message_when_the_rewrite_is_shorter():
     story = "I was born in Kyiv. " * 50 + "Then I opened a bakery."
     state = render_route_state("Who am I?", original=story)
-    assert state.startswith("Client's latest message:\nWho am I?\n\n")
-    assert "The same message in the client's own words:\n" in state
-    assert state.endswith("Then I opened a bakery.")
+    assert state.startswith("Client's latest message:\nI was born in Kyiv.")
+    assert "Then I opened a bakery.\n\nThe same message retold with the context of the dialogue:\n" in state
+    assert state.endswith("Who am I?")
 
 
 def test_a_rewrite_as_long_as_the_words_goes_alone():
@@ -53,13 +53,18 @@ def test_a_rewrite_as_long_as_the_words_goes_alone():
     assert state == "Client's latest message:\nYes, my husband was against it"
 
 
-def test_the_rewrite_is_cut_before_the_own_words():
+def test_the_retelling_is_cut_before_the_own_words():
     story = "word " * 600 + "END"
     state = render_route_state("retold " * 300, original=story, max_tokens=1200)
     assert estimate_tokens(state) <= 1200 + 2
-    head, words = state.split("\n\nThe same message in the client's own words:\n")
-    assert head.endswith(TRIMMED)
+    words, retold = state.split("\n\nThe same message retold with the context of the dialogue:\n")
     assert words.endswith("END")
+    assert retold.endswith(TRIMMED)
+
+
+def test_no_room_left_no_retelling():
+    state = render_route_state("retold", original="word " * 1000, max_tokens=300)
+    assert "retold" not in state and state.endswith(TRIMMED)
 
 
 def test_whole_state_fits_the_budget():

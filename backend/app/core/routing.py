@@ -1,5 +1,6 @@
 """Step 2 — route: one batch of questions to the decider (Jev) about the rewritten text —
-and the client's own words, when the rewrite came out shorter (core/state_render.py).
+or about the client's own words with the rewrite after them, when the rewrite came out
+shorter (core/state_render.py).
 
 Stage 1 questions: `service_type` (choice) and `wants_human` (boolean). The scenario
 questions (start:*, field:*, stop, change_field, client_question — scenarios/questions.py)
@@ -153,7 +154,7 @@ async def route(
     )
     with ctx.trace.step("route", questions=[q.key for q in questions]) as step:
         if own_words_needed(rewritten, ctx.input_text):
-            step["own_words"] = True  # the rewrite was shorter: the client's words went too
+            step["own_words"] = True  # the rewrite was shorter: the client's words were the message
         decisions = await run_decisions(
             services,
             state,
