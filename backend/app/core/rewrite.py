@@ -44,8 +44,21 @@ class Rewrite:
     questions: list[str]
     text: str  # questions joined by "\n" — what route / search / respond see
     language: str | None  # as the model returned it (code, maybe empty)
-    llm_call_id: str
-    model: str
+    llm_call_id: str | None  # None — the text went on without the model (as_written)
+    model: str | None
+
+
+def skips_rewrite(ctx: TurnContext) -> bool:
+    """The turn input is long enough to go on as the client wrote it (tenant setting
+    `rewrite_skip_chars`; 0 — never)."""
+    limit = ctx.settings.rewrite_skip_chars
+    return limit > 0 and len(ctx.input_text.strip()) >= limit
+
+
+def as_written(ctx: TurnContext) -> Rewrite:
+    """The client's own text instead of the rewrite. No language: the previous one stays."""
+    text = ctx.input_text.strip()
+    return Rewrite(questions=[text], text=text, language=None, llm_call_id=None, model=None)
 
 
 def dialogue_lines(ctx: TurnContext) -> list[str]:

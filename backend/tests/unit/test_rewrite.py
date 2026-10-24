@@ -6,10 +6,13 @@ from app.core.context import HistoryItem
 from app.core.rewrite import (
     SCHEMA,
     answer_language_line,
+    as_written,
     build_messages,
     dialogue_lines,
     rewrite,
+    skips_rewrite,
 )
+from app.core.tenant_settings import TenantSettings
 from app.db.models import LlmRole, MessageRole
 from app.prompts.store import PromptText
 from tests.turn_ctx import T0, make_ctx
@@ -109,3 +112,25 @@ async def test_no_data_at_all_falls_back_too():
     llm = RecordingLLM(None)
     result = await rewrite(SimpleNamespace(llm=llm), make_ctx(input_text="hi"), PROMPT, "en")
     assert result.text == "hi"
+
+
+def test_a_long_turn_input_skips_the_rewrite():
+    settings = TenantSettings(languages=["uk"], rewrite_skip_chars=10)
+    assert skips_rewrite(make_ctx(input_text="x" * 10, settings=settings))
+    assert not skips_rewrite(make_ctx(input_text="x" * 9, settings=settings))
+    # the spaces around do not make a «да» long
+    assert not skips_rewrite(make_ctx(input_text="   так   " + " " * 20, settings=settings))
+    # 0 — every message is rewritten
+    off = TenantSettings(languages=["uk"], rewrite_skip_chars=0)
+    assert not skips_rewrite(make_ctx(input_text="x" * 5000, settings=off))
+    # the default: 500 characters
+    assert skips_rewrite(make_ctx(input_text="x" * 500))
+    assert not skips_rewrite(make_ctx(input_text="x" * 499))
+
+
+def test_as_written_keeps_the_client_text_and_no_language():
+    rw = as_written(make_ctx(input_text="  Мене звати Олена.\nМи робимо торти.  "))
+    assert rw.text == "Мене звати Олена.\nМи робимо торти."
+    assert rw.questions == [rw.text]
+    assert rw.language is None
+    assert rw.llm_call_id is None

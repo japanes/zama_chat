@@ -36,6 +36,7 @@ def test_reply_rule_with_tenant_languages_is_valid():
             {"source": "ru", "target": "pl", "languages": ["uk", "en"]},
         ),
         ({"silence_minutes": 0}, "tenant.silence_minutes_invalid", {"value": 0}),
+        ({"rewrite_skip_chars": -1}, "tenant.rewrite_skip_chars_invalid", {"value": -1}),
     ],
 )
 def test_invalid_rules(data, code, params):

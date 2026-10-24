@@ -177,6 +177,7 @@
       "languages_empty": "Add at least one language",
       "not_found": "Tenant not found",
       "reply_language_unknown": "Rule {source} → {target}: the language {target} is not in the list",
+      "rewrite_skip_chars_invalid": "Wrong message length: {value}",
       "silence_minutes_invalid": "Wrong silence time: {value}",
       "slug_invalid": "Short name: lowercase Latin letters, digits and dashes, 3–64 characters",
       "slug_taken": "The short name {slug} is already taken",

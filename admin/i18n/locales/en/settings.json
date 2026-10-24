@@ -19,9 +19,12 @@
       "company": "Company",
       "languages": "Bot languages",
       "timers": "Timers",
+      "understanding": "Understanding messages",
       "search": "Search and answers",
       "payments": "Phones and payments"
     },
+    "rewrite_skip_chars": "Long message without rewriting, characters",
+    "rewrite_skip_chars_hint": "A message this long or longer (several messages in a row count together) is taken as written, not rewritten with the dialogue: a long text is a story of its own, not a “yes” or “no”. The language stays the previous one. 0 — always rewrite.",
     "silence_minutes": "Silence, minutes",
     "silence_minutes_hint": "If the client is silent this long in the middle of a scenario, the data collected so far is sent with status “incomplete”.",
     "sub": "How the bot talks and what it knows about the business.",

@@ -62,6 +62,15 @@
         </section>
 
         <section class="card card-body space-y-4">
+          <h2 class="card-title">{{ t('settings.section.understanding') }}</h2>
+          <div class="md:w-1/2">
+            <label class="label">{{ t('settings.rewrite_skip_chars') }}</label>
+            <input v-model.number="form.rewrite_skip_chars" type="number" min="0" class="input" />
+            <p class="hint">{{ t('settings.rewrite_skip_chars_hint') }}</p>
+          </div>
+        </section>
+
+        <section class="card card-body space-y-4">
           <h2 class="card-title">{{ t('settings.section.timers') }}</h2>
           <div class="md:w-1/2">
             <label class="label">{{ t('settings.silence_minutes') }}</label>

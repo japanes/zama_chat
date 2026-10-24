@@ -214,6 +214,28 @@ async def test_short_message_keeps_the_language(client, services, fake_llm, bund
     )
 
 
+async def test_a_long_message_goes_on_without_the_rewrite(client, services, fake_llm, bundle):
+    fake_llm.push(_rewrite("Price of a manicure?", language="de"), chat_reply("500 UAH"))
+    await client.post(
+        "/v1/messages", json=_msg("Wie viel kostet eine Maniküre?"), headers=bundle.auth
+    )
+    story = "Мене звати Олена, я роблю торти на замовлення вже шість років. " * 10
+    assert len(story.strip()) >= 500
+    fake_llm.push(chat_reply("Дякую, що розповіли!"))
+    resp = await client.post("/v1/messages", json=_msg(story), headers=bundle.auth)
+    body = resp.json()
+
+    turn = await _turn(services.sm, body["turn_id"])
+    # no rewrite call: the reply model sees the client's own words
+    calls = await _calls(services.sm, body["turn_id"])
+    assert [c.role for c in calls] == [LlmRole.REPLY]
+    assert turn.rewritten == story.strip()
+    assert _step(turn, "rewrite")["skipped"] == "long_message"
+    assert _user_json(fake_llm.requests[-1])["user_question"] == story.strip()
+    # the language stays the previous turn's
+    assert (turn.client_language, turn.reply_language) == ("de", "en")
+
+
 async def test_decisions_are_logged_with_the_turn(client, services, fake_llm, bundle):
     fake_llm.push(_rewrite("Скільки коштує манікюр?"), chat_reply("500 грн."))
     resp = await client.post("/v1/messages", json=_msg("скільки?"), headers=bundle.auth)

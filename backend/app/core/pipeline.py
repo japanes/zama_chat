@@ -1,6 +1,7 @@
 """The turn pipeline used by run_turn() (docs/04 §5):
 
-  1. rewrite  — self-contained question(s) + the client's language (LLM `rewrite`);
+  1. rewrite  — self-contained question(s) + the client's language (LLM `rewrite`); a
+                turn input of `rewrite_skip_chars` or more goes on as written;
   2. language — accept the detected language, pick the reply language by the tenant rule;
   3. route    — one batch of questions to the decider (Jev) about the rewritten text,
                 the scenario questions included;
@@ -29,7 +30,7 @@ from app.core.language import (
     reply_language_for,
 )
 from app.core.rewrite import PROMPT_KEY as REWRITE_KEY
-from app.core.rewrite import rewrite
+from app.core.rewrite import as_written, rewrite, skips_rewrite
 from app.core.routing import Route, route
 from app.prompts.builtin import (
     EXTRACT_KEY,
@@ -79,21 +80,26 @@ async def full_pipeline(services: "Services", ctx: TurnContext) -> TurnPlan:
     # the rewritten text is in the reply language known before this message
     before = ctx.reply_language or ctx.settings.primary_language
     with ctx.trace.step("rewrite", answer_language=before) as step:
-        rw = await rewrite(
-            services,
-            ctx,
-            prompts[REWRITE_KEY],
-            before,
-            presented_rules=prompt_rules(prompts, SELECT_PRESENTED_KEY, SELECT_PRESENTED),
-            card=view_card(view, before),
-            card_rules=prompt_rules(prompts, SCENARIO_CARD_KEY, SCENARIO_CARD, "rewrite_rules"),
-        )
-        step.update(
-            llm_call_id=rw.llm_call_id,
-            model=rw.model,
-            questions=rw.questions,
-            detected_language=rw.language,
-        )
+        if skips_rewrite(ctx):
+            # a long text is a story of its own: it goes on as written, in the previous language
+            rw = as_written(ctx)
+            step.update(skipped="long_message", chars=len(rw.text))
+        else:
+            rw = await rewrite(
+                services,
+                ctx,
+                prompts[REWRITE_KEY],
+                before,
+                presented_rules=prompt_rules(prompts, SELECT_PRESENTED_KEY, SELECT_PRESENTED),
+                card=view_card(view, before),
+                card_rules=prompt_rules(prompts, SCENARIO_CARD_KEY, SCENARIO_CARD, "rewrite_rules"),
+            )
+            step.update(
+                llm_call_id=rw.llm_call_id,
+                model=rw.model,
+                questions=rw.questions,
+                detected_language=rw.language,
+            )
 
     client_language = detect_client_language(
         ctx.client_language, rw.language, ctx.input_text, ctx.settings

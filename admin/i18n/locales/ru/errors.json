@@ -177,6 +177,7 @@
       "languages_empty": "Добавьте хотя бы один язык",
       "not_found": "Тенант не найден",
       "reply_language_unknown": "Правило {source} → {target}: языка {target} нет в списке",
+      "rewrite_skip_chars_invalid": "Неверная длина сообщения: {value}",
       "silence_minutes_invalid": "Неверное время тишины: {value}",
       "slug_invalid": "Короткое имя: строчные латинские буквы, цифры и дефис, 3–64 символа",
       "slug_taken": "Короткое имя {slug} уже занято",

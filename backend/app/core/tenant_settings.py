@@ -36,6 +36,11 @@ class TenantSettings(BaseModel):
     bot_name: str = ""
     timezone: str = "Europe/Kyiv"
     silence_minutes: int = 15
+    # a turn input this long (characters, every message of the turn together) goes on as
+    # the client wrote it, without the rewrite: a long text is a story of its own, not a
+    # «да» that needs the dialogue to be understood. Its language stays the previous
+    # turn's. 0 — every message is rewritten
+    rewrite_skip_chars: int = 500
     # language of service questions to Jev (route); the probe decides — see docs/04 §5
     jev_question_language: str = "en"
     # the client asked something the search did not find (stage 5): "say" — the bot
@@ -72,6 +77,8 @@ class TenantSettings(BaseModel):
             raise AppError("tenant.unknown_answer_invalid", {"value": self.unknown_answer})
         if self.silence_minutes < 1:
             raise AppError("tenant.silence_minutes_invalid", {"value": self.silence_minutes})
+        if self.rewrite_skip_chars < 0:
+            raise AppError("tenant.rewrite_skip_chars_invalid", {"value": self.rewrite_skip_chars})
         if not REGION_RE.match(self.phone_region):
             raise AppError("tenant.phone_region_invalid", {"value": self.phone_region})
         if self.receipt_review not in RECEIPT_REVIEW:

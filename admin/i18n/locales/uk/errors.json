@@ -177,6 +177,7 @@
       "languages_empty": "Додайте хоча б одну мову",
       "not_found": "Тенанта не знайдено",
       "reply_language_unknown": "Правило {source} → {target}: мови {target} немає у списку",
+      "rewrite_skip_chars_invalid": "Неправильна довжина повідомлення: {value}",
       "silence_minutes_invalid": "Неправильний час тиші: {value}",
       "slug_invalid": "Коротке ім'я: малі латинські літери, цифри й дефіс, 3–64 символи",
       "slug_taken": "Коротке ім'я {slug} уже зайняте",
