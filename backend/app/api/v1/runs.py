@@ -24,6 +24,8 @@ window.
   POST /v1/runs/{id}/finish    «no more questions»: a `by_caller` run completes, silently
   POST /v1/runs/{id}/focus     the dialogue goes to this open run; the bot asks its question
                                in its own words (a bot turn, paid like any)
+  POST /v1/runs/{id}/usage     what the answers written in the background cost
+                               (`background_answers`: RunOut.answer_turns)
 
 Auth: `Authorization: Bearer <api key>`. The key belongs to one channel: only scenarios
 switched on in that channel start, only runs of that channel are seen.
@@ -74,6 +76,7 @@ from app.db.models import (
     SendStatus,
     Tenant,
     Turn,
+    TurnStatus,
 )
 from app.decisions.engine import DecideContext, DecisionSet
 from app.errors import AppError, Conflict, NotFound
@@ -93,6 +96,7 @@ from app.scenarios.outside import (
 )
 from app.scenarios.plan import CONFIRM_QUESTION
 from app.scenarios.questions import CONFIRM
+from app.scenarios.runtime import ANSWERS_JOB
 from app.scenarios.schema import (
     ActionEvent,
     AddedFields,
@@ -170,6 +174,12 @@ class RunOut(BaseModel):
     fields: list[FieldOut]
     started_at: datetime
     finished_at: datetime | None
+    # background_answers: the questions whose answers the client gave and that are being
+    # written after the reply — their values come later (scenarios/answers.py)
+    answers_pending: list[str] = []
+    # the turns that wrote them, finished, oldest first: each is paid like a turn
+    # (POST /v1/runs/{id}/usage)
+    answer_turns: list[uuid.UUID] = []
 
 
 class MessageRow(BaseModel):
@@ -242,7 +252,9 @@ def _added_at(run: ScenarioRun) -> dict[str, datetime]:
     return out
 
 
-def run_out(run: ScenarioRun, defn: ScenarioDef) -> RunOut:
+def run_out(
+    run: ScenarioRun, defn: ScenarioDef, answer_turns: list[uuid.UUID] | None = None
+) -> RunOut:
     language = run.reply_language or defn.language
     states = fl.load_states(defn, run.fields)
     added = _added_at(run)
@@ -280,6 +292,32 @@ def run_out(run: ScenarioRun, defn: ScenarioDef) -> RunOut:
         ],
         started_at=run.started_at,
         finished_at=run.finished_at,
+        answers_pending=[f.key for f in defn.fields if states[f.key].pending],
+        answer_turns=answer_turns or [],
+    )
+
+
+def _answer_turns_of(run_id: uuid.UUID) -> Any:
+    return (
+        Turn.route["kind"].astext == ANSWERS_JOB,
+        Turn.route["run_id"].astext == str(run_id),
+    )
+
+
+async def answer_turns(session: AsyncSession, run: ScenarioRun) -> list[uuid.UUID]:
+    """The finished turns that wrote the run's answers in the background."""
+    return list(
+        (
+            await session.execute(
+                select(Turn.id)
+                .where(
+                    Turn.conversation_id == run.conversation_id,
+                    *_answer_turns_of(run.id),
+                    Turn.status != TurnStatus.RUNNING,
+                )
+                .order_by(Turn.created_at, Turn.id)
+            )
+        ).scalars()
     )
 
 
@@ -360,7 +398,10 @@ async def _state(
             return StateOut(conversation_id=conversation_id, run=None)
         defn = await load_run_definition(session, run)
         rows = await _messages(session, conversation_id, run.started_at, messages)
-        return StateOut(conversation_id=conversation_id, run=run_out(run, defn), messages=rows)
+        turns = await answer_turns(session, run)
+        return StateOut(
+            conversation_id=conversation_id, run=run_out(run, defn, turns), messages=rows
+        )
 
 
 class StateIn(BaseModel):
@@ -1028,7 +1069,11 @@ async def run_message(
                     )
                 )
             ).scalar_one_or_none()
-        state = run_out(run, await load_run_definition(session, run)) if run else None
+        state = (
+            run_out(run, await load_run_definition(session, run), await answer_turns(session, run))
+            if run
+            else None
+        )
         usage = await _usage(session, out.turn_id) if out.turn_id is not None else None
     return RunMessageOut(**out.model_dump(), run=state, usage=usage)
 
@@ -1088,6 +1133,39 @@ async def _usage(session: AsyncSession, turn_id: uuid.UUID) -> UsageOut | None:
         duration_ms=turn.duration_ms,
         calls=calls,
     )
+
+
+class UsageIn(BaseModel):
+    # turns from RunOut.answer_turns the caller has not paid for yet
+    turns: list[uuid.UUID] = Field(min_length=1, max_length=100)
+
+
+class RunUsageOut(BaseModel):
+    usage: list[UsageOut]
+
+
+@router.post("/runs/{run_id}/usage", response_model=RunUsageOut)
+async def run_usage(
+    run_id: uuid.UUID, body: UsageIn, client: ApiClientDep, services: ServicesDep
+) -> RunUsageOut:
+    """What the answers written in the background cost, turn by turn: the given turns of
+    RunOut.answer_turns (others are left out)."""
+    found = await _own_run(services, client, run_id)
+    async with services.sm() as session:
+        ids = (
+            await session.execute(
+                select(Turn.id)
+                .where(
+                    Turn.id.in_(body.turns),
+                    Turn.conversation_id == found.conversation_id,
+                    *_answer_turns_of(run_id),
+                    Turn.status != TurnStatus.RUNNING,
+                )
+                .order_by(Turn.created_at, Turn.id)
+            )
+        ).scalars()
+        usage = [u for turn_id in ids if (u := await _usage(session, turn_id)) is not None]
+    return RunUsageOut(usage=usage)
 
 
 # --- skip / confirm ---------------------------------------------------------------------------

@@ -61,6 +61,7 @@ from app.operator.tasks import task_dict
 from app.results.delivery import resend
 from app.results.service import collected
 from app.scenarios.fields import load_states
+from app.scenarios.runtime import ANSWERS_JOB
 from app.scenarios.schema import parse_definition
 from app.scenarios.store import ADDED_AT, effective_definition
 from app.services import Services
@@ -545,6 +546,9 @@ def conversation_dict(c: Conversation) -> dict[str, Any]:
 def turn_summary(t: Turn) -> dict[str, Any]:
     return {
         "id": str(t.id),
+        # "scenario_answers": the answers of a run written after the reply
+        # (scenarios/answers.py) — no client message, no reply
+        "kind": (t.route or {}).get("kind") or "reply",
         "status": t.status,
         "input_text": t.input_text,
         "rewritten": t.rewritten,
@@ -858,7 +862,11 @@ async def sandbox_turn(
                 (
                     await session.execute(
                         select(Turn)
-                        .where(Turn.conversation_id == ingested.conversation_id)
+                        .where(
+                            Turn.conversation_id == ingested.conversation_id,
+                            # the answers written in the background are not this message's
+                            Turn.route["kind"].astext.is_distinct_from(ANSWERS_JOB),
+                        )
                         .order_by(Turn.created_at.desc())
                         .limit(1)
                     )

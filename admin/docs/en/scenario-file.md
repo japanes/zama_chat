@@ -94,6 +94,7 @@ The words `yes`, `no`, `on`, `off` are plain text here. There are only two logic
 | `cancel` | no | How to tell that the client changed their mind — section 9. |
 | `incompatible_with` | no | Scenarios that do not go at the same time as this one — section 9. |
 | `only_scenario` | no | While the scenario is open, the bot does only it: no general replies, no search, no other scenarios — section 9. |
+| `background_answers` | no | The text answers are written after the bot's reply: the bot does not wait while a long story is read for every question — section 9. |
 | `start_by_caller` | no | The scenario starts only by your system, never by the client's words — section 9. |
 | `queue` | no | Its place in the queue of the conversation's scenarios — section 9. |
 | `actions` | no | What to do with the result: send it to you, write to the client — section 10. |
@@ -442,6 +443,24 @@ only_scenario: true           # off by default
 - other scenarios do not start by themselves. A start by your system (`POST /v1/runs/start`) works as usual.
 
 Everything about the scenario itself stays: answers, their checks, changing an answer, confirmation, "stop" and cancel. Use it when the whole conversation is given to one job — say, an interview where a person tells their story and the bot's general replies only get in the way.
+
+**`background_answers`** — the text answers are written in the background, after the bot's reply:
+
+```yaml
+background_answers: true      # off by default
+```
+
+Sometimes a client answers several questions in one long message. Without this setting the bot first reads the whole text for every question and only then replies — with a long story that takes a while. With `background_answers`:
+
+- the bot marks at once which questions the message answers, which it answers only in part, and which it does not answer;
+- it asks the first unanswered question at once;
+- the answers to the marked questions are written while the client replies to that question — one after another, with every check of `filters`. If the client later adds to an answer, the answer is extended, not replaced;
+- a question the client answered in part is asked after its answer is written, and only for what is missing: «You say you work together with your wife. Who else is on the team?»;
+- if the text turns out to hold no answer after all, the question is asked as usual.
+
+The bot waits for the answers only where it cannot go on without them: when there is nothing left to ask while answers are still being written, and before a question that depends on answers already given (`show_if`, `ask_after`).
+
+Only `type: text` questions are written this way. The others — a date, a phone, a choice, a file — are read at once, as without this setting. Each background write is a turn of its own with the model: its cost shows in the conversation's trace. Your system sees this in the scenario's state (`POST /v1/runs/state`): `answers_pending` — the questions whose answers are still being written, `answer_turns` — the finished background writes. What each cost is given by `POST /v1/runs/{run_id}/usage` with `turns` — ids from `answer_turns`.
 
 **`start_by_caller`** — the scenario starts only by your system (`POST /v1/runs/start`), never by the client's words: its `start` questions are not asked in any conversation.
 

@@ -105,6 +105,12 @@ class ScenarioRun(IdMixin, TimestampsMixin, Base):
     # "options": {field: [{key, label}]}} — the run's own part of its fields
     # (scenarios/store.effective_definition)
     extra: Mapped[dict[str, Any]] = mapped_column(default=dict, server_default=text("'{}'::jsonb"))
+    # background_answers: the dialogue of the run as the client wrote it, the source of the
+    # answers written in the background (scenarios/answers.py): [{"turn", "bot", "client",
+    # "rewritten"?, "messages", "at"}]. Deferred: a turn does not read it
+    dialogue: Mapped[list[Any]] = mapped_column(
+        default=list, server_default=text("'[]'::jsonb"), deferred=True
+    )
     client_language: Mapped[str | None] = mapped_column(String(16))
     reply_language: Mapped[str | None] = mapped_column(String(16))
     started_turn_id: Mapped[uuid.UUID | None] = mapped_column(

@@ -273,6 +273,11 @@ async def load_definition(session: AsyncSession, scenario_id: uuid.UUID) -> Scen
     return parse_definition(row.definition)
 
 
+def open_run_row(run: ScenarioRun, scenario: Scenario) -> OpenRun | None:
+    """A run row as a turn sees it (outside a turn: the background answers job)."""
+    return _open_run(run, scenario, {})
+
+
 async def load_run_definition(session: AsyncSession, run: ScenarioRun) -> ScenarioDef:
     """The fields of a run as it goes: its scenario version + its own (extra)."""
     return effective_definition(await load_definition(session, run.scenario_id), run.extra)

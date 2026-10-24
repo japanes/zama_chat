@@ -453,6 +453,7 @@ ISSUE_TEXTS: dict[str, dict[str, str]] = {
         "screenshot of the whole receipt",
         "receipt_not_receipt": "the picture is not a payment receipt: ask for the receipt",
         "receipt_rejected": "the receipt was not accepted: ask for a correct receipt",
+        "partly": "the client answered only part of the question: ask for what is missing",
     },
     "uk": {
         "phone_invalid": "номер телефону неповний або неправильний: попросіть повний номер "
@@ -475,6 +476,7 @@ ISSUE_TEXTS: dict[str, dict[str, str]] = {
         "скріншот усієї квитанції",
         "receipt_not_receipt": "на зображенні не квитанція про оплату: попросіть квитанцію",
         "receipt_rejected": "квитанцію не прийнято: попросіть правильну квитанцію",
+        "partly": "клієнт відповів лише на частину питання: запитайте, чого бракує",
     },
     "ru": {
         "phone_invalid": "номер телефона неполный или неправильный: попросите полный номер "
@@ -497,6 +499,7 @@ ISSUE_TEXTS: dict[str, dict[str, str]] = {
         "скриншот всей квитанции",
         "receipt_not_receipt": "на изображении не квитанция об оплате: попросите квитанцию",
         "receipt_rejected": "квитанцию не приняли: попросите правильную квитанцию",
+        "partly": "клиент ответил только на часть вопроса: спросите то, чего не хватает",
     },
 }
 

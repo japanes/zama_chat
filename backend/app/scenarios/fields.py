@@ -15,6 +15,12 @@ A field is done (not asked any more, the run can go on without it) when it is co
 `hidden` (its show_if said it does not apply, scenarios/show.py) or `closed` (an added field
 that failed too many times, closed with what the client said). A hidden field still takes
 answers: what the client says about it is kept.
+
+A scenario with `background_answers`: the turn does not read the answers of its text fields
+itself. The decider (Jev) only says whether the client's words answer a question — in full
+(`answered`) or in part (`answered_partly`) — and the turn is put on the field's `pending`
+list; the bot goes on with the other questions, and the job `scenario_answers` writes the
+answer (scenarios/answers.py). A pending field is not asked: its answer is on the way.
 """
 
 from dataclasses import asdict, dataclass, field
@@ -32,6 +38,10 @@ REVIEW = "review"
 # field_stuck); the bot keeps asking — there is no attempt limit
 STUCK_AFTER = 3
 MERGE_SEPARATOR = "\n"
+# background_answers: the decider said the client answered only part of the question, the
+# filters found nothing missing — the bot still asks for the rest (the issue text «partly»,
+# scenarios/typed.py)
+PARTLY = "@partly"
 
 
 @dataclass
@@ -63,6 +73,13 @@ class FieldState:
     show: dict[str, Any] | None = None
     # an added field closed after too many failed answers, with what the client said
     closed: bool = False
+    # background_answers: the decider's last word on the client's message — it answers
+    # the question (or adds to the answer it has) / answers it only in part
+    answered: bool = False
+    answered_partly: bool = False
+    # background_answers: turns whose client words answer the field and are not written
+    # into it yet (scenarios/answers.py)
+    pending: list[str] = field(default_factory=list)
 
     @property
     def complete(self) -> bool:
@@ -93,6 +110,12 @@ def dump_states(states: dict[str, FieldState]) -> dict[str, Any]:
     return {key: fs.to_dict() for key, fs in states.items()}
 
 
+def background_field(defn: ScenarioDef, f: FieldDef) -> bool:
+    """The field's answers are written in the background: a text field of a scenario with
+    `background_answers` (typed, choice, catalog fields and files are read in the turn)."""
+    return bool(defn.background_answers) and f.type == FieldType.TEXT
+
+
 def ask_after_ready(f: FieldDef, states: dict[str, FieldState]) -> bool:
     return all(states[ref].complete for ref in f.ask_after)
 
@@ -103,10 +126,11 @@ def next_field(
     """The first field, in definition order, that is not complete and whose ask_after
     fields are all complete. Partial fields and fields waiting for a recheck count as
     not complete. A receipt in review is not asked; with `confirm` a receipt is asked only
-    after the client confirmed the rest (`confirmed`)."""
+    after the client confirmed the rest (`confirmed`). A field whose answer is being written
+    in the background (`pending`) is not asked."""
     for f in defn.fields:
         fs = states[f.key]
-        if fs.done or fs.state == REVIEW or not ask_after_ready(f, states):
+        if fs.done or fs.pending or fs.state == REVIEW or not ask_after_ready(f, states):
             continue
         if f.type == FieldType.RECEIPT and not confirmed:
             continue
@@ -160,10 +184,17 @@ def set_answer(
     norm: Any = None,
     issue: str | None = None,
     issue_params: dict[str, Any] | None = None,
+    merge: bool = False,
 ) -> None:
     """A new answer for the field, before the filters. A partial answer is merged with
-    the new words unless the client corrects it (`replace`)."""
-    fs.value = value.strip() if replace or fs.state != PARTIAL else merge_value(fs.value, value)
+    the new words unless the client corrects it (`replace`); `merge` — a complete one too
+    (the client adds to it, background_answers)."""
+    keep = not replace and (fs.state == PARTIAL or merge)
+    fs.value = merge_value(fs.value, value) if keep else value.strip()
+    if replace:
+        # the new words are the whole answer now: what waits in the background is stale
+        fs.answered_partly = False
+        fs.pending = []
     fs.skipped = False
     fs.norm = norm
     fs.issue = issue
@@ -179,6 +210,9 @@ def set_checked(fs: FieldState, failed: list[str], now: datetime) -> bool:
     if fs.issue:
         # code rejected the value: it stays partial whatever the filters say
         failed = [f"@{fs.issue}"]
+    elif not failed and fs.answered_partly:
+        # the decider heard only part of the answer: the bot asks for the rest
+        failed = [PARTLY]
     if failed:
         fs.state = PARTIAL
         fs.failed_filters = list(failed)
@@ -244,6 +278,9 @@ def reset(fs: FieldState, now: datetime) -> None:
     fs.skipped = False
     fs.closed = False
     fs.asked = None
+    fs.answered = False
+    fs.answered_partly = False
+    fs.pending = []
     fs.updated_at = now.isoformat()
 
 

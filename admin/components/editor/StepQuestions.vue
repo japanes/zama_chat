@@ -9,6 +9,15 @@
       <p class="hint">{{ t('editor.q.only_scenario_hint') }}</p>
     </div>
 
+    <!-- background_answers: the text answers are written after the reply -->
+    <div class="rounded-button bg-slate-50 dark:bg-slate-900/40 px-4 py-3.5">
+      <label class="flex items-center gap-2.5 min-h-[44px]">
+        <input v-model="def.background_answers" type="checkbox" class="checkbox" :disabled="readonly" />
+        <span class="text-[15px] font-medium text-slate-900 dark:text-slate-100">{{ t('editor.q.background_answers') }}</span>
+      </label>
+      <p class="hint">{{ t('editor.q.background_answers_hint') }}</p>
+    </div>
+
     <!-- what the bot reads when it words a question: the answers always, the last messages,
          and the scenario's own rules for wording (only the bot that writes sees them) -->
     <div class="rounded-button bg-slate-50 dark:bg-slate-900/40 px-4 py-3.5 space-y-3">

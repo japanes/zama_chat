@@ -28,6 +28,9 @@ class WorkRun:
     events: list[Event] = field(default_factory=list)
     paused_now: bool = False  # put aside by `stop` in this turn
     answered: list[str] = field(default_factory=list)  # got a value in this turn
+    # background_answers: the client's words of this turn answer these fields, the
+    # answers are written in the background (FieldState.pending)
+    marked: list[str] = field(default_factory=list)
     filled: list[str] = field(default_factory=list)  # became complete in this turn
     # (complete, value) of every field when the turn started
     snapshot: dict[str, tuple[bool, str | None]] = field(default_factory=dict)
@@ -42,6 +45,8 @@ class WorkRun:
     added: frozenset[str] = frozenset()
     # a completed run the client amends in this turn (runtime.apply_reopen)
     reopened: bool = False
+    # the field the bot asked when the turn started (`asking` is the next one)
+    asking_before: str | None = None
 
     @classmethod
     def from_open(cls, run: OpenRun) -> "WorkRun":
@@ -55,6 +60,7 @@ class WorkRun:
             asking=run.asking,
             started_at=run.started_at,
             last_activity_at=run.last_activity_at,
+            asking_before=run.asking,
             snapshot={k: (fs.complete, fs.value) for k, fs in states.items()},
             data=copy.deepcopy(run.data),
             data_before=copy.deepcopy(run.data),
@@ -110,6 +116,7 @@ class WorkRun:
             or self.status != self.before
             or bool(self.events)
             or bool(self.answered)
+            or bool(self.marked)
             or self.data != self.data_before
             or any((fs.complete, fs.value) != self.snapshot.get(k) for k, fs in self.states.items())
         )
@@ -134,6 +141,11 @@ class WorkRun:
         self.data = copy.deepcopy(self.data_before)
         self.events.clear()
         self.filled.clear()
+
+    @property
+    def pending(self) -> list[str]:
+        """Fields whose answers are being written in the background."""
+        return [k for k, fs in self.states.items() if fs.pending]
 
     def add(self, name: str, field_name: str | None = None) -> None:
         self.events.append(Event(name, field_name))

@@ -51,6 +51,8 @@ class Target:
     correction: bool = False
     # type catalog: the items to choose from, (external_id, title) — scenarios/catalog.py
     choices: tuple[tuple[str, str], ...] = ()
+    # background_answers: the client adds to the answer — merged with it, even a complete one
+    augment: bool = False
 
     @property
     def scenario(self) -> str:
@@ -163,13 +165,20 @@ def today_line(ctx: TurnContext) -> str:
 
 
 def extract_messages(
-    prompt: PromptText, targets: list[Target], ctx: TurnContext, rewritten: str, language: str
+    prompt: PromptText,
+    targets: list[Target],
+    ctx: TurnContext,
+    rewritten: str,
+    language: str,
+    *,
+    client_message: str | None = None,
+    bot_question: str | None = None,
 ) -> list[dict[str, Any]]:
     values: dict[str, Any] = {
         "fields": [field_spec(t, language) for t in targets],
-        "client_message": ctx.input_text,
+        "client_message": ctx.input_text if client_message is None else client_message,
         "rewritten": rewritten,
-        "bot_question": last_bot_message(ctx),
+        "bot_question": last_bot_message(ctx) if bot_question is None else bot_question,
     }
     if any(t.field.type in NORM_FORMATS for t in targets):
         values["today"] = today_line(ctx)
@@ -296,14 +305,27 @@ async def extract(
     *,
     rewritten: str,
     language: str,
+    client_message: str | None = None,
+    bot_question: str | None = None,
 ) -> Extracted:
+    """`client_message` / `bot_question` — the words of earlier turns (the answers written
+    in the background, scenarios/answers.py); by default this turn's."""
     targets = [t for t in targets if extractable(t)]
     if not targets:
         return Extracted()
     prompt = prompt or DEFAULT_PROMPT
+    source = ctx.input_text if client_message is None else client_message
     result = await services.llm.complete(
         LlmRole.EXTRACT,
-        extract_messages(prompt, targets, ctx, rewritten, language),
+        extract_messages(
+            prompt,
+            targets,
+            ctx,
+            rewritten,
+            language,
+            client_message=client_message,
+            bot_question=bot_question,
+        ),
         tenant_id=ctx.tenant_id,
         turn_id=ctx.turn_id,
         schema=extract_schema(targets),
@@ -312,7 +334,7 @@ async def extract(
         prompt_version=prompt.version or None,
         overrides=ctx.overrides,
     )
-    values, rejected = parse_values(result.data, targets, ctx.input_text)
+    values, rejected = parse_values(result.data, targets, source)
     return Extracted(
         values=values,
         norms=parse_norms(result.data, targets),

@@ -510,7 +510,7 @@ async def _finish_turn(
     started: float,
     error: str | None = None,
 ) -> None:
-    tokens_in, tokens_out, cost = await _turn_totals(session, turn.id)
+    tokens_in, tokens_out, cost = await turn_totals(session, turn.id)
     turn.status = status
     turn.input_text = ctx.input_text
     if plan is not None:
@@ -527,7 +527,7 @@ async def _finish_turn(
     turn.finished_at = now
 
 
-async def _turn_totals(session: AsyncSession, turn_id: uuid.UUID) -> tuple[int, int, Decimal]:
+async def turn_totals(session: AsyncSession, turn_id: uuid.UUID) -> tuple[int, int, Decimal]:
     """Sum of everything paid for in this turn: LLM calls + Jev decisions."""
     row = (
         await session.execute(

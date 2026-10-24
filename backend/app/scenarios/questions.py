@@ -2,7 +2,11 @@
 
   start:<scenario>.<key>        boolean — a start sign of a channel scenario (not in focus)
   field:<scenario>.<field>      boolean — "does the message answer this field?": unfilled
-                                fields of the focus and paused runs + `field:` start signs
+                                fields of the focus and paused runs + `field:` start signs;
+                                a text field of a scenario with `background_answers` —
+                                choice: none / partial / full, and for a field with an
+                                answer none / more ("does it add to the answer?"), so the
+                                answers are written in the background (scenarios/answers.py)
   stop                          choice  — none / pause_focus / cancel:<scenario>
   change_field                  choice  — none / a field of the focus that has an answer
   client_question               boolean — the message has the client's own question
@@ -24,7 +28,7 @@ from dataclasses import dataclass, field
 
 from app.db.models import DecisionType, RunStatus
 from app.decisions.engine import Question
-from app.scenarios.fields import PARTIAL, FieldState, load_states
+from app.scenarios.fields import PARTIAL, FieldState, background_field, load_states
 from app.scenarios.schema import (
     ATTACHMENT_TYPES,
     FieldDef,
@@ -46,6 +50,11 @@ PAUSE_FOCUS = "pause_focus"
 # TODO(review): the Jev probe checks which choice keys are accepted; ":" is assumed fine
 CANCEL_PREFIX = "cancel:"
 VALUE_PREVIEW = 300
+# background_answers: the client's words answer the question in full / in part / add to the
+# answer it already has (field questions of choice type)
+FULL = "full"
+IN_PART = "partial"
+MORE = "more"
 
 # TODO(review): wording of the scenario questions to Jev; check on the probe / make eval
 TEMPLATES: dict[str, dict[str, str]] = {
@@ -55,6 +64,15 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "field_options": "Possible answers: {options}.",
         "field_true": "The message answers this question, fully or in part.",
         "field_false": "The message does not answer this question.",
+        "field_none": "The message does not answer this question.",
+        "field_partial": "The message answers only part of this question: some of what is "
+        "asked is missing.",
+        "field_full": "The message answers this question in full.",
+        "field_more": "The client has already answered the question «{q}»: «{value}». Does "
+        "the client's latest message add something new to this answer?",
+        "field_more_none": "The message adds nothing new to this answer.",
+        "field_more_more": "The message adds new facts or details to this answer, or what "
+        "was missing in it.",
         "yes": "Yes.",
         "no": "No.",
         "stop": "Does the client want to stop or postpone a scenario that is in progress?",
@@ -91,6 +109,15 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "field_options": "Можливі відповіді: {options}.",
         "field_true": "Повідомлення відповідає на це питання повністю або частково.",
         "field_false": "Повідомлення не відповідає на це питання.",
+        "field_none": "Повідомлення не відповідає на це питання.",
+        "field_partial": "Повідомлення відповідає лише на частину цього питання: частини "
+        "того, про що питають, бракує.",
+        "field_full": "Повідомлення відповідає на це питання повністю.",
+        "field_more": "Клієнт уже відповів на питання «{q}»: «{value}». Чи додає останнє "
+        "повідомлення клієнта щось нове до цієї відповіді?",
+        "field_more_none": "Повідомлення нічого нового до цієї відповіді не додає.",
+        "field_more_more": "Повідомлення додає до цієї відповіді нові факти чи подробиці або "
+        "те, чого в ній бракувало.",
         "yes": "Так.",
         "no": "Ні.",
         "stop": "Чи хоче клієнт зупинити або відкласти сценарій, який зараз триває?",
@@ -126,6 +153,15 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "field_options": "Возможные ответы: {options}.",
         "field_true": "Сообщение отвечает на этот вопрос полностью или частично.",
         "field_false": "Сообщение не отвечает на этот вопрос.",
+        "field_none": "Сообщение не отвечает на этот вопрос.",
+        "field_partial": "Сообщение отвечает только на часть этого вопроса: части того, о чём "
+        "спрашивают, не хватает.",
+        "field_full": "Сообщение отвечает на этот вопрос полностью.",
+        "field_more": "Клиент уже ответил на вопрос «{q}»: «{value}». Добавляет ли последнее "
+        "сообщение клиента что-то новое к этому ответу?",
+        "field_more_none": "Сообщение ничего нового к этому ответу не добавляет.",
+        "field_more_more": "Сообщение добавляет к этому ответу новые факты или подробности или "
+        "то, чего в нём не хватало.",
         "yes": "Да.",
         "no": "Нет.",
         "stop": "Хочет ли клиент остановить или отложить сценарий, который сейчас идёт?",
@@ -209,17 +245,48 @@ def title_of(defn: ScenarioDef, language: str) -> str:
     return defn.text(defn.title, language).text
 
 
-def field_question(defn: ScenarioDef, f: FieldDef, language: str) -> Question:
+def says_answer(value: object) -> bool:
+    """The answer of a `field:` question says the client's words answer the field: «yes» of
+    a boolean one, any option but «none» of a choice one (background_answers)."""
+    return value is True or value in (FULL, IN_PART, MORE)
+
+
+def field_question(
+    defn: ScenarioDef, f: FieldDef, language: str, fs: FieldState | None = None
+) -> Question:
+    """`fs` — the field's state in an open run: with background_answers a field that has an
+    answer is asked whether the message adds to it."""
     q = defn.text(f.question, language)
     t = templates(q.language)
-    parts = [t["field"].format(q=q.text)]
-    if f.description is not None:
-        parts.append(t["field_hint"].format(hint=defn.text(f.description, language).text))
+    key = field_key(defn.key, f.key)
+    hint = (
+        [t["field_hint"].format(hint=defn.text(f.description, language).text)]
+        if f.description is not None
+        else []
+    )
+    if background_field(defn, f) and fs is not None and fs.value is not None:
+        text = t["field_more"].format(q=q.text, value=preview(fs.value, 200))
+        return Question(
+            key,
+            DecisionType.CHOICE,
+            " ".join([text, *hint]),
+            {NONE: t["field_more_none"], MORE: t["field_more_more"]},
+            neutral=NONE,
+        )
+    parts = [t["field"].format(q=q.text), *hint]
     if f.type == FieldType.CHOICE and f.options:
         labels = ", ".join(defn.text(o.label, language).text for o in f.options)
         parts.append(t["field_options"].format(options=labels))
+    if background_field(defn, f):
+        return Question(
+            key,
+            DecisionType.CHOICE,
+            " ".join(parts),
+            {NONE: t["field_none"], IN_PART: t["field_partial"], FULL: t["field_full"]},
+            neutral=NONE,
+        )
     return Question(
-        field_key(defn.key, f.key),
+        key,
         DecisionType.BOOLEAN,
         " ".join(parts),
         {"true": t["field_true"], "false": t["field_false"]},
@@ -356,8 +423,14 @@ def build_questions(view: ScenarioView, language: str) -> ScenarioQuestions:
         defn = run.scenario.definition
         states = load_states(defn, run.fields)
         for f in defn.fields:
-            if not states[f.key].complete and asks_text(f):
-                add(field_question(defn, f, language))
+            fs = states[f.key]
+            if not asks_text(f):
+                continue
+            if not fs.complete:
+                add(field_question(defn, f, language, fs))
+            elif background_field(defn, f) and not fs.skipped:
+                # the client may add to an answer already taken: it is completed
+                add(field_question(defn, f, language, fs))
 
     out = ScenarioQuestions(questions=list(found.values()))
     if view.runs:
@@ -384,6 +457,8 @@ def _field_line(defn: ScenarioDef, f: FieldDef, fs: FieldState, language: str) -
         return f"- {f.key} «{q}»: not asked: does not apply{said}"
     if fs.closed:
         return f"- {f.key} «{q}»: closed after several attempts: «{preview(fs.value or '')}»"
+    if fs.pending and fs.value is None:
+        return f"- {f.key} «{q}»: answered, the answer is being recorded"
     if fs.value is None:
         return f"- {f.key} «{q}»: no answer yet"
     if fs.state == PARTIAL:

@@ -63,8 +63,8 @@ def shows_due(runs: "list[WorkRun]", done: set[tuple[str, str]]) -> "list[tuple[
     """Fields whose show_if is checked now; `done` — checked already in this turn."""
     out = []
     for run in runs:
-        if not run.takes_data:
-            continue
+        if not run.takes_data or run.pending:
+            continue  # background_answers: checked once the run's answers are written
         changed = bool(run.values_changed)
         for f in run.definition.fields:
             show = f.show_if

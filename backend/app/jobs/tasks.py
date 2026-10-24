@@ -12,7 +12,9 @@ from app.jobs.worker import Fail, Handler, JobContext, Retry
 from app.logging import get_logger
 from app.notify.service import notify_job
 from app.results.delivery import deliver_job
+from app.scenarios.answers import scenario_answers_job
 from app.scenarios.jobs import expire_run_job, silence_check_job
+from app.scenarios.runtime import ANSWERS_JOB
 from app.search.index import INDEX_HANDLERS
 from app.services import Services
 
@@ -120,6 +122,7 @@ HANDLERS: dict[str, Handler] = {
     "deliver": deliver_job,
     "silence_check": silence_check_job,
     "expire_run": expire_run_job,
+    ANSWERS_JOB: scenario_answers_job,
     "notify": notify_job,
     "ig_echo": ig_echo_job,
     "ig_profile": ig_profile_job,

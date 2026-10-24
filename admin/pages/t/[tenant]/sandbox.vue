@@ -272,8 +272,9 @@ async function loadState() {
     const res = await api<{ state: any }>(path('/sandbox'), { query: scope() })
     if (asked !== JSON.stringify(scope())) return // another client was picked meanwhile
     state.value = res.state
-    // back in a conversation: the last answer is explained at once (turns come newest first)
-    explain(state.value?.turns?.[0]?.id || null)
+    // back in a conversation: the last answer is explained at once (turns come newest first;
+    // the answers written in the background are no answer)
+    explain(state.value?.turns?.find((x: any) => x.kind !== 'scenario_answers')?.id || null)
   } catch (e) {
     stateError.value = errorText(e)
   } finally {

@@ -100,6 +100,7 @@ export function newDefinition(language: string): any {
     cancel: {},
     actions: [],
     only_scenario: false,
+    background_answers: false,
     start_by_caller: false,
     // '' — no place in the queue
     queue: '',
@@ -258,6 +259,7 @@ export function cleanDefinition(d: any): any {
       }),
     ),
     only_scenario: d.only_scenario ? true : undefined,
+    background_answers: d.background_answers ? true : undefined,
     start_by_caller: d.start_by_caller ? true : undefined,
     queue: num(d.queue),
     ask_rules: listOf((d.ask_rules || []).map(text)),
@@ -317,6 +319,7 @@ export function toForm(d: any): any {
     a.params ||= {}
   }
   out.only_scenario = !!out.only_scenario
+  out.background_answers = !!out.background_answers
   out.start_by_caller = !!out.start_by_caller
   out.queue ??= ''
   out.ask_rules ||= []

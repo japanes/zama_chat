@@ -410,6 +410,11 @@ class ScenarioDef(Strict):
     # its place in the queue of the conversation's scenarios: when the dialogue is free, the
     # paused run with the smallest place gets it, not the one the client answered last
     queue: int | None = Field(default=None, ge=1, le=100)
+    # the answers of its text fields are written in the background (scenarios/answers.py):
+    # the turn only marks which questions the client's words answer, in full or in part,
+    # and the bot goes on asking at once; a long story is not read field by field before
+    # the reply
+    background_answers: bool | None = None
 
     # an empty list / a block of defaults says nothing: kept as absent, so a file that writes
     # it out and one that leaves it out are one version (the editor leaves defaults out)
@@ -428,7 +433,7 @@ class ScenarioDef(Strict):
     def _no_reopen(cls, value: Reopen | None) -> Reopen | None:
         return None if value == Reopen() else value
 
-    @field_validator("only_scenario", "start_by_caller")
+    @field_validator("only_scenario", "start_by_caller", "background_answers")
     @classmethod
     def _no_only(cls, value: bool | None) -> bool | None:
         return True if value else None

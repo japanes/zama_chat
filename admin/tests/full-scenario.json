@@ -90,6 +90,7 @@
     }
   },
   "only_scenario": true,
+  "background_answers": true,
   "start_by_caller": true,
   "queue": 2,
   "ask_rules": [

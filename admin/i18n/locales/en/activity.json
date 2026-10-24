@@ -199,6 +199,7 @@
     "asking": "discussing now",
     "review": "being checked",
     "stuck": "the bot got stuck here",
+    "writing": "answer being written",
     "partial": "the answer is not complete yet",
     "todo": "not asked yet"
   },

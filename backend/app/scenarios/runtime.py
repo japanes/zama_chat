@@ -8,6 +8,11 @@
                    of its type; then the values of the marked fields (one LLM call, the
                    client's own words); a run started in this turn gets all its fields
                    extracted (early answers);
+                   a scenario with `background_answers`: its text fields of the runs that were
+                   open already are not read here — the decider said which questions the
+                   client's words answer (in full, in part, or adding to an answer), the turn
+                   goes on the fields' `pending` list and the job scenario_answers writes the
+                   answers (scenarios/answers.py) while the bot asks on;
   4. apply       — typed fields (date, time, phone…) are normalized by code (typed.py), a
                    value code rejects is re-asked without Jev; partial answers merge, a
                    correction replaces the value and marks the fields depending on it for a
@@ -26,17 +31,23 @@
   9. focus       — focus finished / cancelled → the most recent paused run takes it;
                    no focus → a paused run that got data in this turn takes it;
  10. next field  — what the bot asks (or «is everything correct?»); the same field asked
-                   3 times in a row → stuck;
+                   3 times in a row → stuck. A field whose answer is being written is not
+                   asked; the focus waits for its answers in this very turn, once, when it has
+                   nothing else to ask or its next question depends on them (show_if,
+                   ask_after);
  11. RespondPlan — what the reply does (plan.py).
 
 Everything above only changes WorkRuns in memory; `write()` puts them in the DB inside
 the turn's write transaction (lease checked), fires actions and moves the timers.
 """
 
-from dataclasses import dataclass, field
+import uuid
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
+from sqlalchemy import cast, select, update
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.context import TurnContext, WriteFn
@@ -65,6 +76,7 @@ from app.scenarios.questions import (
     CHANGE_FIELD,
     CLIENT_QUESTION,
     CONFIRM,
+    IN_PART,
     NO,
     NONE,
     PAUSE_FOCUS,
@@ -73,6 +85,7 @@ from app.scenarios.questions import (
     confirm_key,
     field_key,
     reopen_key,
+    says_answer,
     start_question_key,
 )
 from app.scenarios.schema import (
@@ -97,6 +110,8 @@ if TYPE_CHECKING:
 log = get_logger(__name__)
 
 MAX_CHECK_ROUNDS = 5
+# background_answers: the job that writes the answers of a run (scenarios/answers.py)
+ANSWERS_JOB = "scenario_answers"
 # scenario_runs.data.waiting_for of a run whose fields are all collected
 WAITING_FOR = {Completion.EXTERNAL_EVENT: "event", Completion.BY_CALLER: "fields"}
 CLOSED_EVENTS = {
@@ -215,7 +230,7 @@ def start_candidates(
         votes = []
         for q in defn.start.questions:
             key = start_question_key(defn.key, q)
-            votes.append(Vote(key, q.weight, decisions.value(key) is True))
+            votes.append(Vote(key, q.weight, says_answer(decisions.value(key))))
         cand = Candidate(
             scenario.key, scenario.position, defn.threshold, tuple(votes), run is not None
         )
@@ -266,7 +281,8 @@ def extract_targets(
 ) -> list[Target]:
     """Fields to extract: marked by `field:` questions; the corrected one; every field of
     a run started in this turn; of a reopened run — every field, the answers as
-    corrections."""
+    corrections. A field whose answers are written in the background (mark_background)
+    is extracted here only when corrected."""
     change = decisions.value(CHANGE_FIELD, NONE)
     targets = []
     for run in runs:
@@ -280,7 +296,12 @@ def extract_targets(
             correction = (
                 (run is focus_before and change == f.key) or run.reopened
             ) and fs.value is not None
-            marked = decisions.value(field_key(defn.key, f.key)) is True and not fs.complete
+            background = fl.background_field(defn, f) and not (run.is_new or run.reopened)
+            marked = (
+                says_answer(decisions.value(field_key(defn.key, f.key)))
+                and not fs.complete
+                and not background
+            )
             if correction or marked or ((run.is_new or run.reopened) and not fs.complete):
                 targets.append(
                     Target(
@@ -292,6 +313,48 @@ def extract_targets(
                     )
                 )
     return targets
+
+
+def mark_background(
+    runs: list[WorkRun],
+    decisions: DecisionSet,
+    targets: list[Target],
+    *,
+    skip: set[str],
+    turn_id: str,
+) -> list[str]:
+    """background_answers: the text fields whose question the client's words answer — in
+    full, in part, or adding to the answer the field has (the decider's `field:` answers) —
+    are not read in this turn: the turn goes on the field's `pending` list, and the job
+    scenario_answers writes the answer from the run's dialogue (scenarios/answers.py).
+    A run started or reopened in this turn, a correction (`targets`) and a button pressed
+    (`skip`) are read in the turn as usual. Returns the fields marked ("scenario.field")."""
+    inline = {(t.run_id, t.field.key) for t in targets}
+    done: list[str] = []
+    for run in runs:
+        if not run.takes_data or run.is_new or run.reopened:
+            continue
+        defn = run.definition
+        for f in defn.fields:
+            name = f"{run.key}.{f.key}"
+            fs = run.states[f.key]
+            if (
+                not fl.background_field(defn, f)
+                or (run.id, f.key) in inline
+                or name in skip
+                or fs.skipped
+            ):
+                continue
+            value = decisions.value(field_key(defn.key, f.key))
+            if not says_answer(value):
+                continue
+            fs.answered = value != IN_PART
+            fs.answered_partly = value == IN_PART
+            if turn_id not in fs.pending:
+                fs.pending.append(turn_id)
+            run.marked.append(f.key)
+            done.append(name)
+    return done
 
 
 def prefill_contacts(
@@ -446,6 +509,7 @@ def apply_values(
                 early=early,
                 message_ids=message_ids,
                 now=now,
+                merge=t.augment,
             )
         run.answered.append(t.field.key)
         if t.correction:
@@ -479,6 +543,289 @@ def apply_checks(
         fs = run.states[key]
         if fs.needs_recheck and fl.ask_after_ready(run.definition.field(key), run.states):
             fs.needs_recheck = False
+
+
+async def check_fields(
+    services: "Services",
+    ctx: TurnContext,
+    runs: list[WorkRun],
+    due: list[tuple[WorkRun, str]],
+    *,
+    question_language: str,
+    step: dict[str, Any],
+    now: datetime,
+    checked: set[tuple[str, str]],
+) -> tuple[int, dict[str, dict[str, Any]]]:
+    """The filters of the fields `due` and the show_if questions due, then the re-check
+    rounds until nothing changes. `checked` — show_if fields checked already in this turn
+    (grows). Returns (rounds, show verdicts)."""
+    rounds = 0
+    shown: dict[str, dict[str, Any]] = {}
+    shows = shows_due(runs, checked)
+    while (due or shows) and rounds < MAX_CHECK_ROUNDS:
+        rounds += 1
+        # a value code rejected (typed.py) is asked again without Jev
+        items = [
+            CheckItem(r.definition, r.definition.field(k), r.states[k].value or "", r.states)
+            for r, k in due
+            if not r.states[k].issue
+        ]
+        show_items = [ShowItem(r.definition, r.definition.field(k), r.states) for r, k in shows]
+        failed: dict[tuple[str, str], list[str]] = {}
+        decisions_round = None
+        if items or show_items:
+            outcome = await ask_filters(
+                services,
+                ctx.decide_context(),
+                items,
+                question_language,
+                trace_step=step,
+                shows=show_items,
+            )
+            failed, decisions_round = outcome.failed, outcome.decisions
+        apply_checks(due, failed, now)
+        shown.update(apply_shows(shows, decisions_round, now))
+        checked.update((r.key, k) for r, k in shows)
+        due = checks_due(runs, first=False)
+        shows = shows_due(runs, checked)
+    if due or shows:
+        log.warning(
+            "scenario.recheck_rounds_exceeded",
+            left=[f"{r.key}.{k}" for r, k in [*due, *shows]],
+        )
+    return rounds, shown
+
+
+# --- background answers ---------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Said:
+    """The client's words of one turn as a run keeps them (scenario_runs.dialogue): the
+    source of the answers written in the background."""
+
+    turn: str
+    client: str
+    bot: str = ""  # the bot's message the client answered
+    rewritten: str | None = None
+    messages: tuple[str, ...] = ()
+    asking: str | None = None  # the field the bot asked in that message
+
+    @classmethod
+    def from_entry(cls, entry: dict[str, Any]) -> "Said":
+        return cls(
+            turn=str(entry.get("turn") or ""),
+            client=str(entry.get("client") or ""),
+            bot=str(entry.get("bot") or ""),
+            rewritten=entry.get("rewritten"),
+            messages=tuple(str(m) for m in entry.get("messages") or []),
+            asking=entry.get("asking"),
+        )
+
+    def entry(self, now: datetime) -> dict[str, Any]:
+        out: dict[str, Any] = {
+            "turn": self.turn,
+            "bot": self.bot,
+            "client": self.client,
+            "messages": list(self.messages),
+            "at": now.isoformat(),
+        }
+        if self.rewritten and self.rewritten != self.client:
+            out["rewritten"] = self.rewritten
+        if self.asking:
+            out["asking"] = self.asking
+        return out
+
+
+def said_now(ctx: TurnContext, run: WorkRun, rewritten: str) -> Said:
+    """This turn's words, for `run`."""
+    return Said(
+        turn=str(ctx.turn_id),
+        client=ctx.input_text,
+        bot=last_bot_message(ctx),
+        rewritten=rewritten,
+        messages=tuple(str(i) for i in ctx.pending_ids),
+        asking=run.asking_before,
+    )
+
+
+async def load_said(
+    services: "Services", run: WorkRun, current: Said | None = None
+) -> dict[str, Said]:
+    """The words of the turns the run's pending answers come from: this turn's
+    (`current`, not written yet) and the earlier ones from the run's dialogue."""
+    turns = {t for fs in run.states.values() for t in fs.pending}
+    out = {current.turn: current} if current is not None and current.turn in turns else {}
+    if turns - set(out) and not run.is_new:
+        async with services.sm() as session:
+            dialogue = await session.scalar(
+                select(ScenarioRun.dialogue).where(ScenarioRun.id == run.id)
+            )
+        for entry in dialogue or []:
+            said = Said.from_entry(entry)
+            if said.turn in turns:
+                out.setdefault(said.turn, said)
+    return out
+
+
+@dataclass
+class Written:
+    """What write_pending did."""
+
+    # (run id, field) → the turns whose words were read for it
+    read: dict[tuple[uuid.UUID, str], list[str]] = field(default_factory=dict)
+    # the fields that got words, to be checked by the filters
+    due: list[tuple[WorkRun, str]] = field(default_factory=list)
+    # the decider heard an answer the words do not have ("scenario.field")
+    not_found: list[str] = field(default_factory=list)
+    extracted: dict[str, Any] = field(default_factory=dict)
+    rejected: list[dict[str, Any]] = field(default_factory=list)
+    llm_call_ids: list[str] = field(default_factory=list)
+
+
+async def write_pending(
+    services: "Services",
+    ctx: TurnContext,
+    runs: list[WorkRun],
+    said: dict[str, Said],
+    *,
+    prompt: PromptText | None,
+    language: str,
+    now: datetime,
+) -> Written:
+    """background_answers: writes the answers waiting on the fields' `pending` lists from
+    the client's words of those turns — one extract call for the fields answered in the
+    same turns. The words add to the answer a field has. A field the words do not answer
+    after all is unanswered again: the bot asks it in its turn. A turn whose words the run
+    does not have is dropped. The caller runs the filters on `due` (check_fields)."""
+    out = Written()
+    groups: dict[tuple[str, ...], list[tuple[WorkRun, FieldDef]]] = {}
+    for run in runs:
+        if not run.takes_data:
+            continue
+        for f in run.definition.fields:
+            fs = run.states[f.key]
+            if not fs.pending:
+                continue
+            out.read[(run.id, f.key)] = list(fs.pending)
+            if fs.skipped:
+                fs.pending = []  # closed without an answer meanwhile (POST /v1/runs/{id}/skip)
+                continue
+            turns = tuple(t for t in fs.pending if t in said)
+            if turns:
+                groups.setdefault(turns, []).append((run, f))
+            else:
+                log.warning("scenario.pending_words_missing", run_id=str(run.id), field=f.key)
+                _not_answered(fs)
+                out.not_found.append(f"{run.key}.{f.key}")
+    for turns, items in groups.items():
+        words = [said[t] for t in turns]
+        targets = [
+            Target(
+                run.id,
+                run.definition,
+                f,
+                current=run.states[f.key].value,
+                augment=run.states[f.key].value is not None,
+            )
+            for run, f in items
+        ]
+        extracted = await extract(
+            services,
+            ctx,
+            prompt,
+            targets,
+            rewritten="\n\n".join(w.rewritten or w.client for w in words),
+            language=language,
+            client_message="\n\n".join(w.client for w in words),
+            bot_question=words[0].bot,
+        )
+        if extracted.llm_call_id:
+            out.llm_call_ids.append(extracted.llm_call_id)
+        out.extracted.update({f"{sc}.{fk}": v for (sc, fk), v in extracted.values.items()})
+        out.rejected += extracted.rejected
+        apply_values(
+            runs,
+            targets,
+            extracted,
+            message_ids=list(dict.fromkeys(m for w in words for m in w.messages)),
+            now=now,
+            timezone=ctx.settings.timezone,
+            region=ctx.settings.phone_region,
+        )
+        for run, f in items:
+            fs = run.states[f.key]
+            fs.pending = []
+            if (run.key, f.key) in extracted.values:
+                asked = next((w.bot for w in words if w.asking == f.key and w.bot), None)
+                if asked:
+                    fs.asked = asked
+                out.due.append((run, f.key))
+            else:
+                _not_answered(fs)
+                out.not_found.append(f"{run.key}.{f.key}")
+    return out
+
+
+def _not_answered(fs: fl.FieldState) -> None:
+    """The decider's answer was not in the words: an empty field is unanswered again."""
+    fs.pending = []
+    if fs.value is None:
+        fs.answered = False
+        fs.answered_partly = False
+
+
+def waits_for_answers(run: WorkRun) -> bool:
+    """The focus waits for its answers in this turn (write_pending) when they are on the
+    way and it has nothing else to ask, or the question it would ask depends on them:
+    show_if reads the run's answers, or an earlier question waits for one (ask_after)."""
+    if run.status != RunStatus.FOCUS or not run.pending:
+        return False
+    nxt = fl.next_field(run.definition, run.states, confirmed=run.confirmed)
+    if nxt is None or nxt.show_if is not None:
+        return True
+    pending = set(run.pending)
+    for f in run.definition.fields:
+        if f.key == nxt.key:
+            return False
+        fs = run.states[f.key]
+        if not fs.done and not fs.pending and set(f.ask_after) & pending:
+            return True
+    return False
+
+
+def answers_key(run_id: uuid.UUID) -> str:
+    return f"answers:{run_id}"
+
+
+async def enqueue_answers(
+    session: AsyncSession, ctx: TurnContext, run_id: uuid.UUID, now: datetime
+) -> None:
+    """The job that writes the run's pending answers (one per run: the jobs of a run go
+    one after another, scenarios/answers.py)."""
+    payload: dict[str, Any] = {"run_id": str(run_id), "sandbox": ctx.sandbox}
+    if ctx.overrides is not None:
+        payload["overrides"] = asdict(ctx.overrides)
+    await enqueue(
+        session,
+        ANSWERS_JOB,
+        payload,
+        run_at=now,
+        tenant_id=ctx.tenant_id,
+        dedupe_key=answers_key(run_id),
+        on_conflict="earliest",
+    )
+
+
+async def append_dialogue(
+    session: AsyncSession, run_id: uuid.UUID, said: Said, now: datetime
+) -> None:
+    """One more turn in the run's dialogue (the column is deferred: never loaded here)."""
+    await session.execute(
+        update(ScenarioRun)
+        .where(ScenarioRun.id == run_id)
+        .values(dialogue=ScenarioRun.dialogue.op("||")(cast([said.entry(now)], JSONB)))
+    )
 
 
 def apply_confirm(
@@ -670,23 +1017,28 @@ def apply_attachments(
 
 def finish_runs(runs: list[WorkRun], now: datetime | None = None) -> None:
     """field_filled events; all fields complete (and confirmed) → completed, or waiting
-    for an external event. A correction after the «yes» needs a new «yes»."""
+    for an external event. A correction after the «yes» needs a new «yes». A run whose
+    answers are being written in the background is not finished. Called again in the
+    same turn (the focus waited for its answers), it adds nothing twice."""
     for run in runs:
         if not run.takes_data:
             continue
         for key, fs in run.states.items():
             was_complete, was_value = run.snapshot.get(key, (False, None))
-            if fs.complete and (not was_complete or was_value != fs.value):
+            new = not was_complete or was_value != fs.value
+            if fs.complete and new and key not in run.filled:
                 run.filled.append(key)
                 run.add(ActionEvent.FIELD_FILLED, key)
         if run.data.get("confirmed_at") and _corrected(run):
             run.data.pop("confirmed_at", None)
-        if not fl.all_complete(run.states):
+        if not fl.all_complete(run.states) or run.pending:
             continue
         if run.reopened and not run.values_changed:
             run.undo_reopen()  # «also change …» named nothing the run takes
             continue
-        if not run.was_all_complete or run.values_changed:
+        if (
+            not run.was_all_complete or run.values_changed
+        ) and ActionEvent.ALL_FIELDS not in run.event_names():
             run.add(ActionEvent.ALL_FIELDS)
         if not run.confirmed:
             continue  # next_questions asks «is everything correct?»
@@ -720,7 +1072,7 @@ def pass_focus(runs: list[WorkRun]) -> WorkRun | None:
         run.status = RunStatus.FOCUS
         run.add(FOCUSED)
         return run
-    with_data = [r for r in paused if r.answered]
+    with_data = [r for r in paused if r.answered or r.marked]
     # the focus finished (completed / cancelled / waiting), not put aside by the client
     lost = any(r.before == RunStatus.FOCUS and r.status != RunStatus.PAUSED for r in runs)
     pool = with_data or (paused if lost else [])
@@ -875,6 +1227,13 @@ async def run_scenarios(
         and f"{t.scenario}.{t.field.key}" not in picked
         and not only_buttons
     ]
+    background = (
+        []
+        if only_buttons
+        else mark_background(
+            runs, decisions, targets, skip={*contacts, *picked}, turn_id=str(ctx.turn_id)
+        )
+    )
     targets, no_choices = await with_choices(services, ctx, targets, rewritten)
     extracted = await extract(
         services,
@@ -895,51 +1254,62 @@ async def run_scenarios(
         asked=last_bot_message(ctx) or None,
     )
 
-    rounds = 0
-    shown: dict[str, dict[str, Any]] = {}
     checked: set[tuple[str, str]] = set()
-    due = checks_due(runs, first=True)
-    shows = shows_due(runs, checked)
-    while (due or shows) and rounds < MAX_CHECK_ROUNDS:
-        rounds += 1
-        # a value code rejected (typed.py) is asked again without Jev
-        items = [
-            CheckItem(r.definition, r.definition.field(k), r.states[k].value or "", r.states)
-            for r, k in due
-            if not r.states[k].issue
-        ]
-        show_items = [ShowItem(r.definition, r.definition.field(k), r.states) for r, k in shows]
-        failed: dict[tuple[str, str], list[str]] = {}
-        decisions_round = None
-        if items or show_items:
-            outcome = await ask_filters(
-                services,
-                ctx.decide_context(),
-                items,
-                question_language,
-                trace_step=step,
-                shows=show_items,
-            )
-            failed, decisions_round = outcome.failed, outcome.decisions
-        apply_checks(due, failed, now)
-        shown.update(apply_shows(shows, decisions_round, now))
-        checked.update((r.key, k) for r, k in shows)
-        due = checks_due(runs, first=False)
-        shows = shows_due(runs, checked)
-    if due or shows:
-        log.warning(
-            "scenario.recheck_rounds_exceeded",
-            left=[f"{r.key}.{k}" for r, k in [*due, *shows]],
-        )
+    rounds, shown = await check_fields(
+        services,
+        ctx,
+        runs,
+        checks_due(runs, first=True),
+        question_language=question_language,
+        step=step,
+        now=now,
+        checked=checked,
+    )
 
     confirm = apply_confirm(focus_before, decisions, now)
     receipts = await check_receipts(services, ctx, runs, prompts.get(RECEIPT_VISION_KEY))
     files = apply_attachments(runs, ctx.attachments, receipts, message_ids=message_ids, now=now)
 
+    waited: Written | None = None
+
+    async def wait_for(run: WorkRun) -> None:
+        """The focus waits for its answers once in this turn (waits_for_answers)."""
+        nonlocal waited, rounds
+        said = await load_said(services, run, said_now(ctx, run, rewritten))
+        waited = await write_pending(
+            services,
+            ctx,
+            [run],
+            said,
+            prompt=prompts.get("extract"),
+            language=reply_language,
+            now=now,
+        )
+        more_rounds, more_shown = await check_fields(
+            services,
+            ctx,
+            runs,
+            waited.due,
+            question_language=question_language,
+            step=step,
+            now=now,
+            checked=checked,
+        )
+        rounds += more_rounds
+        shown.update(more_shown)
+
+    focus = focus_of(runs)
+    if not wants_human and focus is not None and waits_for_answers(focus):
+        await wait_for(focus)
     if not wants_human:
         close_failed(runs, now)
     finish_runs(runs, now)
     passed = pass_focus(runs)
+    if passed is not None and waited is None and not wants_human and waits_for_answers(passed):
+        # the next part took the dialogue with nothing to ask but what is being written
+        await wait_for(passed)
+        finish_runs(runs, now)
+        passed = pass_focus(runs) or passed
     next_questions(runs, ask=not wants_human)
 
     catalog_options, catalog_ask = await _catalog_options(services, ctx, runs, rewritten)
@@ -965,6 +1335,16 @@ async def run_scenarios(
         "contacts": contacts,
         "picks": picked,
         "extract_targets": [f"{t.scenario}.{t.field.key}" for t in targets],
+        "background": background,
+        "waited": (
+            {
+                "fields": [f"{r.key}.{k}" for r, k in waited.due],
+                "not_found": waited.not_found,
+                "extracted": waited.extracted,
+            }
+            if waited is not None
+            else None
+        ),
         "catalog_no_choices": no_choices,
         "catalog_ask": catalog_ask,
         "extracted": {f"{s}.{f}": v for (s, f), v in extracted.values.items()},
@@ -996,12 +1376,23 @@ async def run_scenarios(
     }
     if extracted.llm_call_id:
         step["extract_llm_call_id"] = extracted.llm_call_id
+    if waited is not None and waited.llm_call_ids:
+        step["waited_llm_call_ids"] = waited.llm_call_ids
     step.update(
-        {k: summary[k] for k in ("started", "blocked", "focus", "rejected", "check_rounds")}
+        {
+            k: summary[k]
+            for k in ("started", "blocked", "focus", "rejected", "check_rounds", "background")
+        }
     )
     result = ScenarioTurn(all_runs, plan, summary)
     result.write = make_write(
-        services, ctx, all_runs, client_language, reply_language, receipts=receipts
+        services,
+        ctx,
+        all_runs,
+        client_language,
+        reply_language,
+        receipts=receipts,
+        rewritten=rewritten,
     )
     return result
 
@@ -1034,7 +1425,7 @@ def _untouched_waiting(run: WorkRun) -> bool:
     )
 
 
-async def _timers(
+async def update_timers(
     session: AsyncSession, ctx: TurnContext, run: WorkRun, row: ScenarioRun, now: datetime
 ) -> None:
     if not run.is_open:
@@ -1129,6 +1520,7 @@ def make_write(
     reply_language: str | None,
     *,
     receipts: list[ReceiptCheck] | None = None,
+    rewritten: str | None = None,
 ) -> WriteFn:
     async def write(session: AsyncSession, conv: Conversation, turn: Turn) -> None:
         from app.actions.registry import fire
@@ -1192,6 +1584,19 @@ def make_write(
             row.client_language = client_language or row.client_language
             row.reply_language = reply_language or row.reply_language
 
+        # background_answers: the run's own copy of the dialogue — the turns it heard in the
+        # focus and the ones whose words answer its questions — and the job that writes the
+        # answers on the way
+        for run in runs:
+            row = rows.get(run.id)
+            if row is None or not run.definition.background_answers:
+                continue
+            if run.marked or RunStatus.FOCUS in (run.status, run.before):
+                said = said_now(ctx, run, rewritten or ctx.input_text)
+                await append_dialogue(session, row.id, said, now)
+            if run.pending and run.is_open:
+                await enqueue_answers(session, ctx, run.id, now)
+
         if receipts:
             await _write_receipts(
                 session,
@@ -1213,6 +1618,6 @@ def make_write(
                 continue
             if run.events:
                 await fire(session, services, row, run.definition, run.events, now=now)
-            await _timers(session, ctx, run, row, now)
+            await update_timers(session, ctx, run, row, now)
 
     return write
