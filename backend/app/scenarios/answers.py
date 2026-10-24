@@ -13,10 +13,16 @@ puts the answers into the run while the client answers it.
   answers are written under it, over the run as it is then: a field a turn changed
   meanwhile keeps the turn's state and stays pending (the next job reads it again).
 - Every LLM call and decision is paid in a turn of its own (turns.route.kind =
-  "scenario_answers", no client message, no reply): the run's usage counts it.
+  "scenario_answers", no client message): the run's usage counts it.
+- A run in the focus left with nothing to ask (its questions skipped or the run focused
+  while its answers were being written: a pending field is not asked) gets its next
+  question from the job, once the answers are in — worded by the reply model in the job's
+  turn («is everything correct?» as the scenario says it), sent with the answers in one
+  write: the client never sees the answers written and no question.
 """
 
 import copy
+import dataclasses
 import time
 import uuid
 from dataclasses import dataclass
@@ -27,11 +33,15 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.actions.registry import fire
+from app.channels.outbox import queue_outgoing
 from app.core import lease
+from app.core import respond as respond_step
 from app.core.context import TurnContext
+from app.core.pipeline import PROMPT_KEYS, REQUIRED_PROMPTS
+from app.core.routing import Route
 from app.core.tenant_settings import effective_settings
 from app.core.trace import Trace
-from app.core.turn import turn_totals
+from app.core.turn import load_history, turn_totals
 from app.db.models import (
     OPEN_STATUSES,
     Channel,
@@ -39,6 +49,9 @@ from app.db.models import (
     Conversation,
     Job,
     JobStatus,
+    Message,
+    MessageRole,
+    RunStatus,
     Scenario,
     ScenarioRun,
     Tenant,
@@ -53,7 +66,10 @@ from app.llm.service import Overrides
 from app.logging import get_logger
 from app.prompts.builtin import EXTRACT_KEY
 from app.prompts.store import load_prompts
+from app.scenarios import fields as fl
 from app.scenarios.fields import FieldState, dump_states, load_states
+from app.scenarios.plan import build_plan, confirm_question
+from app.scenarios.questions import CONFIRM
 from app.scenarios.runtime import (
     ANSWERS_JOB,
     Written,
@@ -65,8 +81,8 @@ from app.scenarios.runtime import (
     update_timers,
     write_pending,
 )
-from app.scenarios.schema import ScenarioDef
-from app.scenarios.store import open_run_row
+from app.scenarios.schema import ActionEvent, ScenarioDef
+from app.scenarios.store import OpenRun, open_run_row
 from app.scenarios.work import WorkRun
 
 if TYPE_CHECKING:
@@ -147,6 +163,15 @@ class _Job:
     language: str
 
 
+@dataclass
+class _Ask:
+    """The question the job asks itself (`_question`)."""
+
+    key: str  # the field, or CONFIRM
+    text: str
+    meta: dict[str, Any]
+
+
 async def scenario_answers_job(ctx: JobContext) -> None:
     services: Services = ctx.services
     run_id = uuid.UUID(ctx.payload["run_id"])
@@ -210,7 +235,8 @@ async def scenario_answers_job(ctx: JobContext) -> None:
                 check_rounds=rounds,
                 llm_call_ids=written.llm_call_ids,
             )
-        await _write(services, ctx, tctx, run, start, written, started)
+        ask = await _question(services, tctx, run, start, written, job.language, now)
+        await _write(services, ctx, tctx, run, start, written, started, ask)
     except Retry:
         await _close_turn(services, tctx, TurnStatus.FAILED, started, "conversation busy")
         raise
@@ -360,6 +386,7 @@ async def _write(
     start: dict[str, FieldState],
     written: Written,
     started: float,
+    ask: _Ask | None,
 ) -> None:
     """The answers go into the run as it is now, under the conversation lease."""
     owner = f"job:{job.id}"
@@ -382,7 +409,7 @@ async def _write(
                 ScenarioRun, run.id, with_for_update=True, populate_existing=True
             )
             if row is not None and row.status in OPEN_STATUSES:
-                await _merge(session, services, ctx, row, run, start, written, now)
+                await _merge(session, services, ctx, conv, row, run, start, written, ask, now)
             turn = await session.get(Turn, ctx.turn_id)
             if turn is not None:
                 _finish(
@@ -394,29 +421,112 @@ async def _write(
         raise
 
 
-async def _merge(
-    session: AsyncSession,
-    services: "Services",
-    ctx: TurnContext,
+def _merged(
+    opened: OpenRun,
     row: ScenarioRun,
     run: WorkRun,
     start: dict[str, FieldState],
     written: Written,
     now: datetime,
-) -> None:
-    scenario = await session.get(Scenario, row.scenario_id)
-    opened = open_run_row(row, scenario) if scenario is not None else None
-    if opened is None:
-        return
+) -> WorkRun:
+    """The run as the job leaves it: its answers put over the row as it is now."""
     final = WorkRun.from_open(opened)
     read = {k: turns for (rid, k), turns in written.read.items() if rid == run.id}
     final.states = merge_states(final.definition, row.fields, start, run.states, read)
     if final.takes_data:
         # a run whose last answers came in: completed (or waiting) as in a turn
         finish_runs([final], now)
+    return final
+
+
+def _to_ask(final: WorkRun) -> str | None:
+    """What a run in the focus that is asking nothing has to ask once its answers are in
+    (the field, or CONFIRM); None — it asks something already, or waits for more
+    answers, or has nothing to ask."""
+    if final.status != RunStatus.FOCUS or final.asking is not None or final.pending:
+        return None
+    nxt = fl.next_field(final.definition, final.states, confirmed=final.confirmed)
+    if nxt is not None:
+        return nxt.key
+    if fl.complete_except_receipts(final.definition, final.states) and not final.confirmed:
+        return CONFIRM
+    return None
+
+
+async def _question(
+    services: "Services",
+    ctx: TurnContext,
+    run: WorkRun,
+    start: dict[str, FieldState],
+    written: Written,
+    language: str,
+    now: datetime,
+) -> _Ask | None:
+    """The question of a run left with nothing to ask, worded before the answers are
+    written (the model is not called under the lease); `_merge` sends it if the run still
+    wants it then. A field is worded by the reply model as a bot turn words it (the card,
+    the dialogue, what is said of it already); «is everything correct?» is the scenario's
+    own text."""
+    if ctx.handover:
+        return None
+    async with services.sm() as session:
+        row = await session.get(ScenarioRun, run.id)
+        scenario = await session.get(Scenario, row.scenario_id) if row is not None else None
+        opened = open_run_row(row, scenario) if row is not None and scenario is not None else None
+        if opened is None or row.status not in OPEN_STATUSES:
+            return None
+        final = _merged(opened, row, run, start, written, now)
+        key = _to_ask(final)
+        if key is None:
+            return None
+        if key == CONFIRM:
+            text = confirm_question(run.definition, language)
+            return _Ask(key, text, {}) if text else None
+        wanted = run.definition.history_messages or services.settings.history_messages
+        history = await load_history(session, ctx.conversation_id, ctx.turn_id, wanted)
+    asking = WorkRun.from_open(opened)  # no answers accepted, no events: nothing was said
+    asking.states = final.states
+    asking.asking = key
+    plan = build_plan([asking], language=language, client_question=False)
+    if plan is None or not plan.asks:
+        return None
+    plan.bot_turn = True
+    prompts = await load_prompts(services.sm, ctx.tenant_id, PROMPT_KEYS, required=REQUIRED_PROMPTS)
+    # the bot speaks first: no client words, no decisions for an operator to pick from
+    words = dataclasses.replace(ctx, input_text="", history=history, unsure_operator=[])
+    reply = await respond_step.respond(services, words, prompts, Route(), "", language, plan=plan)
+    if not reply.text:
+        return None
+    return _Ask(
+        key,
+        reply.text,
+        {"prompt_key": reply.prompt_key, "prompt_version": reply.prompt_version},
+    )
+
+
+async def _merge(
+    session: AsyncSession,
+    services: "Services",
+    ctx: TurnContext,
+    conv: Conversation,
+    row: ScenarioRun,
+    run: WorkRun,
+    start: dict[str, FieldState],
+    written: Written,
+    ask: _Ask | None,
+    now: datetime,
+) -> None:
+    scenario = await session.get(Scenario, row.scenario_id)
+    opened = open_run_row(row, scenario) if scenario is not None else None
+    if opened is None:
+        return
+    final = _merged(opened, row, run, start, written, now)
+    if ask is not None and _to_ask(final) == ask.key and not conv.handover:
+        await _ask(session, services, ctx, conv, final, ask, now)
     turn_id = str(ctx.turn_id)
     row.status = final.status
     row.fields = dump_states(final.states)
+    row.asking = final.asking
     if not final.is_open:
         row.asking = None
         row.finished_at = now
@@ -433,6 +543,7 @@ async def _merge(
         not_found=written.not_found,
         pending=final.pending,
         status=final.status,
+        asked=final.asking if ask is not None else None,
     )
     if ctx.sandbox:
         return  # sandbox runs never send anything outside
@@ -440,3 +551,44 @@ async def _merge(
         await fire(session, services, row, final.definition, final.events, now=now)
     if final.status != final.before:
         await update_timers(session, ctx, final, row, now)
+
+
+async def _ask(
+    session: AsyncSession,
+    services: "Services",
+    ctx: TurnContext,
+    conv: Conversation,
+    final: WorkRun,
+    ask: _Ask,
+    now: datetime,
+) -> None:
+    """The job's question goes out with its answers. Not when the client wrote meanwhile:
+    the turn of those words asks."""
+    waiting = await session.scalar(
+        select(Message.id)
+        .where(
+            Message.conversation_id == conv.id,
+            Message.role == MessageRole.CLIENT,
+            Message.turn_id.is_(None),
+        )
+        .limit(1)
+    )
+    if waiting is not None:
+        return
+    try:
+        await queue_outgoing(
+            session,
+            services,
+            conv,
+            ask.text,
+            role=MessageRole.BOT,
+            now=now,
+            meta={"source": "scenario", "scenario": final.key, "asked_by": KIND, **ask.meta},
+            turn_id=ctx.turn_id,
+        )
+    except Conflict as exc:
+        log.info("scenario.answers_ask_skipped", reason=exc.code, run_id=str(final.id))
+        return
+    if ask.key != CONFIRM and fl.register_ask(final.states, final.asking, ask.key):
+        final.add(ActionEvent.FIELD_STUCK, ask.key)
+    final.asking = ask.key

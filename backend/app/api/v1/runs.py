@@ -94,7 +94,7 @@ from app.scenarios.outside import (
     waiting_say,
     write_run,
 )
-from app.scenarios.plan import CONFIRM_QUESTION
+from app.scenarios.plan import confirm_question
 from app.scenarios.questions import CONFIRM
 from app.scenarios.runtime import ANSWERS_JOB
 from app.scenarios.schema import (
@@ -228,15 +228,6 @@ def _text(defn: ScenarioDef, value: str | dict[str, str] | None, language: str) 
     return defn.text(value, language).text if value else None
 
 
-def _confirm_question(defn: ScenarioDef, language: str) -> str | None:
-    if not defn.needs_confirm:
-        return None
-    own = defn.confirm.question if defn.confirm is not None else None
-    if own is not None:
-        return _text(defn, own, language)
-    return CONFIRM_QUESTION.get(language, CONFIRM_QUESTION["en"])
-
-
 def _options(defn: ScenarioDef, f: FieldDef, language: str) -> list[OptionOut] | None:
     if f.type != FieldType.CHOICE:
         return None
@@ -270,7 +261,7 @@ def run_out(
         language=language,
         needs_confirm=defn.needs_confirm,
         confirmed=confirmed(defn, dict(run.data or {})),
-        confirm_question=_confirm_question(defn, language),
+        confirm_question=confirm_question(defn, language),
         fields=[
             FieldOut(
                 key=f.key,
@@ -595,7 +586,7 @@ async def scenario_questions(
         title=_text(defn, defn.title, code) or defn.key,
         language=code,
         needs_confirm=defn.needs_confirm,
-        confirm_question=_confirm_question(defn, code),
+        confirm_question=confirm_question(defn, code),
         fields=[
             ScenarioField(
                 key=f.key,
@@ -1028,7 +1019,7 @@ def _ask_next(
         change.say = _text(defn, nxt.question, language)
     elif fl.complete_except_receipts(defn, states) and not confirmed(defn, data):
         run.asking = CONFIRM
-        change.say = _confirm_question(defn, language)
+        change.say = confirm_question(defn, language)
     else:
         run.asking = None
 

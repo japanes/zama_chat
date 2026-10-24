@@ -37,6 +37,17 @@ CONFIRM_QUESTION = {
 }
 
 
+def confirm_question(defn: ScenarioDef, language: str) -> str | None:
+    """«Is everything correct?» as the scenario says it, worded by no model (a question set
+    outside a turn: POST /v1/runs/{id}/skip, the answers written in the background)."""
+    if not defn.needs_confirm:
+        return None
+    own = defn.confirm.question if defn.confirm is not None else None
+    if own is not None:
+        return defn.text(own, language).text
+    return CONFIRM_QUESTION.get(language, CONFIRM_QUESTION["en"])
+
+
 @dataclass
 class CatalogAsk:
     """What goes with the question of a catalog field (scenarios/catalog.py)."""

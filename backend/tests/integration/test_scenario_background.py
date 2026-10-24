@@ -4,13 +4,22 @@ scenario_answers writes the answers after the reply (Worker.run_due()). The fake
 gives rewrite, extract and reply in that order; the job takes one extract."""
 
 import json
+import uuid
 
 import pytest
 from sqlalchemy import select
 
-from app.db.models import JobStatus, RunStatus, ScenarioRun, Turn, TurnStatus
+from app.db.models import (
+    JobStatus,
+    Message,
+    MessageRole,
+    RunStatus,
+    ScenarioRun,
+    Turn,
+    TurnStatus,
+)
 from app.scenarios.fields import PARTLY
-from app.scenarios.questions import FULL, IN_PART, MORE, NONE
+from app.scenarios.questions import CONFIRM, FULL, IN_PART, MORE, NONE
 from app.scenarios.runtime import ANSWERS_JOB
 from tests.conftest import chat_reply
 from tests.integration.test_scenario_flow import _scenario_step, _setup
@@ -208,3 +217,124 @@ async def test_nothing_found_asks_the_question_again(client, services, fake_llm)
     assert run.fields["offer"]["value"] == "весільні торти"
     years = run.fields["years"]
     assert (years["value"], years["pending"], years["answered"]) == (None, [], False)
+
+
+async def _story_then_skip(client, env, services, fake_llm, *, team=IN_PART):
+    """«years» is asked after the story and skipped while «offer» and «team» are being
+    written: the run has nothing to ask until the job is done."""
+    body = await _say(
+        client,
+        env,
+        fake_llm,
+        FIRST,
+        route={"start:interview.wants_help": True, "field:interview.niche": FULL},
+        extract=_extract(niche="торти", offer=None, years=None, team=None),
+    )
+    conv = body["conversation_id"]
+    route = {
+        "field:interview.niche": NONE,
+        "field:interview.offer": FULL,
+        "field:interview.years": NONE,
+        "field:interview.team": team,
+    }
+    await _say(client, env, fake_llm, STORY, route=route)
+    run = await _run(services, conv)
+    assert run.asking == "years"
+    resp = await client.post(
+        f"/v1/runs/{run.id}/skip", json={"messages": 10}, headers=env.bundle.auth
+    )
+    assert resp.status_code == 200, resp.text
+    state = resp.json()
+    assert state["run"]["asking"] is None
+    assert state["run"]["answers_pending"] == ["offer", "team"]
+    assert state["messages"][-1]["text"] == "Добре."  # the story's reply: nothing new is said
+    return conv, run.id
+
+
+async def _bot_messages(services, conversation_id) -> list[Message]:
+    async with services.sm() as session:
+        rows = await session.execute(
+            select(Message)
+            .where(Message.conversation_id == uuid.UUID(str(conversation_id)))
+            .where(Message.role == MessageRole.BOT)
+            .order_by(Message.created_at, Message.id)
+        )
+        return list(rows.scalars())
+
+
+async def test_a_question_skipped_meanwhile_is_followed_by_the_jobs_own(client, services, fake_llm):
+    env = await _setup(services, intro_data())
+    conv, run_id = await _story_then_skip(client, env, services, fake_llm)
+    before = len(await _bot_messages(services, conv))
+
+    # the job writes the answers, then words the question that is left — the partial
+    # «team», with what is said of it — and sends it with the answers
+    fake_llm.push(
+        _extract(offer="весільні торти", team="вдвох з дружиною"),
+        chat_reply("Пам'ятаю, ви працюєте вдвох з дружиною. Хто ще у команді?"),
+    )
+    await env.worker.run_due()
+    assert not fake_llm.script
+    clarify = _scenario_step(fake_llm)["clarify"]
+    assert clarify["client_answer"] == "вдвох з дружиною"
+    run = await _run(services, conv)
+    assert run.asking == "team"
+    assert run.fields["team"]["state"] == "partial"
+    assert run.fields["offer"]["pending"] == run.fields["team"]["pending"] == []
+    messages = await _bot_messages(services, conv)
+    assert len(messages) == before + 1
+    asked = messages[-1]
+    assert asked.text == "Пам'ятаю, ви працюєте вдвох з дружиною. Хто ще у команді?"
+    assert asked.meta["asked_by"] == ANSWERS_JOB
+    # the question is paid in the job's turn: the caller's usage of the run has it
+    [written] = await _answer_turns(services, run_id)
+    assert asked.turn_id == written.id
+    resp = await client.post(
+        f"/v1/runs/{run_id}/usage", json={"turns": [str(written.id)]}, headers=env.bundle.auth
+    )
+    assert resp.status_code == 200, resp.text
+    [usage] = resp.json()["usage"]
+    assert [c["role"] for c in usage["calls"] if c["kind"] == "llm"] == ["extract", "reply"]
+
+
+async def test_all_written_after_a_skip_asks_to_confirm(client, services, fake_llm):
+    data = intro_data()
+    data["completion"] = "explicit_yes"
+    env = await _setup(services, data)
+    conv, _ = await _story_then_skip(client, env, services, fake_llm, team=FULL)
+
+    # nothing left to ask: «is everything correct?» as the scenario says it, no model
+    fake_llm.push(_extract(offer="весільні торти", team="вдвох з дружиною"))
+    await env.worker.run_due()
+    assert not fake_llm.script
+    run = await _run(services, conv)
+    assert (run.status, run.asking) == (RunStatus.FOCUS, CONFIRM)
+    messages = await _bot_messages(services, conv)
+    assert messages[-1].text == "Усе правильно?"
+    assert messages[-1].meta["asked_by"] == ANSWERS_JOB
+
+
+async def test_the_job_asks_nothing_when_the_client_wrote_meanwhile(client, services, fake_llm):
+    env = await _setup(services, intro_data())
+    conv, _ = await _story_then_skip(client, env, services, fake_llm)
+    before = await _bot_messages(services, conv)
+    # words that came in after the skip: their turn asks
+    async with services.sm() as session, session.begin():
+        session.add(
+            Message(
+                tenant_id=before[-1].tenant_id,
+                channel_id=before[-1].channel_id,
+                conversation_id=before[-1].conversation_id,
+                role=MessageRole.CLIENT,
+                text="А ще в нас є кав'ярня",
+            )
+        )
+    fake_llm.push(
+        _extract(offer="весільні торти", team="вдвох з дружиною"),
+        chat_reply("Хто ще у команді?"),
+    )
+    await env.worker.run_due()
+    run = await _run(services, conv)
+    assert run.asking is None
+    assert run.fields["offer"]["value"] == "весільні торти"
+    assert len(await _bot_messages(services, conv)) == len(before)
