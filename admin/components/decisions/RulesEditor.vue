@@ -57,9 +57,9 @@ const rows = defineModel<RuleRow[]>({ required: true })
 const { t } = useI18n()
 
 const MODES = ['jev', 'llm', 'shadow']
-const BELOW = ['llm', 'keep', 'ask_client', 'operator']
+const BELOW = ['safe', 'llm', 'keep', 'ask_client', 'operator']
 
 function add() {
-  rows.value.push({ pattern: '', mode: 'jev', threshold: 0.7, below: 'llm', note: '' })
+  rows.value.push({ pattern: '', mode: 'jev', threshold: 0.7, below: 'safe', note: '' })
 }
 </script>

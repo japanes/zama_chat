@@ -213,6 +213,9 @@ class UsageCall(BaseModel):
     # together (they go one after another)
     latency_ms: int | None = None
     error: str | None = None
+    # a model call: how hard the model thought (model_roles.reasoning_effort: none, low…);
+    # None — none was asked, the model's own default
+    effort: str | None = None
 
 
 class UsageStep(BaseModel):
@@ -1102,6 +1105,7 @@ async def _usage(session: AsyncSession, turn_id: uuid.UUID) -> UsageOut | None:
             cost=float(c.cost or 0),
             latency_ms=c.latency_ms,
             error=c.error,
+            effort=(c.request or {}).get("reasoning", {}).get("effort"),
         )
         for c in (
             await session.execute(

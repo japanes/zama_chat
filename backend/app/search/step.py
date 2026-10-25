@@ -68,6 +68,9 @@ def search_question(content: Content) -> Question | None:
         "message? Where?",
         {o: _CRITERIA[o] for o in options},
         neutral=NONE,
+        # unsure: looked up all the same — a needless lookup costs less than a reply
+        # without the company's facts
+        unsure_as={o: o for o in options if o != NONE},
     )
 
 

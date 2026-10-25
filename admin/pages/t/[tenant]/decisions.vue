@@ -230,7 +230,7 @@ const { errorText } = useErrorText()
 const { path, base } = useTenant()
 usePage(() => [{ label: t('nav.decisions') }])
 
-const BELOW = ['llm', 'keep', 'ask_client', 'operator']
+const BELOW = ['safe', 'llm', 'keep', 'ask_client', 'operator']
 
 const days = ref(7)
 const open = ref<string | null>(null)

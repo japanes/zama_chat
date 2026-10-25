@@ -142,6 +142,8 @@
       "remove_confirm": "Delete the question “{name}”? Everything that refers to it goes with it.",
       "only_scenario": "Scenario only",
       "only_scenario_hint": "While this scenario is open in the conversation, the bot does nothing but its questions: no separate reply to greetings or the client's own questions, no hand-over to a person, no knowledge search, no other scenario starts by itself. Whatever the client writes goes to the answers. Off — the bot runs the scenario and answers everything else as usual.",
+      "client_questions": "Answer the client's questions",
+      "client_questions_hint": "Works together with «Scenario only». When the client asks something of their own («why do you need to know?»), the bot answers it first, then goes on with the scenario. The bot does not search the knowledge base for it. Off — whatever the client writes goes to the answers of the scenario's questions.",
       "background_answers": "Write the answers in the background",
       "background_answers_hint": "When the client answers several questions in one message, the bot does not wait for all the answers to be written: it asks the next question at once, and the text answers are written while the client replies. A question the client answered only in part is asked later, for what is missing. Off — every answer is written before the bot replies.",
       "memory": "What the bot remembers when it asks",

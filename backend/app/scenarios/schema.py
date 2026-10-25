@@ -403,6 +403,9 @@ class ScenarioDef(Strict):
     # no other scenario starts by itself, no answer to the client's own question — whatever
     # the client writes goes to the steps (core/pipeline.py, scenarios/questions.py)
     only_scenario: bool | None = None
+    # with only_scenario: the client's own question is noticed all the same (one more
+    # question of the route, client_question) and the reply answers it before the step
+    client_questions: bool | None = None
     # started only by the caller (POST /v1/runs/start), never by the client's words: its
     # `start` questions are never asked, and an open run of it never takes the dialogue
     # because of them
@@ -433,7 +436,7 @@ class ScenarioDef(Strict):
     def _no_reopen(cls, value: Reopen | None) -> Reopen | None:
         return None if value == Reopen() else value
 
-    @field_validator("only_scenario", "start_by_caller", "background_answers")
+    @field_validator("only_scenario", "client_questions", "start_by_caller", "background_answers")
     @classmethod
     def _no_only(cls, value: bool | None) -> bool | None:
         return True if value else None

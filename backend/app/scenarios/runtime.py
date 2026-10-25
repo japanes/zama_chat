@@ -282,7 +282,7 @@ def extract_targets(
     """Fields to extract: marked by `field:` questions; the corrected one; every field of
     a run started in this turn; of a reopened run — every field, the answers as
     corrections. A field whose answers are written in the background (mark_background)
-    is extracted here only when corrected."""
+    is not extracted here, a correction of it neither: the job writes it."""
     change = decisions.value(CHANGE_FIELD, NONE)
     targets = []
     for run in runs:
@@ -293,10 +293,12 @@ def extract_targets(
             if f.type in ATTACHMENT_TYPES:
                 continue  # filled from the message's files, not from words
             fs = run.states[f.key]
-            correction = (
-                (run is focus_before and change == f.key) or run.reopened
-            ) and fs.value is not None
             background = fl.background_field(defn, f) and not (run.is_new or run.reopened)
+            correction = (
+                ((run is focus_before and change == f.key) or run.reopened)
+                and fs.value is not None
+                and not background
+            )
             marked = (
                 says_answer(decisions.value(field_key(defn.key, f.key)))
                 and not fs.complete
@@ -322,14 +324,18 @@ def mark_background(
     *,
     skip: set[str],
     turn_id: str,
+    focus_before: WorkRun | None = None,
 ) -> list[str]:
     """background_answers: the text fields whose question the client's words answer — in
     full, in part, or adding to the answer the field has (the decider's `field:` answers) —
     are not read in this turn: the turn goes on the field's `pending` list, and the job
     scenario_answers writes the answer from the run's dialogue (scenarios/answers.py).
-    A run started or reopened in this turn, a correction (`targets`) and a button pressed
-    (`skip`) are read in the turn as usual. Returns the fields marked ("scenario.field")."""
+    A correction of such an answer (change_field) waits for the job too (`corrects`): it
+    writes the answer anew. A run started or reopened in this turn, a field read in the
+    turn (`targets`) and a button pressed (`skip`) are read in the turn as usual. Returns
+    the fields marked ("scenario.field")."""
     inline = {(t.run_id, t.field.key) for t in targets}
+    change = decisions.value(CHANGE_FIELD, NONE)
     done: list[str] = []
     for run in runs:
         if not run.takes_data or run.is_new or run.reopened:
@@ -345,11 +351,15 @@ def mark_background(
                 or fs.skipped
             ):
                 continue
-            value = decisions.value(field_key(defn.key, f.key))
-            if not says_answer(value):
-                continue
-            fs.answered = value != IN_PART
-            fs.answered_partly = value == IN_PART
+            if run is focus_before and change == f.key and fs.value is not None:
+                # «not 5 years but 8»: the answer stays as it is until the job rewrites it
+                run.corrects.append(f.key)
+            else:
+                value = decisions.value(field_key(defn.key, f.key))
+                if not says_answer(value):
+                    continue
+                fs.answered = value != IN_PART
+                fs.answered_partly = value == IN_PART
             if turn_id not in fs.pending:
                 fs.pending.append(turn_id)
             run.marked.append(f.key)
@@ -610,6 +620,7 @@ class Said:
     rewritten: str | None = None
     messages: tuple[str, ...] = ()
     asking: str | None = None  # the field the bot asked in that message
+    corrects: tuple[str, ...] = ()  # the fields whose answers these words correct
 
     @classmethod
     def from_entry(cls, entry: dict[str, Any]) -> "Said":
@@ -620,6 +631,7 @@ class Said:
             rewritten=entry.get("rewritten"),
             messages=tuple(str(m) for m in entry.get("messages") or []),
             asking=entry.get("asking"),
+            corrects=tuple(str(k) for k in entry.get("corrects") or []),
         )
 
     def entry(self, now: datetime) -> dict[str, Any]:
@@ -634,6 +646,8 @@ class Said:
             out["rewritten"] = self.rewritten
         if self.asking:
             out["asking"] = self.asking
+        if self.corrects:
+            out["corrects"] = list(self.corrects)
         return out
 
 
@@ -646,6 +660,7 @@ def said_now(ctx: TurnContext, run: WorkRun, rewritten: str) -> Said:
         rewritten=rewritten,
         messages=tuple(str(i) for i in ctx.pending_ids),
         asking=run.asking_before,
+        corrects=tuple(run.corrects),
     )
 
 
@@ -695,9 +710,11 @@ async def write_pending(
 ) -> Written:
     """background_answers: writes the answers waiting on the fields' `pending` lists from
     the client's words of those turns — one extract call for the fields answered in the
-    same turns. The words add to the answer a field has. A field the words do not answer
-    after all is unanswered again: the bot asks it in its turn. A turn whose words the run
-    does not have is dropped. The caller runs the filters on `due` (check_fields)."""
+    same turns. The words add to the answer a field has, or — the client corrects it
+    (Said.corrects) — replace it, and what depends on it is checked again. A field the words
+    do not answer after all is unanswered again: the bot asks it in its turn. A turn whose
+    words the run does not have is dropped. The caller runs the filters on `due`
+    (check_fields)."""
     out = Written()
     groups: dict[tuple[str, ...], list[tuple[WorkRun, FieldDef]]] = {}
     for run in runs:
@@ -720,16 +737,20 @@ async def write_pending(
                 out.not_found.append(f"{run.key}.{f.key}")
     for turns, items in groups.items():
         words = [said[t] for t in turns]
-        targets = [
-            Target(
-                run.id,
-                run.definition,
-                f,
-                current=run.states[f.key].value,
-                augment=run.states[f.key].value is not None,
+        targets = []
+        for run, f in items:
+            value = run.states[f.key].value
+            correction = value is not None and any(f.key in w.corrects for w in words)
+            targets.append(
+                Target(
+                    run.id,
+                    run.definition,
+                    f,
+                    current=value,
+                    correction=correction,
+                    augment=value is not None and not correction,
+                )
             )
-            for run, f in items
-        ]
         extracted = await extract(
             services,
             ctx,
@@ -1231,7 +1252,12 @@ async def run_scenarios(
         []
         if only_buttons
         else mark_background(
-            runs, decisions, targets, skip={*contacts, *picked}, turn_id=str(ctx.turn_id)
+            runs,
+            decisions,
+            targets,
+            skip={*contacts, *picked},
+            turn_id=str(ctx.turn_id),
+            focus_before=focus_before,
         )
     )
     targets, no_choices = await with_choices(services, ctx, targets, rewritten)

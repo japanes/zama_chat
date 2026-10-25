@@ -72,6 +72,8 @@ def filter_questions(item: CheckItem, language: str) -> list[Question]:
                 DecisionType.BOOLEAN,
                 t["filter"].format(q=q.text, ask=ask.text),
                 {"true": yes, "false": no},
+                # unsure: the answer passes — the client is not asked again over a doubt
+                unsure_as={True: True, False: True},
             )
         )
     return out

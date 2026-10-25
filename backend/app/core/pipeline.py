@@ -13,7 +13,8 @@ A channel without scenarios (and without open runs) goes exactly the stage 1 way
 
 An open run of a scenario with `only_scenario` makes the turn the scenarios' alone: the
 route asks no service_type / wants_human, nothing is searched, no other scenario starts by
-itself and there is no client_question — the reply is the scenario step and nothing else.
+itself and there is no client_question (unless the scenario has `client_questions`: then the
+reply answers the client's own question first) — the reply is the scenario step.
 
 The scenario in the focus may want more or fewer last messages of the dialogue than the
 default (`history_messages` of its file); the card of the dialogue goes to the rewrite

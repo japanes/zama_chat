@@ -2,6 +2,7 @@
 
 import json
 import uuid
+from dataclasses import replace
 from decimal import Decimal
 from typing import Any
 
@@ -354,6 +355,9 @@ async def test_answer_that_does_not_fit_is_not_used(jlog):
 
 # --- threshold ---------------------------------------------------------------------------
 
+# the rule «below the threshold — ask the LLM» (no rule: the careful reading, below)
+LLM_BELOW = DecisionPolicy(rules={"*": Rule("*", PolicyMode.JEV, 0.7, BelowAction.LLM)})
+
 
 async def test_only_unsure_questions_go_to_fallback(jlog):
     gateway = Gateway(
@@ -365,7 +369,7 @@ async def test_only_unsure_questions_go_to_fallback(jlog):
         )
     )
     fallback = FakeFallback({"wants_human": True})
-    decider = make_decider(gateway, fallback=fallback, policy=DecisionPolicy())
+    decider = make_decider(gateway, fallback=fallback, policy=LLM_BELOW)
     result = await decider.decide(
         "s", [yes_no("wants_human"), choice("service_type", "none", "greeting_only")], CTX
     )
@@ -384,7 +388,9 @@ async def test_only_unsure_questions_go_to_fallback(jlog):
 async def test_threshold_by_key(jlog):
     gateway = Gateway(ok({"start:x.y": {"probability": 0.85}}))
     fallback = FakeFallback({"start:x.y": False})
-    policy = DecisionPolicy(thresholds={"start:*": 0.9})
+    policy = DecisionPolicy(
+        rules={"start:*": Rule("start:*", PolicyMode.JEV, 0.9, BelowAction.LLM)}
+    )
     result = await make_decider(gateway, fallback=fallback, policy=policy).decide(
         "s", [yes_no("start:x.y")], CTX
     )
@@ -394,13 +400,40 @@ async def test_threshold_by_key(jlog):
 
 async def test_fallback_failure_keeps_unsure_jev_answer(jlog):
     gateway = Gateway(ok({"a": {"probability": 0.6}}))
-    decider = make_decider(gateway, fallback=FakeFallback(fail=True))
+    decider = make_decider(gateway, fallback=FakeFallback(fail=True), policy=LLM_BELOW)
     result = await decider.decide("s", [yes_no("a")], CTX)
 
     assert "decisions.fallback_failed" in jlog.names()
     answer = result.answers["a"]
     assert (answer.value, answer.provider) == (True, DecisionProvider.JEV)
     assert result.rows[0].used is True
+
+
+async def test_no_rule_reads_an_unsure_answer_with_care_without_the_llm(jlog):
+    # «answered in full» at 0.6 is taken as «in part»: the bot asks for the rest
+    gateway = Gateway(ok({"f": {"choice": "full", "probabilities": {"full": 0.6}}}))
+    fallback = FakeFallback({"f": "full"})
+    question = replace(
+        choice("f", "none", "in_part", "full"), unsure_as={"full": "in_part", "in_part": "in_part"}
+    )
+    result = await make_decider(gateway, fallback=fallback).decide("s", [question], CTX)
+
+    assert fallback.calls == []
+    answer = result.answers["f"]
+    assert (answer.value, answer.provider) == ("in_part", DecisionProvider.JEV)
+    assert answer.reason == DecisionReason.UNSURE
+    assert answer.unsure is False
+    assert by_key(result.rows)[("f", "jev")].reason == "unsure"
+
+
+async def test_no_rule_an_unsure_answer_without_a_careful_reading_is_no_answer(jlog):
+    gateway = Gateway(ok({"a": {"probability": 0.6}}))
+    fallback = FakeFallback({"a": True})
+    result = await make_decider(gateway, fallback=fallback).decide("s", [yes_no("a")], CTX)
+
+    assert fallback.calls == []
+    assert result.answers["a"].unsure is True
+    assert result.value("a", "default") == "default"
 
 
 async def test_fallback_failure_reports_only_failed_keys(jlog):

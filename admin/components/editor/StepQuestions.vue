@@ -7,6 +7,12 @@
         <span class="text-[15px] font-medium text-slate-900 dark:text-slate-100">{{ t('editor.q.only_scenario') }}</span>
       </label>
       <p class="hint">{{ t('editor.q.only_scenario_hint') }}</p>
+      <!-- client_questions: with only_scenario the client's own question is answered first -->
+      <label v-if="def.only_scenario" class="flex items-center gap-2.5 min-h-[44px] mt-2">
+        <input v-model="def.client_questions" type="checkbox" class="checkbox" :disabled="readonly" />
+        <span class="text-[15px] font-medium text-slate-900 dark:text-slate-100">{{ t('editor.q.client_questions') }}</span>
+      </label>
+      <p v-if="def.only_scenario" class="hint">{{ t('editor.q.client_questions_hint') }}</p>
     </div>
 
     <!-- background_answers: the text answers are written after the reply -->

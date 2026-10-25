@@ -38,6 +38,9 @@ class Question:
     # options that describe a message as a whole («a bare greeting»): a part of a split
     # message is never the whole message, so in a part they count as neutral
     whole_only: frozenset[str] = frozenset()
+    # BelowAction.SAFE: Jev's unsure value → the value it is taken as («answered in full»
+    # → «in part»); a value not named here is no answer: callers get their default
+    unsure_as: Mapping[Any, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.type == DecisionType.BOOLEAN and set(self.criteria) != {"true", "false"}:
@@ -54,6 +57,10 @@ class Question:
         if self.type == DecisionType.BOOLEAN:
             return False
         return self.neutral
+
+    def careful(self, value: Any) -> Any:
+        """What an unsure answer is taken as under BelowAction.SAFE; None — no answer."""
+        return self.unsure_as.get(value)
 
     def says_nothing(self, value: Any) -> bool:
         """The value a part answers when it has nothing on the question."""

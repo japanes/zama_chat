@@ -338,3 +338,37 @@ async def test_the_job_asks_nothing_when_the_client_wrote_meanwhile(client, serv
     assert run.asking is None
     assert run.fields["offer"]["value"] == "весільні торти"
     assert len(await _bot_messages(services, conv)) == len(before)
+
+
+async def test_a_correction_is_written_in_the_background(client, services, fake_llm):
+    env = await _setup(services, intro_data())
+    body = await _say(
+        client,
+        env,
+        fake_llm,
+        FIRST,
+        route={"start:interview.wants_help": True, "field:interview.niche": FULL},
+        extract=_extract(niche="торти", offer=None, years=None, team=None),
+    )
+    conv = body["conversation_id"]
+
+    # «not cakes but pastries»: Jev hears the correction, the turn reads nothing — the bot
+    # asks «offer» at once, the old answer stands until the job writes the new one
+    await _say(client, env, fake_llm, "Не торти, а тістечка", route={"change_field": "niche"})
+    run = await _run(services, conv)
+    assert run.asking == "offer"
+    niche = run.fields["niche"]
+    assert niche["value"] == "торти" and len(niche["pending"]) == 1
+    said = (await _dialogue(services, run.id))[-1]
+    assert said["corrects"] == ["niche"] and said["turn"] == niche["pending"][0]
+
+    # the job: the new words replace the answer, they are not added to it
+    fake_llm.push(_extract(niche="тістечка"))
+    await env.worker.run_due()
+    assert not fake_llm.script
+    assert "current_value" in fake_llm.requests[-1]["messages"][-1]["content"]
+    run = await _run(services, conv)
+    assert run.fields["niche"]["value"] == "тістечка"
+    assert run.fields["niche"]["state"] == "filled"
+    assert run.fields["niche"]["pending"] == []
+    assert run.asking == "offer"

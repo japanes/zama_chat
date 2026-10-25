@@ -341,7 +341,7 @@ class RuleIn(BaseModel):
     pattern: str = Field(min_length=1, max_length=200)
     mode: PolicyMode = PolicyMode.JEV
     threshold: float = Field(default=DEFAULT_THRESHOLD, ge=0, le=1)
-    below: BelowAction = BelowAction.LLM
+    below: BelowAction = BelowAction.SAFE
     note: str | None = Field(default=None, max_length=500)
 
 

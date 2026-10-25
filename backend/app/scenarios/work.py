@@ -31,6 +31,8 @@ class WorkRun:
     # background_answers: the client's words of this turn answer these fields, the
     # answers are written in the background (FieldState.pending)
     marked: list[str] = field(default_factory=list)
+    # of `marked`: the client corrects these answers, the job writes them anew (Said.corrects)
+    corrects: list[str] = field(default_factory=list)
     filled: list[str] = field(default_factory=list)  # became complete in this turn
     # (complete, value) of every field when the turn started
     snapshot: dict[str, tuple[bool, str | None]] = field(default_factory=dict)

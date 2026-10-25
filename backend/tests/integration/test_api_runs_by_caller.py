@@ -285,6 +285,7 @@ async def test_a_question_added_to_a_waiting_run_is_asked_in_the_bots_own_words(
     # one bot turn, paid like any turn
     assert fake_llm.calls == calls + 1
     assert [c["role"] for c in body["usage"]["calls"]] == ["reply"]
+    assert body["usage"]["calls"][0]["effort"] is None  # the role asks no thinking level
     step = _step(fake_llm)
     assert step["ask_next"]["question"] == "How much did you put in?"
     assert step["known"][0]["answer"] == STORY

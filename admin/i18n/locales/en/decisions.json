@@ -45,12 +45,14 @@
     "threshold": "Threshold",
     "below_title": "Below the threshold",
     "below": {
+      "safe": "Jev's careful answer",
       "llm": "ask the LLM",
       "keep": "keep Jev's answer",
       "ask_client": "ask the client again",
       "operator": "ask again, operator replies"
     },
     "below_hint": {
+      "safe": "The LLM is not asked. Jev's unsure answer is read with care: «answered in full» counts as «in part», a check of the answer's quality counts as passed; what cannot be read so is no answer, the bot asks the client. The LLM answers only when Jev gives no answer at all (an error, a timeout).",
       "llm": "the question is asked again to the LLM, its answer is used.",
       "keep": "Jev's answer is used anyway (cheap and fast, but may be wrong).",
       "ask_client": "the answer counts as not given: the bot asks the client to clarify.",
@@ -79,7 +81,7 @@
     "cost_split": "cost: Jev {jev}, LLM {llm}",
     "keys_hint": "Numbered questions (cand:1, cand:2…) are shown as one row (cand:*). LLM confidence is not calibrated, so thresholds apply to Jev only.",
     "rules_title": "Decision rules",
-    "rules_sub": "A rule applies to the questions whose key matches the pattern: an exact key or * as a wildcard (start:*, filter:booking.*). The exact key wins, then the longest pattern. Without a rule: Jev, threshold {threshold}, ask the LLM below it. Changes work from the next message.",
+    "rules_sub": "A rule applies to the questions whose key matches the pattern: an exact key or * as a wildcard (start:*, filter:booking.*). The exact key wins, then the longest pattern. Without a rule: Jev, threshold {threshold}, Jev's careful answer below it (the LLM only when Jev fails). Changes work from the next message.",
     "own_rules": "Rules of this tenant",
     "shared_rules": "Shared rules (all tenants)",
     "shared_hint": "A tenant rule with the same pattern replaces the shared one.",

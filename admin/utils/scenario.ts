@@ -100,6 +100,7 @@ export function newDefinition(language: string): any {
     cancel: {},
     actions: [],
     only_scenario: false,
+    client_questions: false,
     background_answers: false,
     start_by_caller: false,
     // '' — no place in the queue
@@ -259,6 +260,8 @@ export function cleanDefinition(d: any): any {
       }),
     ),
     only_scenario: d.only_scenario ? true : undefined,
+    // the client's own question matters only while the scenario is the turn's alone
+    client_questions: d.only_scenario && d.client_questions ? true : undefined,
     background_answers: d.background_answers ? true : undefined,
     start_by_caller: d.start_by_caller ? true : undefined,
     queue: num(d.queue),
@@ -319,6 +322,7 @@ export function toForm(d: any): any {
     a.params ||= {}
   }
   out.only_scenario = !!out.only_scenario
+  out.client_questions = !!out.client_questions
   out.background_answers = !!out.background_answers
   out.start_by_caller = !!out.start_by_caller
   out.queue ??= ''

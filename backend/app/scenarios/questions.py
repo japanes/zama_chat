@@ -255,7 +255,9 @@ def field_question(
     defn: ScenarioDef, f: FieldDef, language: str, fs: FieldState | None = None
 ) -> Question:
     """`fs` — the field's state in an open run: with background_answers a field that has an
-    answer is asked whether the message adds to it."""
+    answer is asked whether the message adds to it. Of an open run, an unsure «it answers»
+    is taken as an answer in part (BelowAction.SAFE): the words are read and checked as
+    any answer; an unsure start sign starts nothing."""
     q = defn.text(f.question, language)
     t = templates(q.language)
     key = field_key(defn.key, f.key)
@@ -272,6 +274,7 @@ def field_question(
             " ".join([text, *hint]),
             {NONE: t["field_more_none"], MORE: t["field_more_more"]},
             neutral=NONE,
+            unsure_as={MORE: MORE},
         )
     parts = [t["field"].format(q=q.text), *hint]
     if f.type == FieldType.CHOICE and f.options:
@@ -284,12 +287,14 @@ def field_question(
             " ".join(parts),
             {NONE: t["field_none"], IN_PART: t["field_partial"], FULL: t["field_full"]},
             neutral=NONE,
+            unsure_as={FULL: IN_PART, IN_PART: IN_PART} if fs is not None else {},
         )
     return Question(
         key,
         DecisionType.BOOLEAN,
         " ".join(parts),
         {"true": t["field_true"], "false": t["field_false"]},
+        unsure_as={True: True} if fs is not None else {},
     )
 
 
@@ -398,7 +403,8 @@ def build_questions(view: ScenarioView, language: str) -> ScenarioQuestions:
     """All scenario questions of this turn, in a stable order (start signs in channel
     order, then fields, then stop / change_field / client_question). While a scenario with
     `only_scenario` is open, no other scenario starts by itself and the client asks the bot
-    nothing of their own: no start signs, no client_question."""
+    nothing of their own: no start signs, no client_question — unless the scenario has
+    `client_questions`."""
     found: dict[str, Question] = {}
 
     def add(q: Question) -> None:
@@ -444,6 +450,7 @@ def build_questions(view: ScenarioView, language: str) -> ScenarioQuestions:
     if not only:
         # a scenario with only_scenario open: nothing else is taken up by itself
         out.questions.extend(reopen_question(run, language) for run in view.completed)
+    if view.client_questions:
         out.questions.append(client_question(language))
     out.sections = list(state_sections(view, language))
     return out

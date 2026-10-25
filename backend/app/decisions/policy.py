@@ -5,7 +5,9 @@ Rules live in `decision_rules` (admin → Decisions): a pattern — an exact key
 («start:*», «filter:booking.*») — and its mode, threshold and below-threshold action.
 A tenant's rule replaces the shared rule with the same pattern; among the rules matching
 a key the exact key wins, then the longest pattern. No rule → Jev, DEFAULT_THRESHOLD,
-ask the LLM. The rules are read at the start of every turn: a change works at once.
+below it the careful reading of Jev's answer, no LLM (BelowAction.SAFE): the LLM answers
+only when Jev fails. The rules are read at the start of every turn: a change works at
+once.
 """
 
 import re
@@ -31,7 +33,7 @@ class Rule:
     pattern: str = DEFAULT_PATTERN
     mode: str = PolicyMode.JEV
     threshold: float = DEFAULT_THRESHOLD
-    below: str = BelowAction.LLM
+    below: str = BelowAction.SAFE
 
     def to_dict(self) -> dict[str, object]:
         return {

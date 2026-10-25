@@ -77,6 +77,13 @@ class ScenarioView:
         no general replies, searches or starts by themselves."""
         return any(r.scenario.definition.only_scenario for r in self.runs)
 
+    @property
+    def client_questions(self) -> bool:
+        """The client's own question is asked about: always, unless an open `only_scenario`
+        run's scenario does without it (no `client_questions`)."""
+        only = [r.scenario.definition for r in self.runs if r.scenario.definition.only_scenario]
+        return all(d.client_questions for d in only)
+
     def run_for(self, key: str) -> OpenRun | None:
         return next((r for r in self.runs if r.scenario.key == key), None)
 

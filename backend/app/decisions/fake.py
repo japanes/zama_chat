@@ -9,7 +9,7 @@ from collections.abc import Callable, Mapping
 from fnmatch import fnmatchcase
 from typing import Any
 
-from app.db.models import DecisionProvider, DecisionReason
+from app.db.models import BelowAction, DecisionProvider, DecisionReason
 from app.decisions.engine import Answer, DecideContext, DecisionSet, Question, decision_row
 
 # a rule: a fixed value, or (question, state) → value
@@ -29,8 +29,9 @@ class FakeDecider:
         # exact key or fnmatch pattern ("field:*") → rule
         self.rules: dict[str, Rule] = dict(rules or {})
         self.confidence = confidence
-        # pattern → below-threshold action (ask_client / operator): these answers come
-        # back unsure, as JevDecider marks them by the policy
+        # pattern → below-threshold action (safe / ask_client / operator): these answers
+        # come back as JevDecider gives them by the policy — the careful value (safe) or
+        # unsure
         self.unsure: dict[str, str] = dict(unsure or {})
         self.calls: list[tuple[str, list[Question]]] = []
 
@@ -66,7 +67,10 @@ class FakeDecider:
                 model=self.model,
             )
             below = self._unsure(question.key)
-            if below is not None:
+            if below == BelowAction.SAFE and question.careful(value) is not None:
+                answer.value = question.careful(value)
+                answer.reason = DecisionReason.UNSURE
+            elif below is not None:
                 answer.unsure = True
                 answer.below = below
                 answer.reason = DecisionReason.UNSURE

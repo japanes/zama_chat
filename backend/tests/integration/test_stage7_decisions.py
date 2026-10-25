@@ -86,7 +86,7 @@ async def test_tenant_rules_replace_and_read(client, services, tenant, adm):
     await client.put(_t(tenant, "/decisions/policy"), json=body, headers=adm)
     out = (await client.get(_t(tenant, "/decisions/policy"), headers=adm)).json()
     assert [r["pattern"] for r in out["own"]] == ["field:*"]
-    assert out["own"][0]["mode"] == "jev" and out["own"][0]["below"] == "llm"
+    assert out["own"][0]["mode"] == "jev" and out["own"][0]["below"] == "safe"
     assert out["shared"] == []
     assert out["can_edit_shared"] is False
     assert out["default_rule"]["threshold"] == Rule().threshold
@@ -264,6 +264,26 @@ async def test_unsure_filter_means_ask_again(services, tenant):
     assert flt in failed[(defn.key, field.key)]
 
 
+async def test_unsure_filter_passes_by_default(services, tenant):
+    """No rule (the careful reading): a doubt of Jev about the answer's quality is no reason
+    to ask the client again — the answer passes, even when Jev leans to «no»."""
+    from app.scenarios.checks import CheckItem, check_filters
+    from app.scenarios.fields import load_states
+    from tests.scenario_helpers import interview_data, make_def
+    from tests.turn_ctx import make_ctx
+
+    defn = make_def(interview_data())
+    field = next(f for f in defn.fields if f.filters)
+    flt = field.filters[0].key
+    services.extra["decider"] = FakeDecider(
+        {"*": False}, unsure={f"filter:*.{field.key}.{flt}": BelowAction.SAFE}
+    )
+    ctx = make_ctx(tenant_id=tenant.tenant_id, turn_id=None)
+    item = CheckItem(defn, field, "відповідь", load_states(defn, None))
+    failed = await check_filters(services, ctx, [item], "uk")
+    assert flt not in failed.get((defn.key, field.key), [])
+
+
 # --- the rule that comes with the system --------------------------------------------------
 
 MIGRATIONS = Path(__file__).resolve().parents[2] / "alembic" / "versions"
@@ -292,18 +312,18 @@ async def test_the_catalog_options_check_keeps_the_unsure_jev_answer(services, t
         policy = await load_policy(session, tenant.tenant_id)
     assert policy.rule("opt:3") == Rule("opt:*", PolicyMode.JEV, 0.7, BelowAction.KEEP)
 
-    # Jev is unsure about both: the option keeps its answer, the search candidate goes
-    # to the LLM as before
+    # Jev is unsure about both: the option keeps its answer, the search candidate is read
+    # with care (no rule) — no LLM: it has no careful reading, it is no answer
     gateway = Gateway(ok({"opt:3": {"probability": 0.35}, "cand:3": {"probability": 0.35}}))
     fallback = FakeFallback({"cand:3": True})
     ctx = DecideContext(tenant.tenant_id, None, policy=policy)
     result = await make_decider(gateway, fallback=fallback).decide(
         "s", [yes_no("opt:3"), yes_no("cand:3")], ctx
     )
-    assert fallback.calls == [["cand:3"]]
+    assert fallback.calls == []
     assert result.value("opt:3") is False
     assert result.answers["opt:3"].provider == DecisionProvider.JEV
-    assert result.value("cand:3") is True
+    assert result.answers["cand:3"].unsure is True
 
 
 async def test_the_options_rule_does_not_touch_the_admins_rule(services, tenant):
@@ -314,7 +334,7 @@ async def test_the_options_rule_does_not_touch_the_admins_rule(services, tenant)
     async with services.sm() as session:
         rows = list((await session.execute(select(DecisionRule))).scalars())
     assert [(r.pattern, r.threshold, r.below, r.note) for r in rows] == [
-        ("opt:*", 0.6, BelowAction.LLM, "mine")
+        ("opt:*", 0.6, BelowAction.SAFE, "mine")
     ]
 
 

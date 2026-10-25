@@ -40,10 +40,10 @@ def test_longest_pattern_wins():
 # --- rules (stage 7) ---------------------------------------------------------------------
 
 
-def test_no_rule_is_jev_with_default_threshold_and_llm_below():
+def test_no_rule_is_jev_with_default_threshold_and_the_careful_reading_below():
     rule = DecisionPolicy().rule("wants_human")
     assert rule == Rule(threshold=DEFAULT_THRESHOLD)
-    assert (rule.mode, rule.below) == (PolicyMode.JEV, BelowAction.LLM)
+    assert (rule.mode, rule.below) == (PolicyMode.JEV, BelowAction.SAFE)
 
 
 def test_rules_exact_key_then_longest_pattern():

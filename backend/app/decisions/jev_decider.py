@@ -8,6 +8,9 @@
 
 Per question the policy (decisions/policy.py, rules from the admin) says:
 - mode jev: Jev answers; below the rule threshold — `below`:
+  safe (no rule: the default) → no LLM, the careful reading of Jev's answer
+  (Question.careful: «answered in full» → «in part»; a value without one is no answer,
+  as ask_client; reason=unsure),
   llm → the unsure questions go to the fallback LLM in one call (reason=below_threshold;
   if that call fails, the Jev answer is kept), keep → Jev's answer is used anyway,
   ask_client / operator → the answer is marked unsure: callers get their default and the
@@ -317,7 +320,14 @@ class JevDecider:
                 result.answers[key] = answer
                 if answer.confidence >= rule.threshold or rule.below == BelowAction.KEEP:
                     continue
-                if rule.below in (BelowAction.ASK_CLIENT, BelowAction.OPERATOR):
+                careful = question.careful(answer.value)
+                if rule.below == BelowAction.SAFE and careful is not None:
+                    answer.value = careful
+                    answer.reason = DecisionReason.UNSURE
+                    row = _row(result.rows, key, DecisionProvider.JEV)
+                    if row is not None:
+                        row.reason = str(DecisionReason.UNSURE)
+                elif rule.below in (BelowAction.SAFE, BelowAction.ASK_CLIENT, BelowAction.OPERATOR):
                     answer.unsure = True
                     answer.below = str(rule.below)
                     answer.reason = DecisionReason.UNSURE

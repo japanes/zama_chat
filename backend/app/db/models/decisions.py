@@ -51,6 +51,9 @@ class BelowAction(StrEnum):
 
     LLM = "llm"  # ask the LLM, use its answer
     KEEP = "keep"  # use Jev's answer anyway
+    # no LLM: the careful reading of Jev's answer (Question.unsure_as) — «answered in
+    # full» is taken as «in part»; a value without one is no answer, as ask_client
+    SAFE = "safe"
     ASK_CLIENT = "ask_client"  # count as «no answer»: the bot asks the client again
     OPERATOR = "operator"  # as ask_client, and an operator picks this turn's reply
 
@@ -104,5 +107,5 @@ class DecisionRule(IdMixin, TimestampsMixin, Base):
     pattern: Mapped[str] = mapped_column(String(200))
     mode: Mapped[str] = mapped_column(String(16), default=PolicyMode.JEV)
     threshold: Mapped[float] = mapped_column(Float)
-    below: Mapped[str] = mapped_column(String(16), default=BelowAction.LLM)
+    below: Mapped[str] = mapped_column(String(16), default=BelowAction.SAFE)
     note: Mapped[str | None] = mapped_column(Text)

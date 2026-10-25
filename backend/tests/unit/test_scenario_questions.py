@@ -2,6 +2,8 @@ from app.db.models import DecisionType, RunStatus
 from app.scenarios.questions import (
     CHANGE_FIELD,
     CLIENT_QUESTION,
+    FULL,
+    IN_PART,
     NONE,
     PAUSE_FOCUS,
     STOP,
@@ -141,3 +143,23 @@ def test_a_closed_only_scenario_changes_nothing():
     built = build_questions(view([INTERVIEW, ONLY]), "uk")
     assert start_key("booking", "wants_booking") in built.keys
     assert CLIENT_QUESTION in built.keys
+
+
+def test_only_scenario_with_client_questions_asks_the_clients_own_question():
+    own = loaded(
+        make_def({**booking_data(), "only_scenario": True, "client_questions": True}), position=1
+    )
+    built = build_questions(view([INTERVIEW, own], [open_run(own)]), "uk")
+    assert CLIENT_QUESTION in built.keys
+    # the rest of only_scenario stands: no starts by themselves
+    assert start_key("interview", "wants_help") not in built.keys
+
+
+def test_an_unsure_field_answer_is_read_with_care():
+    background = loaded(make_def({**booking_data(), "background_answers": True}))
+    built = build_questions(view([background], [open_run(background)]), "uk")
+    [q] = [q for q in built.questions if q.key == field_key("booking", "service")]
+    # «answered in full» with a doubt is «in part»: the bot asks for the rest later
+    assert q.careful(FULL) == IN_PART
+    assert q.careful(IN_PART) == IN_PART
+    assert q.careful(NONE) is None

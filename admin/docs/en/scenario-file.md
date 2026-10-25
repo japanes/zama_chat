@@ -94,6 +94,7 @@ The words `yes`, `no`, `on`, `off` are plain text here. There are only two logic
 | `cancel` | no | How to tell that the client changed their mind — section 9. |
 | `incompatible_with` | no | Scenarios that do not go at the same time as this one — section 9. |
 | `only_scenario` | no | While the scenario is open, the bot does only it: no general replies, no search, no other scenarios — section 9. |
+| `client_questions` | no | With `only_scenario`: the bot still answers the client's own question, then goes on with the scenario — section 9. |
 | `background_answers` | no | The text answers are written after the bot's reply: the bot does not wait while a long story is read for every question — section 9. |
 | `start_by_caller` | no | The scenario starts only by your system, never by the client's words — section 9. |
 | `queue` | no | Its place in the queue of the conversation's scenarios — section 9. |
@@ -444,6 +445,15 @@ only_scenario: true           # off by default
 
 Everything about the scenario itself stays: answers, their checks, changing an answer, confirmation, "stop" and cancel. Use it when the whole conversation is given to one job — say, an interview where a person tells their story and the bot's general replies only get in the way.
 
+**`client_questions`** — works together with `only_scenario`: the bot still notices the client's own question and answers it, then goes on with the scenario:
+
+```yaml
+only_scenario: true
+client_questions: true        # off by default
+```
+
+Client: "Why do you need to know?" — the bot says in short why it asks and asks again. The bot does not search the catalog or the knowledge base for it: it answers from what it knows of the scenario. Without `client_questions` whatever the client writes is an answer to the scenario's questions.
+
 **`background_answers`** — the text answers are written in the background, after the bot's reply:
 
 ```yaml
@@ -457,6 +467,7 @@ Sometimes a client answers several questions in one long message. Without this s
 - the answers to the marked questions are written while the client replies to that question — one after another, with every check of `filters`. If the client later adds to an answer, the answer is extended, not replaced;
 - a question the client answered in part is asked after its answer is written, and only for what is missing: «You say you work together with your wife. Who else is on the team?»;
 - if the text turns out to hold no answer after all, the question is asked as usual.
+- a correction of an earlier answer («not 5 years but 8») is written in the background too: the bot goes on at once, the old answer is replaced with the new one while the client replies, and whatever depends on it is checked again.
 
 The bot waits for the answers only where it cannot go on without them: when there is nothing left to ask while answers are still being written, and before a question that depends on answers already given (`show_if`, `ask_after`).
 
