@@ -22,6 +22,12 @@
         <span class="text-[15px] font-medium text-slate-900 dark:text-slate-100">{{ t('editor.q.background_answers') }}</span>
       </label>
       <p class="hint">{{ t('editor.q.background_answers_hint') }}</p>
+      <!-- take_partial: with background_answers an answer heard in part is not asked for the rest -->
+      <label v-if="def.background_answers" class="flex items-center gap-2.5 min-h-[44px] mt-2">
+        <input v-model="def.take_partial" type="checkbox" class="checkbox" :disabled="readonly" />
+        <span class="text-[15px] font-medium text-slate-900 dark:text-slate-100">{{ t('editor.q.take_partial') }}</span>
+      </label>
+      <p v-if="def.background_answers" class="hint">{{ t('editor.q.take_partial_hint') }}</p>
     </div>
 
     <!-- clarify_limit: how many times the bot asks for the rest; then the answer is taken -->

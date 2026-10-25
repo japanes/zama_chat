@@ -67,7 +67,7 @@ def test_the_full_file_uses_every_new_setting(saved: list[dict]) -> None:
     assert d["added"] == {"wording": "as_sent", "close_after": 5, "max_fields": 20}
     assert d["waiting"]["say"] and d["ask_rules"] and d["history_messages"] == 12
     assert d["only_scenario"] is True
-    assert d["background_answers"] is True
+    assert d["background_answers"] is True and d["take_partial"] is True
     assert d["clarify_limit"] == 0
     assert (d["start_by_caller"], d["queue"]) == (True, 2)
     by_key = {f["key"]: f for f in d["fields"]}

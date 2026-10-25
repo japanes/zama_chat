@@ -602,6 +602,7 @@ def apply_checks(
             failed.get((run.key, key), []),
             now,
             clarify_limit=run.definition.clarify_limit,
+            take_partial=bool(run.definition.take_partial),
         )
     # after the whole round: a field whose ask_after is complete now was checked in context
     for run, key in due:

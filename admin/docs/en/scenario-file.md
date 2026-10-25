@@ -97,6 +97,7 @@ The words `yes`, `no`, `on`, `off` are plain text here. There are only two logic
 | `client_questions` | no | With `only_scenario`: the bot still answers the client's own question, then goes on with the scenario — section 9. |
 | `background_answers` | no | The text answers are written after the bot's reply: the bot does not wait while a long story is read for every question — section 9. |
 | `clarify_limit` | no | How many times the bot clarifies an answer that did not pass its checks; then it takes it as said — section 9. |
+| `take_partial` | no | With `background_answers`: the bot does not ask for the rest of a partial answer, only the checks judge it — section 9. |
 | `start_by_caller` | no | The scenario starts only by your system, never by the client's words — section 9. |
 | `queue` | no | Its place in the queue of the conversation's scenarios — section 9. |
 | `actions` | no | What to do with the result: send it to you, write to the client — section 10. |
@@ -488,6 +489,14 @@ When an answer does not pass its `filters` (the client answered in general words
 - the client's own question («why do you ask?») and a correction of another answer are not a clarification: the bot answers and asks the same question again, the count stays.
 
 `0` — never clarify: the client's first answer is taken as said. An example with `clarify_limit: 1`: «What are you proud of?» — «Everything» — «What comes to mind first?» — «Really, all of it». «Really, all of it» is written, then the next question.
+
+**`take_partial`** — a partial answer is an answer. It works together with `background_answers`:
+
+```yaml
+take_partial: true            # off by default
+```
+
+Without this setting the bot comes back to a question the client answered only in part and asks for what is missing: «The hardest moment — and what did you do then?» — «When the oven broke» — «And what did you do then?». With `take_partial` the bot does not ask for the rest: the answer is written as said, and only the `filters` decide whether it is enough. If it fails them, the bot asks again as usual (with `clarify_limit` — no more times than set).
 
 **`start_by_caller`** — the scenario starts only by your system (`POST /v1/runs/start`), never by the client's words: its `start` questions are not asked in any conversation.
 

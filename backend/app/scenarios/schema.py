@@ -422,6 +422,10 @@ class ScenarioDef(Strict):
     # is taken as the client said it, even a general one (scenarios/fields.py
     # settle_asked_out). None — no limit: the bot asks until the filters pass
     clarify_limit: int | None = Field(default=None, ge=0, le=20)
+    # with background_answers: an answer the decider heard only in part is an answer — the
+    # bot does not ask for the rest, the filters alone judge it (scenarios/fields.py
+    # set_checked). None — the bot asks for what is missing
+    take_partial: bool | None = None
 
     # an empty list / a block of defaults says nothing: kept as absent, so a file that writes
     # it out and one that leaves it out are one version (the editor leaves defaults out)

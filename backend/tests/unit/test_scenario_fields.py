@@ -198,6 +198,18 @@ def test_a_general_answer_after_the_last_clarification_is_taken_as_said():
     assert early.state == PARTIAL
 
 
+def test_take_partial_an_answer_heard_in_part_is_not_asked_for_the_rest():
+    fs = FieldState(value="коли зламалась піч", answered=True, answered_partly=True)
+    assert set_checked(fs, [], T0) is False  # by default the bot asks for the rest
+    assert fs.failed_filters == ["@partly"]
+    assert set_checked(fs, [], T0, take_partial=True) is True
+    assert (fs.state, fs.failed_filters, fs.taken_as_said) == (FILLED, [], False)
+    # the filters still judge it
+    empty = FieldState(value="всім", answered=True, answered_partly=True)
+    assert set_checked(empty, ["concrete"], T0, take_partial=True) is False
+    assert (empty.state, empty.failed_filters) == (PARTIAL, ["concrete"])
+
+
 def test_a_value_code_rejected_is_never_taken_as_said():
     fs = FieldState(value="вчора", asks=2, clarified=1, issue="past")
     assert set_checked(fs, [], T0, clarify_limit=1) is False

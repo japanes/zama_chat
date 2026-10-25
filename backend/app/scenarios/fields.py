@@ -27,6 +27,9 @@ question it got no answer to) at most clarify_limit times (`clarified`). The cli
 to the last of them is final: an answer that still fails its filters is taken as the client
 said it (`taken_as_said`: filled, not asked again), a question still without a word of an
 answer is closed (`closed`).
+
+A scenario with `take_partial`: an answer the decider heard only in part is an answer — the
+bot does not ask for the rest, the filters alone judge it.
 """
 
 from dataclasses import asdict, dataclass, field
@@ -236,17 +239,22 @@ def asked_out(fs: FieldState, clarify_limit: int | None) -> bool:
 
 
 def set_checked(
-    fs: FieldState, failed: list[str], now: datetime, *, clarify_limit: int | None = None
+    fs: FieldState,
+    failed: list[str],
+    now: datetime,
+    *,
+    clarify_limit: int | None = None,
+    take_partial: bool = False,
 ) -> bool:
     """The filters' verdict. Returns True when the field became complete. With
     `clarify_limit` an answer that fails after the last clarification allowed is taken as
-    said."""
+    said; with `take_partial` an answer heard only in part is not asked for the rest."""
     was_complete = fs.complete
     taken = False
     if fs.issue:
         # code rejected the value: it stays partial whatever the filters say
         failed = [f"@{fs.issue}"]
-    elif not failed and fs.answered_partly:
+    elif not failed and fs.answered_partly and not take_partial:
         # the decider heard only part of the answer: the bot asks for the rest
         failed = [PARTLY]
     if failed and not fs.issue and asked_out(fs, clarify_limit):

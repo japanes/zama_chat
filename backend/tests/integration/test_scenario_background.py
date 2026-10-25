@@ -502,6 +502,31 @@ async def test_a_general_answer_after_one_clarification_is_taken_as_said(
     assert (out["taken_as_said"], out["clarified"]) == (True, 1)
 
 
+async def test_take_partial_an_answer_said_in_part_is_not_asked_for_the_rest(
+    client, services, fake_llm
+):
+    env = await _setup(services, {**intro_data(), "take_partial": True})
+    body = await _say(
+        client,
+        env,
+        fake_llm,
+        FIRST,
+        route={"start:interview.wants_help": True, "field:interview.niche": FULL},
+        extract=_extract(niche="торти", offer=None, years=None, team=None),
+    )
+    conv = body["conversation_id"]
+    route = {"field:interview.offer": FULL, "field:interview.team": IN_PART}
+    await _say(client, env, fake_llm, STORY, route=route)
+    fake_llm.push(_extract(offer="весільні торти", team="вдвох з дружиною"))
+    await env.worker.run_due()
+    run = await _run(services, conv)
+    # «team» is heard only in part, yet it is the answer: the bot does not ask for the rest
+    team = run.fields["team"]
+    assert (team["state"], team["failed_filters"]) == ("filled", [])
+    assert team["value"] == "вдвох з дружиною"
+    assert run.asking == "years"
+
+
 async def test_a_question_left_without_a_word_twice_is_closed(client, services, fake_llm):
     env = await _setup(services, limited_data())
     body = await _say(

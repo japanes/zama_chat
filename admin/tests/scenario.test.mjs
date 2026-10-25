@@ -38,6 +38,7 @@ test('every new setting comes back as it was written', () => {
   assert.equal(once.queue, 2)
   // 0 is a limit (never clarify), not «no limit»
   assert.equal(once.clarify_limit, 0)
+  assert.equal(once.take_partial, true)
   assert.deepEqual(roundTrip(once), once)
 })
 
@@ -82,12 +83,18 @@ test('options typed here are sent once the caller no longer sends them', () => {
   assert.equal(out.fields[3].options.length, 2)
 })
 
+test('a partial answer is taken only where the answers are written in the background', () => {
+  const d = toForm(FULL)
+  d.background_answers = false
+  assert.equal('take_partial' in cleanDefinition(d), false)
+})
+
 test('a new scenario and a new question carry none of the new settings', () => {
   const d = newDefinition('ru')
   d.key = 'x'
   d.fields = [newField(1)]
   const out = cleanDefinition(d)
-  for (const key of ['ask_rules', 'history_messages', 'added', 'waiting', 'start_by_caller', 'queue', 'clarify_limit']) assert.equal(key in out, false, key)
+  for (const key of ['ask_rules', 'history_messages', 'added', 'waiting', 'start_by_caller', 'queue', 'clarify_limit', 'take_partial']) assert.equal(key in out, false, key)
   for (const key of ['show_if', 'options_from']) assert.equal(key in out.fields[0], false, key)
 })
 

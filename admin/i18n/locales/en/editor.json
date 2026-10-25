@@ -146,6 +146,8 @@
       "client_questions_hint": "Works together with «Scenario only». When the client asks something of their own («why do you need to know?»), the bot answers it first, then goes on with the scenario. The bot does not search the knowledge base for it. Off — whatever the client writes goes to the answers of the scenario's questions.",
       "background_answers": "Write the answers in the background",
       "background_answers_hint": "When the client answers several questions in one message, the bot does not wait for all the answers to be written: it asks the next question at once, and the text answers are written while the client replies. A question the client answered only in part is asked later, for what is missing. Off — every answer is written before the bot replies.",
+      "take_partial": "A partial answer is an answer",
+      "take_partial_hint": "Works together with «Write the answers in the background». When the client answers a question only in part (says what happened but not why), the bot does not ask for the rest: the answer is written as said, and only the checks decide whether it is enough. Off — the bot later asks for what is missing.",
       "clarify_limit": "How many times to clarify an answer",
       "clarify_limit_none": "no limit",
       "clarify_limit_hint": "When an answer does not pass its checks (general words, a detail missing), the bot asks again. This is how many times, at most. After the last clarification the answer is taken as the client said it and the bot moves on; a question the client still gave no answer to is closed. 0 — never clarify. Empty — the bot clarifies until the answer passes its checks.",
