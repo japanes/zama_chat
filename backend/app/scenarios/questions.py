@@ -252,12 +252,19 @@ def says_answer(value: object) -> bool:
 
 
 def field_question(
-    defn: ScenarioDef, f: FieldDef, language: str, fs: FieldState | None = None
+    defn: ScenarioDef,
+    f: FieldDef,
+    language: str,
+    fs: FieldState | None = None,
+    *,
+    aside: bool = False,
 ) -> Question:
     """`fs` — the field's state in an open run: with background_answers a field that has an
     answer is asked whether the message adds to it. Of an open run, an unsure «it answers»
     is taken as an answer in part (BelowAction.SAFE): the words are read and checked as
-    any answer; an unsure start sign starts nothing."""
+    any answer; an unsure start sign starts nothing. `aside` — the run is put aside while
+    another one holds the dialogue: the client talks to that one, and an unsure «it
+    answers» of this one is no answer."""
     q = defn.text(f.question, language)
     t = templates(q.language)
     key = field_key(defn.key, f.key)
@@ -274,7 +281,7 @@ def field_question(
             " ".join([text, *hint]),
             {NONE: t["field_more_none"], MORE: t["field_more_more"]},
             neutral=NONE,
-            unsure_as={MORE: MORE},
+            unsure_as={} if aside else {MORE: MORE},
         )
     parts = [t["field"].format(q=q.text), *hint]
     if f.type == FieldType.CHOICE and f.options:
@@ -287,14 +294,14 @@ def field_question(
             " ".join(parts),
             {NONE: t["field_none"], IN_PART: t["field_partial"], FULL: t["field_full"]},
             neutral=NONE,
-            unsure_as={FULL: IN_PART, IN_PART: IN_PART} if fs is not None else {},
+            unsure_as={FULL: IN_PART, IN_PART: IN_PART} if fs is not None and not aside else {},
         )
     return Question(
         key,
         DecisionType.BOOLEAN,
         " ".join(parts),
         {"true": t["field_true"], "false": t["field_false"]},
-        unsure_as={True: True} if fs is not None else {},
+        unsure_as={True: True} if fs is not None and not aside else {},
     )
 
 
@@ -428,15 +435,16 @@ def build_questions(view: ScenarioView, language: str) -> ScenarioQuestions:
             continue
         defn = run.scenario.definition
         states = load_states(defn, run.fields)
+        aside = focus is not None and run.id != focus.id
         for f in defn.fields:
             fs = states[f.key]
             if not asks_text(f):
                 continue
             if not fs.complete:
-                add(field_question(defn, f, language, fs))
+                add(field_question(defn, f, language, fs, aside=aside))
             elif background_field(defn, f) and not fs.skipped:
                 # the client may add to an answer already taken: it is completed
-                add(field_question(defn, f, language, fs))
+                add(field_question(defn, f, language, fs, aside=aside))
 
     out = ScenarioQuestions(questions=list(found.values()))
     if view.runs:

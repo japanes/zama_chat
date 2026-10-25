@@ -152,8 +152,14 @@ class FieldOut(BaseModel):
     asked: str | None = None
     # show_if said the question does not apply: not asked, what was said is kept
     hidden: bool = False
-    # an added question closed after too many failed answers, with what the client said
+    # an added question closed after too many failed answers, with what the client said;
+    # or (clarify_limit) a question closed without an answer after the last clarification
     closed: bool = False
+    # clarify_limit: the answer did not pass its checks after the last clarification and
+    # is taken as the client said it
+    taken_as_said: bool = False
+    # clarify_limit: times the bot asked for the rest of the answer (or asked again)
+    clarified: int = 0
     # a choice question: its options (from the file or from POST /v1/runs/start)
     options: list[OptionOut] | None = None
     # an added question (POST /v1/runs/{id}/fields): when it came
@@ -299,6 +305,8 @@ def run_out(
                 asked=states[f.key].asked,
                 hidden=states[f.key].hidden,
                 closed=states[f.key].closed,
+                taken_as_said=states[f.key].taken_as_said,
+                clarified=states[f.key].clarified,
                 options=_options(defn, f, language),
                 added_at=added.get(f.key),
             )

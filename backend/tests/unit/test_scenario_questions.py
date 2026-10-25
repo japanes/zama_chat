@@ -13,7 +13,15 @@ from app.scenarios.questions import (
     start_key,
     templates,
 )
-from tests.scenario_helpers import booking_data, loaded, make_def, open_run, states, view
+from tests.scenario_helpers import (
+    booking_data,
+    interview_data,
+    loaded,
+    make_def,
+    open_run,
+    states,
+    view,
+)
 
 INTERVIEW = loaded(make_def(), position=0)
 BOOKING = loaded(make_def(booking_data()), position=1)
@@ -163,3 +171,16 @@ def test_an_unsure_field_answer_is_read_with_care():
     assert q.careful(FULL) == IN_PART
     assert q.careful(IN_PART) == IN_PART
     assert q.careful(NONE) is None
+
+
+def test_an_unsure_answer_of_a_run_put_aside_is_no_answer():
+    focus = loaded(make_def({**booking_data(), "background_answers": True}), position=1)
+    aside = loaded(make_def({**interview_data(), "background_answers": True}), position=0)
+    runs = [open_run(focus), open_run(aside, RunStatus.PAUSED)]
+    built = build_questions(view([aside, focus], runs), "uk")
+    [talking] = [q for q in built.questions if q.key == field_key("booking", "service")]
+    [paused] = [q for q in built.questions if q.key == field_key("interview", "niche")]
+    assert talking.careful(FULL) == IN_PART
+    # the client talks to «booking»: a doubt that the words are for «interview» is a no
+    assert paused.careful(FULL) is None
+    assert paused.careful(IN_PART) is None

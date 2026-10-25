@@ -6,6 +6,7 @@ from app.scenarios.fields import (
     FieldState,
     all_complete,
     answers,
+    asked_out,
     dependents,
     load_states,
     mark_dependents,
@@ -15,6 +16,7 @@ from app.scenarios.fields import (
     register_ask,
     set_answer,
     set_checked,
+    settle_asked_out,
 )
 from tests.scenario_helpers import interview_data, make_def
 from tests.turn_ctx import T0
@@ -157,3 +159,71 @@ def test_answers_complete_only_by_default():
     states["offer"] = filled("торти")
     assert answers(states) == {"offer": "торти"}
     assert answers(states, complete_only=False) == {"niche": "краса", "offer": "торти"}
+
+
+def test_a_clarification_is_an_ask_after_the_first_or_of_a_field_with_an_answer():
+    states = load_states(DEFN, {})
+    register_ask(states, None, "niche")
+    assert (states["niche"].asks, states["niche"].clarified) == (1, 0)
+    register_ask(states, "niche", "niche")
+    assert (states["niche"].asks, states["niche"].clarified) == (2, 1)
+    # told before it was asked: the first ask already asks for the rest
+    states["offer"] = FieldState(state=PARTIAL, value="торти", failed_filters=["x"])
+    register_ask(states, "niche", "offer")
+    assert states["offer"].clarified == 1
+    # the client's own question: the field is asked again as it was, not counted
+    register_ask(states, "offer", "offer", count=False)
+    assert (states["offer"].asks, states["offer"].clarified) == (1, 1)
+
+
+def test_asked_out_after_the_clarifications_allowed():
+    fs = FieldState(asks=1)
+    assert asked_out(fs, None) is False
+    assert asked_out(fs, 0) is True
+    assert asked_out(fs, 1) is False
+    fs.clarified = 1
+    assert asked_out(fs, 1) is True
+    assert asked_out(FieldState(), 0) is False  # never asked, nothing said
+
+
+def test_a_general_answer_after_the_last_clarification_is_taken_as_said():
+    fs = FieldState(value="всім", asks=2, clarified=1)
+    assert set_checked(fs, ["concrete"], T0) is False  # no limit: the bot asks again
+    assert (fs.state, fs.taken_as_said) == (PARTIAL, False)
+    assert set_checked(fs, ["concrete"], T0, clarify_limit=1) is True
+    assert (fs.state, fs.failed_filters, fs.taken_as_said) == (FILLED, [], True)
+    # before the last clarification the filters stand
+    early = FieldState(value="всім", asks=1)
+    assert set_checked(early, ["concrete"], T0, clarify_limit=1) is False
+    assert early.state == PARTIAL
+
+
+def test_a_value_code_rejected_is_never_taken_as_said():
+    fs = FieldState(value="вчора", asks=2, clarified=1, issue="past")
+    assert set_checked(fs, [], T0, clarify_limit=1) is False
+    assert (fs.state, fs.taken_as_said) == (PARTIAL, False)
+
+
+def test_settle_asked_out_takes_the_part_and_closes_the_silence():
+    defn = make_def(interview_data(clarify_limit=1))
+    states = load_states(defn, {})
+    states["niche"] = FieldState(state=PARTIAL, value="краса", asks=2, clarified=1)
+    states["offer"] = FieldState(asks=2, clarified=1)
+    states["positioning"] = FieldState(asks=1)
+    closed = settle_asked_out(defn, states, ["niche", "offer", "positioning"], T0)
+    assert closed == ["offer"]
+    assert (states["niche"].state, states["niche"].taken_as_said) == (FILLED, True)
+    assert states["offer"].closed and states["offer"].value is None
+    assert states["positioning"].state == EMPTY  # one clarification is still allowed
+
+
+def test_settle_asked_out_waits_for_words_being_written():
+    defn = make_def(interview_data(clarify_limit=1))
+    states = load_states(defn, {})
+    states["niche"] = FieldState(asks=2, clarified=1, pending=["t1"])
+    assert settle_asked_out(defn, states, ["niche"], T0) == []
+    assert not states["niche"].closed
+    # no limit in the scenario: nothing is settled
+    states = load_states(DEFN, {})
+    states["niche"] = FieldState(asks=5, clarified=4)
+    assert settle_asked_out(DEFN, states, ["niche"], T0) == []

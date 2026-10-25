@@ -20,6 +20,8 @@
         <span v-else-if="!(run.hidden || []).includes(key)" class="badge-gray">{{ t('results.field.missing') }}</span>
         <span v-if="(run.hidden || []).includes(key)" class="badge-gray">{{ t('results.field.hidden') }}</span>
         <span v-if="card(key).closed" class="badge-red">{{ t('results.field.closed') }}</span>
+        <span v-if="states?.[key]?.taken_as_said" class="badge-amber">{{ t('results.field.taken_as_said') }}</span>
+        <span v-if="states?.[key]?.clarified" class="badge-gray">{{ t('results.field.clarified', { n: states[key].clarified }) }}</span>
         <span v-if="card(key).added_at" class="badge-blue">{{ t('results.field.added', { at: f.dateTime(card(key).added_at) }) }}</span>
         <span v-if="states?.[key]?.needs_recheck" class="badge-blue">{{ t('results.field.recheck') }}</span>
         <span v-if="states?.[key]?.stuck" class="badge-red">{{ t('results.field.stuck') }}</span>

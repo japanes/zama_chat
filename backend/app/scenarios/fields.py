@@ -21,6 +21,12 @@ itself. The decider (Jev) only says whether the client's words answer a question
 (`answered`) or in part (`answered_partly`) — and the turn is put on the field's `pending`
 list; the bot goes on with the other questions, and the job `scenario_answers` writes the
 answer (scenarios/answers.py). A pending field is not asked: its answer is on the way.
+
+A scenario with `clarify_limit`: the bot asks for the rest of an answer (or asks again a
+question it got no answer to) at most clarify_limit times (`clarified`). The client's reply
+to the last of them is final: an answer that still fails its filters is taken as the client
+said it (`taken_as_said`: filled, not asked again), a question still without a word of an
+answer is closed (`closed`).
 """
 
 from dataclasses import asdict, dataclass, field
@@ -35,7 +41,7 @@ FILLED = "filled"
 REVIEW = "review"
 
 # the same field asked this many times in a row → stuck (seen in the admin, event
-# field_stuck); the bot keeps asking — there is no attempt limit
+# field_stuck); the bot keeps asking unless the scenario has `clarify_limit`
 STUCK_AFTER = 3
 MERGE_SEPARATOR = "\n"
 # background_answers: the decider said the client answered only part of the question, the
@@ -51,6 +57,9 @@ class FieldState:
     failed_filters: list[str] = field(default_factory=list)
     needs_recheck: bool = False
     reasks: int = 0  # re-asks in a row of this field
+    asks: int = 0  # times the bot asked it, the first one included
+    # of them: asked again, or asked for the rest of an answer (clarify_limit counts these)
+    clarified: int = 0
     stuck: bool = False
     message_ids: list[str] = field(default_factory=list)
     updated_at: str | None = None
@@ -71,7 +80,8 @@ class FieldState:
     # the last show_if check: {hidden, answers: {key: true / false / null}, unknown, at};
     # None — not checked yet
     show: dict[str, Any] | None = None
-    # an added field closed after too many failed answers, with what the client said
+    # an added field closed after too many failed answers, with what the client said; or
+    # (clarify_limit) a question asked as many times as allowed without a word of an answer
     closed: bool = False
     # background_answers: the decider's last word on the client's message — it answers
     # the question (or adds to the answer it has) / answers it only in part
@@ -80,6 +90,9 @@ class FieldState:
     # background_answers: turns whose client words answer the field and are not written
     # into it yet (scenarios/answers.py)
     pending: list[str] = field(default_factory=list)
+    # clarify_limit: the answer failed its filters after the last ask the scenario allows,
+    # and it is taken as the client said it
+    taken_as_said: bool = False
 
     @property
     def complete(self) -> bool:
@@ -117,7 +130,8 @@ def background_field(defn: ScenarioDef, f: FieldDef) -> bool:
 
 
 def ask_after_ready(f: FieldDef, states: dict[str, FieldState]) -> bool:
-    return all(states[ref].complete for ref in f.ask_after)
+    # a closed field is gone through with what the client said: what waits for it is asked
+    return all(states[ref].complete or states[ref].closed for ref in f.ask_after)
 
 
 def next_field(
@@ -213,15 +227,30 @@ def set_answer(
     fs.updated_at = now.isoformat()
 
 
-def set_checked(fs: FieldState, failed: list[str], now: datetime) -> bool:
-    """The filters' verdict. Returns True when the field became complete."""
+def asked_out(fs: FieldState, clarify_limit: int | None) -> bool:
+    """The bot has asked for the rest of the field as many times as the scenario allows:
+    the client's reply is final. A field never asked and without an answer is not."""
+    if clarify_limit is None or fs.clarified < clarify_limit:
+        return False
+    return fs.asks > 0 or fs.value is not None
+
+
+def set_checked(
+    fs: FieldState, failed: list[str], now: datetime, *, clarify_limit: int | None = None
+) -> bool:
+    """The filters' verdict. Returns True when the field became complete. With
+    `clarify_limit` an answer that fails after the last clarification allowed is taken as
+    said."""
     was_complete = fs.complete
+    taken = False
     if fs.issue:
         # code rejected the value: it stays partial whatever the filters say
         failed = [f"@{fs.issue}"]
     elif not failed and fs.answered_partly:
         # the decider heard only part of the answer: the bot asks for the rest
         failed = [PARTLY]
+    if failed and not fs.issue and asked_out(fs, clarify_limit):
+        failed, taken = [], True
     if failed:
         fs.state = PARTIAL
         fs.failed_filters = list(failed)
@@ -230,8 +259,37 @@ def set_checked(fs: FieldState, failed: list[str], now: datetime) -> bool:
         fs.failed_filters = []
         fs.reasks = 0
         fs.closed = False
+    fs.taken_as_said = taken
     fs.updated_at = now.isoformat()
     return fs.complete and not was_complete
+
+
+def settle_asked_out(
+    defn: ScenarioDef, states: dict[str, FieldState], keys: list[str], now: datetime
+) -> list[str]:
+    """clarify_limit: of `keys` (the fields the client's words were just read for), those
+    asked for the rest as many times as allowed and still not done (the words added
+    nothing that passes) are not asked again — one with part of an answer is taken as
+    said, one without a word is closed. Returns the fields closed."""
+    closed: list[str] = []
+    for key in keys:
+        fs = states.get(key)
+        if fs is None:
+            continue
+        if fs.done or fs.pending or fs.state == REVIEW or fs.issue:
+            continue
+        if not asked_out(fs, defn.clarify_limit):
+            continue
+        if fs.value is None:
+            set_closed(fs, now)
+            closed.append(key)
+            continue
+        fs.state = FILLED
+        fs.failed_filters = []
+        fs.needs_recheck = False
+        fs.taken_as_said = True
+        fs.updated_at = now.isoformat()
+    return closed
 
 
 def mark_dependents(defn: ScenarioDef, states: dict[str, FieldState], key: str) -> list[str]:
@@ -257,11 +315,19 @@ def recheck_ready(defn: ScenarioDef, states: dict[str, FieldState]) -> list[str]
     ]
 
 
-def register_ask(states: dict[str, FieldState], asking_before: str | None, key: str) -> bool:
+def register_ask(
+    states: dict[str, FieldState], asking_before: str | None, key: str, *, count: bool = True
+) -> bool:
     """The bot asks `key` in this reply. Asking the same unfinished field again counts as a
     re-ask; the STUCK_AFTER-th re-ask in a row marks it stuck. Returns True when the field
-    has just become stuck."""
+    has just become stuck. Asking a field asked before, or one with part of its answer, is a
+    clarification; `count=False` — the client's words were not a reply to the question (their
+    own question, a correction of another answer): it is asked again as it was, not counted."""
     fs = states[key]
+    if count:
+        if fs.asks or fs.value is not None:
+            fs.clarified += 1
+        fs.asks += 1
     if asking_before == key:
         fs.reasks += 1
     else:
@@ -283,9 +349,12 @@ def reset(fs: FieldState, now: datetime) -> None:
     fs.failed_filters = []
     fs.needs_recheck = False
     fs.reasks = 0
+    fs.asks = 0
+    fs.clarified = 0
     fs.stuck = False
     fs.skipped = False
     fs.closed = False
+    fs.taken_as_said = False
     fs.asked = None
     fs.answered = False
     fs.answered_partly = False
@@ -301,8 +370,9 @@ def set_skipped(fs: FieldState, now: datetime) -> None:
 
 
 def set_closed(fs: FieldState, now: datetime) -> None:
-    """An added field failed too many times: it is not asked again, and unlike
-    set_skipped what the client said for it is kept (partial, with the failed checks)."""
+    """An added field failed too many times (or a question ran out of asks): it is not
+    asked again, and unlike set_skipped what the client said for it is kept (partial,
+    with the failed checks)."""
     fs.closed = True
     fs.updated_at = now.isoformat()
 

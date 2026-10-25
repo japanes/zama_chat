@@ -450,3 +450,110 @@ async def test_a_question_answered_in_part_is_worded_by_the_bot(client, services
         "Пам'ятаю, ви працюєте вдвох з дружиною. Хто ще у команді?",
     ]
     assert [c["role"] for c in state["usage"]["calls"] if c["kind"] == "llm"] == ["reply"]
+
+
+def limited_data() -> dict:
+    """intro_data with one clarification of a question, then the answer is taken."""
+    return {**intro_data(), "clarify_limit": 1}
+
+
+async def _field_out(client, env, key) -> dict:
+    resp = await client.post(
+        "/v1/runs/state",
+        json={"contact": CONTACT, "scenario": "interview"},
+        headers=env.bundle.auth,
+    )
+    assert resp.status_code == 200, resp.text
+    return {f["key"]: f for f in resp.json()["run"]["fields"]}[key]
+
+
+async def test_a_general_answer_after_one_clarification_is_taken_as_said(
+    client, services, fake_llm
+):
+    env = await _setup(services, limited_data())
+    vague = {"filter:interview.niche.concrete": False}
+    body = await _say(
+        client,
+        env,
+        fake_llm,
+        FIRST,
+        route={"start:interview.wants_help": True, "field:interview.niche": FULL, **vague},
+        extract=_extract(niche="торти", offer=None, years=None, team=None),
+    )
+    conv = body["conversation_id"]
+    run = await _run(services, conv)
+    # the niche is too general: the bot asks for the rest — the one clarification
+    assert run.asking == "niche"
+    assert run.fields["niche"]["state"] == "partial"
+    assert run.fields["niche"]["clarified"] == 1
+
+    # «for everyone»: the decider hears no niche in it, yet it is the reply to the question
+    await _say(client, env, fake_llm, "Для всіх", route=vague)
+    run = await _run(services, conv)
+    assert len(run.fields["niche"]["pending"]) == 1
+    assert run.asking == "offer"  # not asked a third time
+    fake_llm.push(_extract(niche="для всіх"))
+    await env.worker.run_due()
+    run = await _run(services, conv)
+    niche = run.fields["niche"]
+    assert niche["state"] == "filled" and "для всіх" in niche["value"]
+    assert niche["failed_filters"] == [] and niche["taken_as_said"] is True
+    out = await _field_out(client, env, "niche")
+    assert (out["taken_as_said"], out["clarified"]) == (True, 1)
+
+
+async def test_a_question_left_without_a_word_twice_is_closed(client, services, fake_llm):
+    env = await _setup(services, limited_data())
+    body = await _say(
+        client,
+        env,
+        fake_llm,
+        FIRST,
+        route={"start:interview.wants_help": True, "field:interview.niche": FULL},
+        extract=_extract(niche="торти", offer=None, years=None, team=None),
+    )
+    conv = body["conversation_id"]
+    assert (await _run(services, conv)).asking == "offer"
+
+    # «I don't know»: read as the reply, nothing found — asked again later
+    await _say(client, env, fake_llm, "Не знаю", route={})
+    run = await _run(services, conv)
+    assert run.asking == "years"
+    fake_llm.push(_extract(offer=None))
+    await env.worker.run_due()
+    run = await _run(services, conv)
+    offer = run.fields["offer"]
+    assert (offer["value"], offer["closed"], offer["clarified"]) == (None, False, 0)
+
+    await _say(client, env, fake_llm, "П'ять років", route={"field:interview.years": FULL})
+    run = await _run(services, conv)
+    assert run.asking == "offer" and run.fields["offer"]["clarified"] == 1
+    fake_llm.push(_extract(years="п'ять років"))
+    await env.worker.run_due()
+
+    # nothing again after the clarification: the question is closed, the bot goes on
+    await _say(client, env, fake_llm, "Та різне", route={})
+    assert (await _run(services, conv)).asking == "team"
+    fake_llm.push(_extract(offer=None))
+    await env.worker.run_due()
+    run = await _run(services, conv)
+    assert run.fields["offer"]["closed"] is True
+    assert run.fields["offer"]["value"] is None
+
+
+async def test_the_clients_own_question_is_not_a_clarification(client, services, fake_llm):
+    env = await _setup(services, limited_data())
+    body = await _say(
+        client,
+        env,
+        fake_llm,
+        FIRST,
+        route={"start:interview.wants_help": True, "field:interview.niche": FULL},
+        extract=_extract(niche="торти", offer=None, years=None, team=None),
+    )
+    conv = body["conversation_id"]
+    await _say(client, env, fake_llm, "А скільки коштує?", route={"client_question": True})
+    run = await _run(services, conv)
+    offer = run.fields["offer"]
+    assert run.asking == "offer"
+    assert (offer["asks"], offer["clarified"], offer["pending"]) == (1, 0, [])

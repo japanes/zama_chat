@@ -36,6 +36,8 @@ test('every new setting comes back as it was written', () => {
   assert.deepEqual(once.added, FULL.added)
   assert.equal(once.start_by_caller, true)
   assert.equal(once.queue, 2)
+  // 0 is a limit (never clarify), not «no limit»
+  assert.equal(once.clarify_limit, 0)
   assert.deepEqual(roundTrip(once), once)
 })
 
@@ -48,6 +50,7 @@ test('defaults are left out: the server fills them in the same way', () => {
   d.history_messages = ''
   d.start_by_caller = false
   d.queue = ''
+  d.clarify_limit = ''
   const out = cleanDefinition(d)
   assert.equal('on_unknown' in out.fields[1].show_if, false)
   assert.equal('recheck' in out.fields[1].show_if, false)
@@ -56,6 +59,7 @@ test('defaults are left out: the server fills them in the same way', () => {
   assert.equal('history_messages' in out, false)
   assert.equal('start_by_caller' in out, false)
   assert.equal('queue' in out, false)
+  assert.equal('clarify_limit' in out, false)
 })
 
 test('the by_caller settings go only with by_caller (the server refuses them otherwise)', () => {
@@ -83,7 +87,7 @@ test('a new scenario and a new question carry none of the new settings', () => {
   d.key = 'x'
   d.fields = [newField(1)]
   const out = cleanDefinition(d)
-  for (const key of ['ask_rules', 'history_messages', 'added', 'waiting', 'start_by_caller', 'queue']) assert.equal(key in out, false, key)
+  for (const key of ['ask_rules', 'history_messages', 'added', 'waiting', 'start_by_caller', 'queue', 'clarify_limit']) assert.equal(key in out, false, key)
   for (const key of ['show_if', 'options_from']) assert.equal(key in out.fields[0], false, key)
 })
 

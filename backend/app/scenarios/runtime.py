@@ -277,12 +277,18 @@ def apply_start(
 
 
 def extract_targets(
-    runs: list[WorkRun], decisions: DecisionSet, focus_before: WorkRun | None
+    runs: list[WorkRun],
+    decisions: DecisionSet,
+    focus_before: WorkRun | None,
+    *,
+    reply: str | None = None,
 ) -> list[Target]:
     """Fields to extract: marked by `field:` questions; the corrected one; every field of
     a run started in this turn; of a reopened run — every field, the answers as
-    corrections. A field whose answers are written in the background (mark_background)
-    is not extracted here, a correction of it neither: the job writes it."""
+    corrections; with clarify_limit — the question the words reply to (`reply`), even if
+    the decider heard no answer in them. A field whose answers are written in the
+    background (mark_background) is not extracted here, a correction of it neither: the
+    job writes it."""
     change = decisions.value(CHANGE_FIELD, NONE)
     targets = []
     for run in runs:
@@ -300,7 +306,10 @@ def extract_targets(
                 and not background
             )
             marked = (
-                says_answer(decisions.value(field_key(defn.key, f.key)))
+                (
+                    says_answer(decisions.value(field_key(defn.key, f.key)))
+                    or (run is focus_before and f.key == reply)
+                )
                 and not fs.complete
                 and not background
             )
@@ -325,6 +334,7 @@ def mark_background(
     skip: set[str],
     turn_id: str,
     focus_before: WorkRun | None = None,
+    reply: str | None = None,
 ) -> list[str]:
     """background_answers: the text fields whose question the client's words answer — in
     full, in part, or adding to the answer the field has (the decider's `field:` answers) —
@@ -332,8 +342,10 @@ def mark_background(
     scenario_answers writes the answer from the run's dialogue (scenarios/answers.py).
     A correction of such an answer (change_field) waits for the job too (`corrects`): it
     writes the answer anew. A run started or reopened in this turn, a field read in the
-    turn (`targets`) and a button pressed (`skip`) are read in the turn as usual. Returns
-    the fields marked ("scenario.field")."""
+    turn (`targets`) and a button pressed (`skip`) are read in the turn as usual. With
+    clarify_limit the question the words reply to (`reply`) is written even when the
+    decider heard no answer in them: the job keeps the best of a general answer, the
+    filters judge it. Returns the fields marked ("scenario.field")."""
     inline = {(t.run_id, t.field.key) for t in targets}
     change = decisions.value(CHANGE_FIELD, NONE)
     done: list[str] = []
@@ -356,15 +368,53 @@ def mark_background(
                 run.corrects.append(f.key)
             else:
                 value = decisions.value(field_key(defn.key, f.key))
-                if not says_answer(value):
+                if says_answer(value):
+                    fs.answered = value != IN_PART
+                    fs.answered_partly = value == IN_PART
+                elif run is focus_before and f.key == reply and not fs.complete:
+                    fs.answered, fs.answered_partly = True, False
+                else:
                     continue
-                fs.answered = value != IN_PART
-                fs.answered_partly = value == IN_PART
             if turn_id not in fs.pending:
                 fs.pending.append(turn_id)
             run.marked.append(f.key)
             done.append(name)
     return done
+
+
+def reply_to(
+    focus_before: WorkRun | None, decisions: DecisionSet, *, stopped: str | None
+) -> str | None:
+    """clarify_limit: the field whose question the client's words reply to — the one the
+    focus asked when the turn started, unless the words were something else (their own
+    question, a correction of another answer, «stop»). None — no such field."""
+    if focus_before is None or focus_before.definition.clarify_limit is None or stopped:
+        return None
+    key = focus_before.asking_before
+    if key is None or key not in focus_before.states:
+        return None
+    if aside(decisions, key):
+        return None
+    return key
+
+
+def aside(decisions: DecisionSet, asked: str | None) -> bool:
+    """The client's words are not a reply to the question `asked`: their own question, or
+    a correction of another answer."""
+    if decisions.value(CLIENT_QUESTION, False) is True:
+        return True
+    change = decisions.value(CHANGE_FIELD, NONE)
+    return isinstance(change, str) and change not in (NONE, asked)
+
+
+def settle_reply(focus_before: WorkRun | None, reply: str | None, now: datetime) -> None:
+    """clarify_limit: the reply to the last clarification allowed is final (the answer is
+    taken as said, or the question closed without one); one being written in the
+    background is settled by the job (scenarios/answers.py)."""
+    if focus_before is None or reply is None or not focus_before.takes_data:
+        return
+    for key in fl.settle_asked_out(focus_before.definition, focus_before.states, [reply], now):
+        focus_before.add(CLOSED, key)
 
 
 def prefill_contacts(
@@ -547,7 +597,12 @@ def apply_checks(
     due: list[tuple[WorkRun, str]], failed: dict[tuple[str, str], list[str]], now: datetime
 ) -> None:
     for run, key in due:
-        fl.set_checked(run.states[key], failed.get((run.key, key), []), now)
+        fl.set_checked(
+            run.states[key],
+            failed.get((run.key, key), []),
+            now,
+            clarify_limit=run.definition.clarify_limit,
+        )
     # after the whole round: a field whose ask_after is complete now was checked in context
     for run, key in due:
         fs = run.states[key]
@@ -1122,9 +1177,10 @@ def close_failed(runs: list[WorkRun], now: datetime) -> None:
         run.add(CLOSED, nxt.key)
 
 
-def next_questions(runs: list[WorkRun], *, ask: bool = True) -> None:
+def next_questions(runs: list[WorkRun], *, ask: bool = True, aside: bool = False) -> None:
     """The field the focus asks in this reply; re-asks are counted. `ask=False` (the
-    client wants a human): nothing is asked, the counters stay."""
+    client wants a human): nothing is asked, the counters stay. `aside` — the client's
+    words were no reply to the question asked: asking it again is no clarification."""
     for run in runs:
         if run.status != RunStatus.FOCUS:
             run.asking = None
@@ -1136,7 +1192,8 @@ def next_questions(runs: list[WorkRun], *, ask: bool = True) -> None:
             collected = fl.complete_except_receipts(run.definition, run.states)
             run.asking = CONFIRM if collected and not run.confirmed else None
             continue
-        if fl.register_ask(run.states, run.asking, nxt.key):
+        count = not (aside and nxt.key == run.asking)
+        if fl.register_ask(run.states, run.asking, nxt.key, count=count):
             run.add(ActionEvent.FIELD_STUCK, nxt.key)
         run.asking = nxt.key
 
@@ -1220,6 +1277,8 @@ async def run_scenarios(
     expired = expire_runs(view)
 
     stopped = apply_stop(runs, decisions.value(STOP, NONE))
+    asked = focus_before.asking_before if focus_before is not None else None
+    reply = reply_to(focus_before, decisions, stopped=stopped)
     # before the starts: the amended request is not started anew
     if not view.only_scenario:
         apply_reopen(view, runs, decisions)
@@ -1243,7 +1302,9 @@ async def run_scenarios(
     }
     targets = [
         t
-        for t in extract_targets(runs, decisions, focus_before)
+        for t in extract_targets(
+            runs, decisions, focus_before, reply=None if only_buttons else reply
+        )
         if f"{t.scenario}.{t.field.key}" not in contacts
         and f"{t.scenario}.{t.field.key}" not in picked
         and not only_buttons
@@ -1258,6 +1319,7 @@ async def run_scenarios(
             skip={*contacts, *picked},
             turn_id=str(ctx.turn_id),
             focus_before=focus_before,
+            reply=reply,
         )
     )
     targets, no_choices = await with_choices(services, ctx, targets, rewritten)
@@ -1329,6 +1391,7 @@ async def run_scenarios(
         await wait_for(focus)
     if not wants_human:
         close_failed(runs, now)
+        settle_reply(focus_before, None if only_buttons else reply, now)
     finish_runs(runs, now)
     passed = pass_focus(runs)
     if passed is not None and waited is None and not wants_human and waits_for_answers(passed):
@@ -1336,7 +1399,7 @@ async def run_scenarios(
         await wait_for(passed)
         finish_runs(runs, now)
         passed = pass_focus(runs) or passed
-    next_questions(runs, ask=not wants_human)
+    next_questions(runs, ask=not wants_human, aside=aside(decisions, asked))
 
     catalog_options, catalog_ask = await _catalog_options(services, ctx, runs, rewritten)
     payment = await _payment(services, ctx, runs) if not wants_human else {}

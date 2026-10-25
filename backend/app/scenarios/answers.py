@@ -67,6 +67,7 @@ from app.logging import get_logger
 from app.prompts.builtin import EXTRACT_KEY
 from app.prompts.store import load_prompts
 from app.scenarios import fields as fl
+from app.scenarios.events import CLOSED
 from app.scenarios.fields import FieldState, dump_states, load_states
 from app.scenarios.plan import build_plan, confirm_question
 from app.scenarios.questions import CONFIRM
@@ -144,6 +145,8 @@ def merge_states(
         merged = copy.deepcopy(after)
         merged.pending = [t for t in cur.pending if t not in (turns or [])]
         merged.stuck = cur.stuck
+        # the turns count the asks: one asked meanwhile is the turn's
+        merged.asks, merged.clarified = cur.asks, cur.clarified
         if not merged.complete:
             merged.reasks = cur.reasks
         if after.asked == before.asked:
@@ -434,6 +437,9 @@ def _merged(
     read = {k: turns for (rid, k), turns in written.read.items() if rid == run.id}
     final.states = merge_states(final.definition, row.fields, start, run.states, read)
     if final.takes_data:
+        # clarify_limit: words written for the last clarification allowed are final
+        for key in fl.settle_asked_out(final.definition, final.states, list(read), now):
+            final.add(CLOSED, key)
         # a run whose last answers came in: completed (or waiting) as in a turn
         finish_runs([final], now)
     return final

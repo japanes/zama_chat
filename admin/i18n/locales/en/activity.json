@@ -21,6 +21,8 @@
       "normalized": "as data",
       "hidden": "Not asked: does not apply",
       "closed": "Closed after failed answers",
+      "taken_as_said": "Taken as said: no more clarifying",
+      "clarified": "Clarified: {n}",
       "added": "Added {at}",
       "question": "Question",
       "asked": "The bot asked",
@@ -200,6 +202,7 @@
     "review": "being checked",
     "stuck": "the bot got stuck here",
     "writing": "answer being written",
+    "taken_as_said": "taken as said",
     "partial": "the answer is not complete yet",
     "todo": "not asked yet"
   },

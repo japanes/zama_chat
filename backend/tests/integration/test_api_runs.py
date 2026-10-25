@@ -394,6 +394,8 @@ async def test_start_creates_the_run_and_asks_the_first_question(services, clien
         "asked": None,
         "hidden": False,
         "closed": False,
+        "taken_as_said": False,
+        "clarified": 0,
         "options": None,
         "added_at": None,
     }

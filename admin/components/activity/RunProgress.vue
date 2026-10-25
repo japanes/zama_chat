@@ -32,6 +32,7 @@
             <span v-if="row.review" class="badge-amber ml-1">{{ t('progress.review') }}</span>
             <span v-if="row.stuck" class="badge-red ml-1">{{ t('progress.stuck') }}</span>
             <span v-if="row.writing" class="badge-blue ml-1">{{ t('progress.writing') }}</span>
+            <span v-if="row.taken" class="badge-amber ml-1">{{ t('progress.taken_as_said') }}</span>
           </p>
           <p v-if="row.value" class="text-sm text-slate-600 dark:text-slate-300 whitespace-pre-line break-words">{{ row.value }}</p>
           <p v-if="row.state === 'partial'" class="text-[13px] text-[#7a4b00] dark:text-amber-300">{{ row.issue || t('progress.partial') }}</p>
@@ -63,6 +64,8 @@ interface Row {
   stuck: boolean
   // background_answers: the client answered it, the answer is being written after the reply
   writing: boolean
+  // clarify_limit: the answer did not pass its checks after the last clarification
+  taken: boolean
   issue: string | null
 }
 
@@ -86,6 +89,7 @@ const rows = computed<Row[]>(() => {
       review: st?.state === 'review',
       stuck: !!st?.stuck,
       writing: !!st?.pending?.length,
+      taken: !!st?.taken_as_said,
       issue: issueKey && te(issueKey) ? t(issueKey, flat(st.issue_params)) : null,
     }
   })

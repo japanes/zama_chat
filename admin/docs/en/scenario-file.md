@@ -96,6 +96,7 @@ The words `yes`, `no`, `on`, `off` are plain text here. There are only two logic
 | `only_scenario` | no | While the scenario is open, the bot does only it: no general replies, no search, no other scenarios — section 9. |
 | `client_questions` | no | With `only_scenario`: the bot still answers the client's own question, then goes on with the scenario — section 9. |
 | `background_answers` | no | The text answers are written after the bot's reply: the bot does not wait while a long story is read for every question — section 9. |
+| `clarify_limit` | no | How many times the bot clarifies an answer that did not pass its checks; then it takes it as said — section 9. |
 | `start_by_caller` | no | The scenario starts only by your system, never by the client's words — section 9. |
 | `queue` | no | Its place in the queue of the conversation's scenarios — section 9. |
 | `actions` | no | What to do with the result: send it to you, write to the client — section 10. |
@@ -472,6 +473,21 @@ Sometimes a client answers several questions in one long message. Without this s
 The bot waits for the answers only where it cannot go on without them: when there is nothing left to ask while answers are still being written, and before a question that depends on answers already given (`show_if`, `ask_after`).
 
 Only `type: text` questions are written this way. The others — a date, a phone, a choice, a file — are read at once, as without this setting. Each background write is a turn of its own with the model: its cost shows in the conversation's trace. Your system sees this in the scenario's state (`POST /v1/runs/state`): `answers_pending` — the questions whose answers are still being written, `answer_turns` — the finished background writes. What each cost is given by `POST /v1/runs/{run_id}/usage` with `turns` — ids from `answer_turns`.
+
+**`clarify_limit`** — how many times the bot clarifies an answer, from 0 to 20:
+
+```yaml
+clarify_limit: 1              # not set — no limit
+```
+
+When an answer does not pass its `filters` (the client answered in general words, a detail is missing), the bot asks again. Without this setting it does so until the answer passes, however many times it takes. With `clarify_limit` — at most this many times:
+
+- after the last clarification the answer is taken as the client said it, all their words, and the bot moves on to the next question. In the scenario's state such a question has `taken_as_said: true`, and `clarified` says how many times it was clarified;
+- the reply to the question asked is always written, even when the bot heard no answer in it («I value everything», «all of it»): the best of the general words is kept, and the checks decide whether it is enough;
+- if after the last clarification the client still said not a word on the question, it is closed without an answer (`closed: true`);
+- the client's own question («why do you ask?») and a correction of another answer are not a clarification: the bot answers and asks the same question again, the count stays.
+
+`0` — never clarify: the client's first answer is taken as said. An example with `clarify_limit: 1`: «What are you proud of?» — «Everything» — «What comes to mind first?» — «Really, all of it». «Really, all of it» is written, then the next question.
 
 **`start_by_caller`** — the scenario starts only by your system (`POST /v1/runs/start`), never by the client's words: its `start` questions are not asked in any conversation.
 

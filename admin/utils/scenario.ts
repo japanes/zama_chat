@@ -102,6 +102,8 @@ export function newDefinition(language: string): any {
     only_scenario: false,
     client_questions: false,
     background_answers: false,
+    // '' — no limit: the bot clarifies until the checks pass
+    clarify_limit: '',
     start_by_caller: false,
     // '' — no place in the queue
     queue: '',
@@ -263,6 +265,7 @@ export function cleanDefinition(d: any): any {
     // the client's own question matters only while the scenario is the turn's alone
     client_questions: d.only_scenario && d.client_questions ? true : undefined,
     background_answers: d.background_answers ? true : undefined,
+    clarify_limit: num(d.clarify_limit),
     start_by_caller: d.start_by_caller ? true : undefined,
     queue: num(d.queue),
     ask_rules: listOf((d.ask_rules || []).map(text)),
@@ -324,6 +327,7 @@ export function toForm(d: any): any {
   out.only_scenario = !!out.only_scenario
   out.client_questions = !!out.client_questions
   out.background_answers = !!out.background_answers
+  out.clarify_limit ??= ''
   out.start_by_caller = !!out.start_by_caller
   out.queue ??= ''
   out.ask_rules ||= []

@@ -24,6 +24,22 @@
       <p class="hint">{{ t('editor.q.background_answers_hint') }}</p>
     </div>
 
+    <!-- clarify_limit: how many times the bot asks for the rest; then the answer is taken -->
+    <div class="rounded-button bg-slate-50 dark:bg-slate-900/40 px-4 py-3.5">
+      <label class="label" :for="`${uid}-clarify`">{{ t('editor.q.clarify_limit') }}</label>
+      <input
+        :id="`${uid}-clarify`"
+        v-model="def.clarify_limit"
+        type="number"
+        min="0"
+        max="20"
+        class="input sm:!w-40"
+        :placeholder="t('editor.q.clarify_limit_none')"
+        :readonly="readonly"
+      />
+      <p class="hint">{{ t('editor.q.clarify_limit_hint') }}</p>
+    </div>
+
     <!-- what the bot reads when it words a question: the answers always, the last messages,
          and the scenario's own rules for wording (only the bot that writes sees them) -->
     <div class="rounded-button bg-slate-50 dark:bg-slate-900/40 px-4 py-3.5 space-y-3">
