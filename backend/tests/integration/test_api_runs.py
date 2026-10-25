@@ -5,17 +5,19 @@ language; answers collected outside a dialogue checked by the filters of their q
 tests/integration/test_scenario_flow.py."""
 
 import json
+import uuid
 
 import pytest
 from sqlalchemy import select
 
-from app.api.v1.runs import CHECK_ANSWER_MAX
+from app.api.v1.runs import CHECK_ANSWER_MAX, _usage
 from app.core.language import REPLY_LANGUAGE_PIN
 from app.core.pipeline import full_pipeline
 from app.db.models import (
     Contact,
     Conversation,
     Decision,
+    DecisionProvider,
     LlmRole,
     Message,
     MessageRole,
@@ -686,6 +688,56 @@ async def test_a_message_returns_the_run_and_what_the_turn_cost(services, client
         "What is your niche?",
         "Got it. What do you sell?",
     ]
+
+
+async def test_the_usage_of_a_turn_says_where_its_time_went(services, client, fake_llm):
+    """Its steps as the trace has them, when it began and ended, and the decision service's
+    time: its requests one after another, each as long as the longest row of its batch."""
+    decider = await _pipeline(services)
+    bundle = await _setup(services)
+    await _start(client, bundle, language="en")
+
+    decider.rules = {**ROUTE_DEFAULTS, "field:interview.niche": True}
+    fake_llm.push(
+        chat_reply(json.dumps({"question": ["I bake cakes"], "language": "en"})),
+        chat_reply(json.dumps({"interview__niche": "cakes"})),
+        chat_reply("Got it. What do you sell?"),
+    )
+    resp = await _post(
+        client,
+        bundle,
+        "/v1/runs/message",
+        contact=CONTACT,
+        text="I bake cakes",
+        scenario="interview",
+    )
+    assert resp.status_code == 200, resp.text
+    usage = resp.json()["usage"]
+    steps = [s["step"] for s in usage["steps"]]
+    assert steps[0] == "rewrite" and steps[-1] == "respond" and "route" in steps
+    assert all(isinstance(s["ms"], int) and s["skipped"] is None for s in usage["steps"])
+    assert usage["started_at"] and usage["finished_at"]
+
+    turn_id = uuid.UUID(usage["turn_id"])
+    one, two = uuid.uuid4(), uuid.uuid4()
+    async with services.sm() as session, session.begin():
+        for batch, key, ms in ((one, "a", 800), (one, "b", 800), (two, "c", 300)):
+            session.add(
+                Decision(
+                    tenant_id=bundle.tenant_id,
+                    turn_id=turn_id,
+                    batch_id=batch,
+                    key=key,
+                    type="boolean",
+                    provider=DecisionProvider.JEV,
+                    model="typesafe-ai/jev",
+                    latency_ms=ms,
+                )
+            )
+    async with services.sm() as session:
+        out = await _usage(session, turn_id)
+    [jev] = [c for c in out.calls if c.kind == "decisions"]
+    assert (jev.model, jev.latency_ms) == ("typesafe-ai/jev", 1100)
 
 
 async def test_a_message_for_a_dialogue_that_is_not_running_is_refused(services, client, fake_llm):

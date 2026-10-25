@@ -27,6 +27,9 @@ window.
   POST /v1/runs/{id}/usage     what the answers written in the background cost
                                (`background_answers`: RunOut.answer_turns)
 
+A turn's usage (UsageOut) also says where its time went: when it began and ended, its
+steps as the trace has them and how long each model call and the decision service took.
+
 Auth: `Authorization: Bearer <api key>`. The key belongs to one channel: only scenarios
 switched on in that channel start, only runs of that channel are seen.
 
@@ -206,8 +209,19 @@ class UsageCall(BaseModel):
     tokens_in: int
     tokens_out: int
     cost: float
+    # a model call: its time; the decision service: the time of its requests of the turn
+    # together (they go one after another)
     latency_ms: int | None = None
     error: str | None = None
+
+
+class UsageStep(BaseModel):
+    # a step of the turn as turns.trace has it: rewrite, route, search, scenarios, respond;
+    # answers — the turn of the job that writes the answers in the background
+    step: str
+    ms: int | None = None
+    # why it was not made (rewrite: "long_message")
+    skipped: str | None = None
 
 
 class UsageOut(BaseModel):
@@ -216,7 +230,10 @@ class UsageOut(BaseModel):
     tokens_out: int
     cost: float
     duration_ms: int | None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
     calls: list[UsageCall]
+    steps: list[UsageStep] = []
 
 
 class RunMessageOut(MessageOut):
@@ -1093,6 +1110,7 @@ async def _usage(session: AsyncSession, turn_id: uuid.UUID) -> UsageOut | None:
         ).scalars()
     ]
     # LLM-decider rows are already among the model calls; the decision service is paid apart
+    jev_of_turn = (Decision.turn_id == turn_id, Decision.provider == DecisionProvider.JEV)
     jev = (
         await session.execute(
             select(
@@ -1101,10 +1119,24 @@ async def _usage(session: AsyncSession, turn_id: uuid.UUID) -> UsageOut | None:
                 func.coalesce(func.sum(Decision.tokens_out), 0),
                 func.coalesce(func.sum(Decision.cost), 0),
             )
-            .where(Decision.turn_id == turn_id, Decision.provider == DecisionProvider.JEV)
+            .where(*jev_of_turn)
             .group_by(Decision.model)
         )
     ).all()
+    # one request answers a batch: its rows share the request's time
+    batches = (
+        select(Decision.model, func.max(Decision.latency_ms).label("ms"))
+        .where(*jev_of_turn)
+        .group_by(Decision.model, Decision.batch_id)
+        .subquery()
+    )
+    spent = dict(
+        (
+            await session.execute(
+                select(batches.c.model, func.sum(batches.c.ms)).group_by(batches.c.model)
+            )
+        ).all()
+    )
     calls += [
         UsageCall(
             kind="decisions",
@@ -1113,6 +1145,7 @@ async def _usage(session: AsyncSession, turn_id: uuid.UUID) -> UsageOut | None:
             tokens_in=int(t_in),
             tokens_out=int(t_out),
             cost=float(Decimal(cost)),
+            latency_ms=int(spent[model]) if spent.get(model) is not None else None,
         )
         for model, t_in, t_out, cost in jev
     ]
@@ -1122,8 +1155,27 @@ async def _usage(session: AsyncSession, turn_id: uuid.UUID) -> UsageOut | None:
         tokens_out=turn.tokens_out or 0,
         cost=float(turn.cost or 0),
         duration_ms=turn.duration_ms,
+        started_at=turn.created_at,
+        finished_at=turn.finished_at,
         calls=calls,
+        steps=_steps(turn.trace),
     )
+
+
+def _steps(trace: dict[str, Any] | None) -> list[UsageStep]:
+    out = []
+    for raw in (trace or {}).get("steps") or []:
+        if not isinstance(raw, dict) or not raw.get("step"):
+            continue
+        ms, skipped = raw.get("ms"), raw.get("skipped")
+        out.append(
+            UsageStep(
+                step=str(raw["step"]),
+                ms=ms if isinstance(ms, int) else None,
+                skipped=str(skipped) if skipped else None,
+            )
+        )
+    return out
 
 
 class UsageIn(BaseModel):
