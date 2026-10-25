@@ -14,7 +14,10 @@ window.
   POST /v1/runs/message        one client message → the bot's reply, the run after the turn
                                and what the turn cost
   POST /v1/runs/state          the run, its questions and answers, the dialogue's messages
-  POST /v1/runs/{id}/skip      close the asked question without an answer
+  POST /v1/runs/{id}/skip      close the asked question without an answer; the next one is
+                               a question with nothing of its answer said yet, if any is
+                               left. With `word` a question answered in part is worded by
+                               the bot (a bot turn, paid like any)
   POST /v1/runs/{id}/confirm   the «yes, everything is correct» given in the caller's
                                interface
   POST /v1/runs/{id}/fields    new questions for a run of a `completion: by_caller`
@@ -1029,10 +1032,14 @@ def _ask_next(
     data: dict[str, Any],
     change: Change,
     language: str,
+    *,
+    untouched_first: bool = False,
 ) -> None:
     """The question an open run asks now, in the scenario's own words: the next field, or
     «is everything correct?» when everything is collected."""
-    nxt = fl.next_field(defn, states, confirmed=confirmed(defn, data))
+    nxt = fl.next_field(
+        defn, states, confirmed=confirmed(defn, data), untouched_first=untouched_first
+    )
     if nxt is not None:
         fl.register_ask(states, run.asking, nxt.key)
         run.asking = nxt.key
@@ -1230,21 +1237,37 @@ class SkipIn(BaseModel):
     # the question to close; without it — the one the bot asked last
     field: str | None = Field(default=None, min_length=1, max_length=64)
     messages: int = Field(default=0, ge=0, le=500)
+    # the next question has part of its answer said: the bot words it from the card, as a
+    # turn of the dialogue does (a bot turn, paid like any). Without it — the scenario's
+    # own text, no model call
+    word: bool = False
 
 
-@router.post("/runs/{run_id}/skip", response_model=StateOut)
+class SkipOut(StateOut):
+    # the bot turn that asked the next question in the bot's own words (`word`); null — the
+    # question went as written, or nothing was asked
+    usage: UsageOut | None = None
+
+
+@router.post("/runs/{run_id}/skip", response_model=SkipOut)
 async def skip_question(
     run_id: uuid.UUID, body: SkipIn, client: ApiClientDep, services: ServicesDep
-) -> StateOut:
-    """Closes a question without an answer and asks the next one (the scenario's own text,
-    no model call). A question already closed → nothing changes."""
+) -> SkipOut:
+    """Closes a question without an answer and asks the next one: a question with nothing
+    of its answer said yet comes first — the client asked for another question, not for the
+    one half answered (it is asked once nothing else is left). The scenario's own text, no
+    model call; with `word` a question answered in part is worded by the bot. A question
+    already closed → nothing changes."""
     found = await _own_run(services, client, run_id)
 
-    async def body_fn(session: AsyncSession, conv: Conversation) -> None:
-        await _skip(session, services, conv, run_id, body.field)
+    async def body_fn(session: AsyncSession, conv: Conversation) -> bool:
+        return await _skip(session, services, conv, run_id, body.field, word=body.word)
 
-    await under_lease(services, found.conversation_id, f"api:{uuid.uuid4().hex}", body_fn)
-    return await _state(services, found.conversation_id, run_id=run_id, messages=body.messages)
+    owner = f"api:{uuid.uuid4().hex}"
+    ask = await under_lease(services, found.conversation_id, owner, body_fn)
+    usage = await _bot_turn(services, found.conversation_id, owner) if ask else None
+    state = await _state(services, found.conversation_id, run_id=run_id, messages=body.messages)
+    return SkipOut(**state.model_dump(), usage=usage)
 
 
 async def _skip(
@@ -1253,7 +1276,10 @@ async def _skip(
     conv: Conversation,
     run_id: uuid.UUID,
     field_key: str | None,
-) -> None:
+    *,
+    word: bool = False,
+) -> bool:
+    """True — the bot has to word the next question now (a bot turn after the lease)."""
     now = services.clock.now()
     run = await lock_run(session, run_id)
     assert run is not None
@@ -1267,9 +1293,10 @@ async def _skip(
         raise AppError("run.unknown_fields", {"fields": [key]}, status=422)
     states = fl.load_states(defn, run.fields)
     if states[key].skipped:
-        return
+        return False
     data = dict(run.data or {})
     change = Change()
+    ask = False
     asked = run.asking
     had_answer = states[key].value is not None
     fl.set_skipped(states[key], now)
@@ -1281,12 +1308,18 @@ async def _skip(
     # Another question was closed, not the one on the screen: that one is still waiting for
     # its answer and is neither said again nor counted as asked twice.
     if run.status in TALKING and (asked is None or key == asked):
-        _ask_next(run, defn, states, data, change, run.reply_language or defn.language)
+        language = run.reply_language or defn.language
+        _ask_next(run, defn, states, data, change, language, untouched_first=True)
         if run.status != RunStatus.FOCUS:
             change.say = None  # put aside: the question is asked when the run comes back
+        elif word and run.asking in states and states[run.asking].value is not None:
+            # its words as written would ask again what the client has said
+            change.say = None
+            ask = True
     elif run.status == RunStatus.WAITING and data.get("waiting_for") == WAITING_FIELDS:
         change.say = waiting_say(defn, run.reply_language or defn.language)
     await write_run(session, services, conv, run, defn, states, data, change, now, meta=_META)
+    return ask
 
 
 class ConfirmIn(BaseModel):

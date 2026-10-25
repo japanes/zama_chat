@@ -372,3 +372,81 @@ async def test_a_correction_is_written_in_the_background(client, services, fake_
     assert run.fields["niche"]["state"] == "filled"
     assert run.fields["niche"]["pending"] == []
     assert run.asking == "offer"
+
+
+CITY = {"key": "city", "question": {"uk": "У якому ви місті?", "en": "Which city?"}}
+
+
+async def _team_said_in_part(client, env, services, fake_llm):
+    """niche → offer → team → years → city: the story answers «offer» in full and «team»
+    in part, the job writes them; the bot asks «years»."""
+    body = await _say(
+        client,
+        env,
+        fake_llm,
+        FIRST,
+        route={"start:interview.wants_help": True, "field:interview.niche": FULL},
+        extract=_extract(niche="торти", offer=None, team=None, years=None, city=None),
+    )
+    conv = body["conversation_id"]
+    route = {"field:interview.offer": FULL, "field:interview.team": IN_PART}
+    await _say(client, env, fake_llm, STORY, route=route)
+    fake_llm.push(_extract(offer="весільні торти", team="вдвох з дружиною"))
+    await env.worker.run_due()
+    run = await _run(services, conv)
+    assert (run.asking, run.fields["team"]["state"]) == ("years", "partial")
+    return conv, run.id
+
+
+def _partial_first_data() -> dict:
+    data = intro_data()
+    niche, offer, years, team = data["fields"]
+    data["fields"] = [niche, offer, team, years, CITY]
+    return data
+
+
+async def _skip(client, env, run_id, **body):
+    resp = await client.post(
+        f"/v1/runs/{run_id}/skip", json={"messages": 10, **body}, headers=env.bundle.auth
+    )
+    assert resp.status_code == 200, resp.text
+    return resp.json()
+
+
+async def test_another_question_is_one_not_answered_yet(client, services, fake_llm):
+    env = await _setup(services, _partial_first_data())
+    _, run_id = await _team_said_in_part(client, env, services, fake_llm)
+    calls = fake_llm.calls
+
+    # «team» comes before «city», but part of it is said: «city» is asked first
+    state = await _skip(client, env, run_id)
+    assert state["run"]["asking"] == "city"
+    assert state["messages"][-1]["text"] == "У якому ви місті?"
+    # nothing else is left: «team» as the scenario words it, no model call
+    state = await _skip(client, env, run_id)
+    assert state["run"]["asking"] == "team"
+    assert state["messages"][-1]["text"] == "Хто у вашій команді?"
+    assert (fake_llm.calls, state["usage"]) == (calls, None)
+
+
+async def test_a_question_answered_in_part_is_worded_by_the_bot(client, services, fake_llm):
+    env = await _setup(services, _partial_first_data())
+    _, run_id = await _team_said_in_part(client, env, services, fake_llm)
+    calls = fake_llm.calls
+
+    # nothing of «city» is said: its own words, no model call
+    state = await _skip(client, env, run_id, word=True)
+    assert (state["run"]["asking"], state["usage"]) == ("city", None)
+    assert fake_llm.calls == calls
+
+    # «team»: the bot asks for the rest, knowing what is said of it — a paid bot turn
+    fake_llm.push(chat_reply("Пам'ятаю, ви працюєте вдвох з дружиною. Хто ще у команді?"))
+    state = await _skip(client, env, run_id, word=True)
+    assert not fake_llm.script
+    assert state["run"]["asking"] == "team"
+    assert _scenario_step(fake_llm)["clarify"]["client_answer"] == "вдвох з дружиною"
+    assert [m["text"] for m in state["messages"][-2:]] == [
+        "У якому ви місті?",
+        "Пам'ятаю, ви працюєте вдвох з дружиною. Хто ще у команді?",
+    ]
+    assert [c["role"] for c in state["usage"]["calls"] if c["kind"] == "llm"] == ["reply"]

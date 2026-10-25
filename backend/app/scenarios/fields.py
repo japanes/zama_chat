@@ -121,21 +121,30 @@ def ask_after_ready(f: FieldDef, states: dict[str, FieldState]) -> bool:
 
 
 def next_field(
-    defn: ScenarioDef, states: dict[str, FieldState], *, confirmed: bool = True
+    defn: ScenarioDef,
+    states: dict[str, FieldState],
+    *,
+    confirmed: bool = True,
+    untouched_first: bool = False,
 ) -> FieldDef | None:
     """The first field, in definition order, that is not complete and whose ask_after
     fields are all complete. Partial fields and fields waiting for a recheck count as
     not complete. A receipt in review is not asked; with `confirm` a receipt is asked only
     after the client confirmed the rest (`confirmed`). A field whose answer is being written
-    in the background (`pending`) is not asked."""
+    in the background (`pending`) is not asked. `untouched_first` (the client asked for
+    another question): a field with nothing of its answer yet comes before one that has
+    part of it."""
+    askable = []
     for f in defn.fields:
         fs = states[f.key]
         if fs.done or fs.pending or fs.state == REVIEW or not ask_after_ready(f, states):
             continue
         if f.type == FieldType.RECEIPT and not confirmed:
             continue
-        return f
-    return None
+        if not untouched_first or fs.value is None:
+            return f
+        askable.append(f)
+    return askable[0] if askable else None
 
 
 def complete_except_receipts(defn: ScenarioDef, states: dict[str, FieldState]) -> bool:
